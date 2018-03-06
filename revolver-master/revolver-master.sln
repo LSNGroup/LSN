@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 9.00
+# Visual Studio 2005
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "revolver-master", "revolver-master.vcproj", "{E0F30B5C-1856-48D9-A6BE-C2E76AACED41}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_send", "test_send\test_send.vcproj", "{ED91AA6E-4313-4F9E-A537-90831E2346F8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E0F30B5C-1856-48D9-A6BE-C2E76AACED41}.Debug|Win32.ActiveCfg = Debug|Win32
+		{E0F30B5C-1856-48D9-A6BE-C2E76AACED41}.Debug|Win32.Build.0 = Debug|Win32
+		{E0F30B5C-1856-48D9-A6BE-C2E76AACED41}.Release|Win32.ActiveCfg = Release|Win32
+		{E0F30B5C-1856-48D9-A6BE-C2E76AACED41}.Release|Win32.Build.0 = Release|Win32
+		{ED91AA6E-4313-4F9E-A537-90831E2346F8}.Debug|Win32.ActiveCfg = Debug|Win32
+		{ED91AA6E-4313-4F9E-A537-90831E2346F8}.Debug|Win32.Build.0 = Debug|Win32
+		{ED91AA6E-4313-4F9E-A537-90831E2346F8}.Release|Win32.ActiveCfg = Release|Win32
+		{ED91AA6E-4313-4F9E-A537-90831E2346F8}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
