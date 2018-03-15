@@ -80,12 +80,12 @@ static void UiLoop(void)
 		{
 			printf("\n");
 			printf("h(help)                       帮助\n");
-			printf("l                             列出所有已连接的受控端 以及观看端数量\n");
+			printf("l                             列出所有已连接的推流端 以及观看端数量\n");
 			printf("f <width> <height> <fps>      设置视频格式\n");
-			printf("c <cam_id> <password>         连接新的受控端\n");
-			printf("d <index>                     断开指定受控端\n");
-			printf("s <index>                     视频源切到指定受控端\n");
-			printf("v <0/1>                       当前受控端切换摄像头\n");
+			printf("c <cam_id> <password>         连接新的推流端\n");
+			printf("d <index>                     断开指定推流端\n");
+			printf("s <index>                     视频源切到指定推流端\n");
+			printf("v <0/1>                       当前推流端切换摄像头\n");
 			printf("o <type> <ext> <num> <name> <pass> <tcp_addr>   转发器online\n");
 			printf("x                             退出程序\n");
 		}
@@ -135,7 +135,7 @@ static void UiLoop(void)
 			else {
 				if (g_pShiyong->currentSourceIndex != index) {
 
-					//由于电脑受控端（ViewerNode[0]）的T264不会周期性发送SPS、PPS，所以切换时要重新发送一遍！！！
+					//由于电脑推流端（ViewerNode[0]）的T264不会周期性发送SPS、PPS，所以切换时要重新发送一遍！！！
 					int t264_index = 0;
 					if (index == t264_index)
 					{
@@ -173,7 +173,7 @@ static void UiLoop(void)
 				printf("Current ViewerNode not using!\n");
 			}
 			else {
-				printf("受控端(%d) will use camera(%d)...\n", g_pShiyong->currentSourceIndex, index);
+				printf("推流端(%d) will use camera(%d)...\n", g_pShiyong->currentSourceIndex, index);
 				CtrlCmd_AV_SWITCH(g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].httpOP.m1_use_sock_type,
 								g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].httpOP.m1_use_udt_sock,
 								index);
