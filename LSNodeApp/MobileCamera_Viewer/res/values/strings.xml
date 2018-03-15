@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">LSN直播</string>
+    <string name="app_lang">zh</string>
+    
+    <string name="ui_ok_btn">确定</string>
+    <string name="ui_cancel_btn">取消</string>
+    <string name="ui_yes_btn">是</string>
+    <string name="ui_no_btn">否</string>
+    <string name="msg_communication_error">网络通信错误，请检查网络设置后重试</string>
+    <string name="msg_internet_error">无法访问英特网，请检查网络设置</string>
+    <string name="msg_please_wait">请等待。。。</string>
+    <string name="msg_nat_detect_failed">本地NAT防火墙探测失败，您的网络环境可能封锁了UDP通信</string>
+    <string name="msg_nat_blocked">本地NAT防火墙无法穿透，您的网络环境可能封锁了UDP通信</string>
+    <string name="msg_nat_detect_success">本地NAT探测成功</string>
+    <string name="msg_connect_register_local">正在提交本机连接信息，请稍侯。。。</string>
+    <string name="msg_connect_register_local_failed">提交本机连接信息失败，请重试</string>
+    <string name="msg_connect_get_peer">正在获取Peer端的连接信息。。。</string>
+    <string name="msg_connect_get_peer_failed">获取Peer端连接信息失败，请刷新列表后重试</string>
+    <string name="msg_connect_wait_queue_format">正在同Peer端同步时间，%1$d秒。。。</string>
+    <string name="msg_connect_nat_hole">正在打通P2P连接信道。。。</string>
+    <string name="msg_connect_proxy_failed">无法建立连接，暂时性网络状况不好，请稍后重试</string>
+    <string name="msg_connect_connecting">正在同Peer端建立连接，请稍候。。。</string>
+    <string name="msg_connect_reverse_connecting">正在等待Peer端发起反向连接，请稍候。。。</string>
+    <string name="msg_connect_connecting_failed1">连接失败(udpopen failed)</string>
+    <string name="msg_connect_connecting_failed2">连接失败(udtopen failed)</string>
+    <string name="msg_connect_connecting_failed3">连接失败(udt connect() failed)，请重试</string>
+    <string name="msg_connect_connecting_failed4">连接失败(WaitForProxyReady failed)，请重试</string>
+    <string name="msg_connect_connecting_failed5">连接失败(tcp socket() failed)</string>
+    <string name="msg_connect_connecting_failed6">连接失败(tcp bind() failed)</string>
+    <string name="msg_connect_connecting_failed7">连接失败(tcp connect() failed)，请重试</string>
+    <string name="msg_connect_connecting_failed8">暂时性网络状况不好，直连有点小困难，请稍后重试或者采用TCP连接</string>
+    <string name="msg_connect_checking_password">成功建立连接，正在验证密码。。。</string>
+    <string name="msg_connect_checking_password_tcp">正在等待Peer端响应TCP连接。。。</string>
+    <string name="msg_connect_checking_password_failed1">验证密码时通信出错，无法连接</string>
+    <string name="msg_connect_checking_password_failed2">密码错误，无法连接</string>
+    <string name="msg_connect_checking_password_retry">密码错误，请重试</string>
+    <string name="msg_connect_dlgpass_title">请输入连接密码</string>
+    <string name="msg_lan_cant_tcp_connect">本地局域网中不能用TCP连接</string>
+	
+	<string name="ui_addcam_btn">[+]添加频道</string>
+	<string name="ui_refresh_btn">刷新列表</string>
+	<string name="ui_exitapp_btn">退出APP</string>
+	<string name="msg_mobcam_offline">[该频道不在线或未开播]</string>
+	<string name="msg_local_lan">本地局域网</string>
+	<string name="msg_empty_addcam_first">列表为空，请先添加频道</string>
+	<string name="msg_not_support_location">该类型的远程端不支持定位功能</string>
+	<string name="msg_cant_location">地理坐标不可用，暂时无法在地图中定位</string>
+	<string name="msg_exit_app_or_not">是否确定要退出App？</string>
+	
+    <string-array name="array_select_operation_items">
+        <item>观看直播</item>
+        <item>在地图中定位</item>
+        <item>设置音视频参数</item>
+        <item>从列表中移除</item>
+    </string-array>
+    <string-array name="array_select_operation_offline_items">
+    	<item>在地图中定位</item>
+        <item>设置音视频参数</item>
+        <item>从列表中移除</item>
+    </string-array>
+	
+	<string name="msg_server_not_support_this_function">提示: 受控端软件不支持这项功能，或者由于未付费升级ID而被屏蔽了这项功能！请咨询客服QQ1：478046502，QQ2：1795782702</string>
+	<string name="msg_server_not_root_for_this_function">提示: 受控端手机需要Root后才能支持这项功能。建议用KingRoot一键Root。请咨询客服QQ1：478046502，QQ2：1795782702</string>
+	<string name="msg_level_too_low_for_this_function">提示: 免费试用ID不能使用这项功能，需要升级VIP权限，请联系客服QQ1：478046502，QQ2：1795782702</string>
+	
+	<string name="msg_check_id_and_password">您需要输入2个信息：频道ID和连接密码。</string>
+	<string name="ui_text_mobcam_id">频道ID：</string>
+	<string name="ui_text_password">连接密码：</string>
+	<string name="ui_add_btn">添加</string>
+	<string name="msg_mobcam_id_empty">频道ID不能为空，请重新输入</string>
+	<string name="msg_mobcam_id_invalid">频道ID输入有误，必须是一个整数，请重新输入</string>
+	<string name="msg_mobcam_id_exists">该频道ID已经添加过，不能重复添加</string>
+	
+    <string name="ui_avparam_audio_enable">接收声音</string>
+    <string name="ui_avparam_video_enable">接收视频</string>
+    <string name="ui_avparam_audio_device_title">请选择Peer端要使用的麦克风</string>
+    <string name="ui_avparam_video_device_title">请选择Peer端要使用的摄像头</string>
+    <string name="ui_avparam_audio_device_format">麦克风#%1$d</string>
+    <string name="ui_avparam_video_device_format">摄像头#%1$d</string>
+    <string name="ui_avparam_text_videosize">视频分辨率（按实际网络带宽选择）：</string>
+    <string name="ui_avparam_videosize_qvga">320x240</string>
+    <string name="ui_avparam_videosize_480x320">480x320</string>
+    <string name="ui_avparam_videosize_vga">640x480</string>
+    <string name="ui_avparam_text_framerate">视频帧率（请按实际网络带宽选择）：</string>
+    <string name="ui_avparam_framerate_a">20 fps</string>
+    <string name="ui_avparam_framerate_b">25 fps</string>
+    <string name="ui_avparam_framerate_c">30 fps</string>
+    <string name="ui_avparam_check_audioredundance">启用音频数据冗余传输</string>
+    <string name="ui_avparam_check_videoreliable">视频可靠传输（保证视频清晰无马赛克但可能有延迟）</string>
+	
+	<string name="ui_start_btn">开始接收音视频</string>
+	<string name="ui_snap_btn">抓拍</string>
+	<string name="ui_shout_btn">喊话</string>
+	<string name="ui_stop_btn">停止</string>
+	<string name="msg_audio_cant_open">远程设备上录音失败，无法接收音频数据</string>
+	
+	<string-array name="array_avctrl_operate_items">
+    	<item>其它手柄按钮-ABXY</item>
+    	<item>两路舵机控制</item>
+    	<item>美国手方式</item>
+    	<item>日本手方式</item>
+    	<item>视频摄像头切换</item>
+        <item>抓拍图片保存到SD卡</item>
+    </string-array>
+	
+	<string name="msg_video_switching">正在切换...</string>
+	<string name="msg_sdcard_not_available">该设备的SD存储卡不可用，请先插入SD储存卡</string>
+	<string name="msg_picture_saved_to_sdcard">抓拍的图片已经保存到SD存储卡上</string>
+	<string name="msg_voice_too_short">本次录制的声音太短，请重新录制</string>
+	<string name="msg_stop_or_not">是否确定要停止音视频监控并且断开同远程端的连接？</string>
+	<string name="msg_curr_is_left_throttle">现在已经是美国手方式</string>
+	<string name="msg_curr_is_right_throttle">现在已经是日本手方式</string>
+	
+	<string name="ui_text_gps_num_format">卫星数：%1$d</string>
+	<string name="ui_text_north_lati_format">北纬：%1$.5f</string>
+	<string name="ui_text_south_lati_format">南纬：%1$.5f</string>
+	<string name="ui_text_east_long_format">东经：%1$.5f</string>
+	<string name="ui_text_west_long_format">西经：%1$.5f</string>
+	<string name="ui_text_dongli_battery_format">动力电池：%1$.1fV %2$.1fA %3$d%%</string>
+	<string name="ui_text_tuchuan_battery_format">图传电池：%1$d%%(充电中)</string>
+	<string name="ui_text_total_time_format">时间：%1$d分%2$d秒</string>
+	<string name="ui_text_home_dist_format">离家：%1$d米</string>
+	<string name="ui_text_network_type_0">网络：未知</string>
+	<string name="ui_text_network_type_1">网络：WiFi</string>
+	<string name="ui_text_network_type_2">网络：2G</string>
+	<string name="ui_text_network_type_3">网络：3G</string>
+	<string name="ui_text_network_type_4">网络：4G</string>
+	<string name="ui_text_network_signal_format">信号：%1$d%%</string>
+	<string name="ui_text_gnd_speed_format">地&#160;&#160;&#160;速：%1$dm/s</string>
+	<string name="ui_text_air_speed_format">空&#160;&#160;&#160;速：%1$dm/s</string>
+	<string name="ui_text_climb_rate_format">爬升率：%1$dm/s</string>
+	<string name="ui_text_gps_alti_format">高&#160;&#160;&#160;度：%1$dm</string>
+	<string name="ui_text_height_format"> &#160;&#160;&#160;&#160;&#160;&#160;&#160;  +：%1$dm</string>
+	<string name="ui_text_roll_format">横滚：%1$d</string>
+	<string name="ui_text_pitch_format">俯仰：%1$d</string>
+	<string name="ui_text_yaw_format">偏航：%1$d</string>
+	<string name="ui_text_apm_disarmed">未解锁</string>
+	<string name="ui_text_l1_r1_intro">L1：一键降落  &#160;&#160;&#160;&#160;&#160;&#160; R1：一键回家</string>
+	<string name="ui_text_l2_r2_intro">L2：加锁/解锁 &#160;&#160;&#160;&#160;             R2：禁用/启用虚拟摇杆</string>
+	<string name="ui_text_unknown_fly_mode">未知飞行器模式</string>
+	<string name="ui_text_telem_error">[Telem数传线路异常]</string>
+	
+	<string name="msg_enter_stabilize_mode_or_not">是否确定要切换到Stabilize模式？</string>
+	<string name="msg_enter_manual_mode_or_not">是否确定要切换到Manual模式？</string>
+	<string name="msg_enter_steering_mode_or_not">是否确定要切换到Steering模式？</string>
+	<string name="msg_enter_hold_mode_or_not">是否确定要切换到Hold模式？</string>
+	<string name="msg_enter_althold_mode_or_not">是否确定要切换到AltHold模式？</string>
+	<string name="msg_enter_fbwa_mode_or_not">是否确定要切换到FBW-A模式？</string>
+	<string name="msg_enter_loiter_mode_or_not">是否确定要切换到Loiter模式？</string>
+	<string name="msg_enter_auto_mode_or_not">是否确定要切换到Auto模式？</string>
+	<string name="msg_enter_land_mode_or_not">该操作会让APM飞行器马上降落，是否确定？</string>
+	<string name="msg_can_not_land_mode">固定翼飞机只能在Auto模式自动降落，现在将进入Loiter盘旋状态而不降落，是否确定？</string>
+	<string name="msg_enter_rtl_mode_or_not">该操作会让APM飞行器进入回家模式，是否确定？</string>
+	<string name="msg_apm_arm_or_not">是否确定让APM飞行器-解锁？</string>
+	<string name="msg_arm_failed_throttle_too_low">RC3油门值低于975，无法解锁，请先确认油门再尝试解锁！</string>
+	<string name="msg_arm_failed_throttle_too_high">RC3油门值比较大，解锁危险，请先确认油门再尝试解锁！</string>
+	<string name="msg_arm_failed_gps_not_fix">警告:GPS not fix，无法导航！</string>
+	<string name="msg_apm_disarm_or_not">是否确定让APM飞行器-加锁？</string>
+	<string name="msg_enable_joystick_or_not">是否确定用触屏虚拟摇杆替代遥控器？</string>
+	<string name="msg_rc_channel_abnormal">APM飞控保存的遥控器各通道的值不正常，请开一下遥控器！</string>
+	<string name="msg_disable_joystick_or_not">是否确定要禁用触屏虚拟摇杆？</string>
+	
+	<string name="ui_text_temp_format">温度: %1$d *C</string>
+	<string name="ui_text_mqx_format">室内空气质量: %1$d</string>
+	<string name="ui_text_humi_format">湿度: %1$d %%</string>
+	<string name="ui_text_power_format">%1$d%%</string>
+
+</resources>

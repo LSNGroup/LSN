@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:background="#ffffffff" android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <RelativeLayout android:id="@+id/sub_layout0" android:background="#ffb5b5b5" android:layout_width="fill_parent" android:layout_height="45.0dip" android:layout_alignParentBottom="true">
+        <Button android:id="@+id/id_snap_btn" android:layout_width="100.0dip" android:layout_height="wrap_content" android:text="@string/ui_snap_btn" android:layout_alignParentBottom="true" android:layout_alignParentLeft="true" />
+        <Button android:id="@+id/id_shout_btn" android:layout_width="100.0dip" android:layout_height="wrap_content" android:text="@string/ui_shout_btn" android:layout_alignParentBottom="true" android:layout_centerHorizontal="true" />
+        <Button android:id="@+id/id_stop_btn" android:layout_width="100.0dip" android:layout_height="wrap_content" android:text="@string/ui_stop_btn" android:layout_alignParentBottom="true" android:layout_alignParentRight="true" />
+    </RelativeLayout>
+    <RelativeLayout android:id="@+id/sub_layout1" android:background="#ffb5b5b5" android:layout_width="fill_parent" android:layout_height="145.0dip" android:paddingTop="6.0dip" android:layout_above="@id/sub_layout0" >
+        <ImageButton android:id="@+id/toggle_light_btn" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/toggle_light" android:layout_centerHorizontal="true" android:layout_centerVertical="true" android:layout_marginLeft="12.0dip" android:layout_marginRight="12.0dip" />
+        <ImageButton android:id="@+id/zoom_in_btn"  android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/zoom_in" android:layout_centerHorizontal="true" android:layout_above="@+id/toggle_light_btn" />
+        <ImageButton android:id="@+id/zoom_out_btn" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/zoom_out" android:layout_centerHorizontal="true" android:layout_below="@+id/toggle_light_btn" />
+        <ImageButton android:id="@+id/turn_left_btn" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/turn_left" android:layout_centerVertical="true" android:layout_toLeftOf="@+id/toggle_light_btn" />
+        <ImageButton android:id="@+id/turn_right_btn" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/turn_right" android:layout_centerVertical="true" android:layout_toRightOf="@+id/toggle_light_btn" />
+    </RelativeLayout>
+    <SurfaceView android:id="@+id/video_surfaceview" android:layout_width="fill_parent" android:layout_height="fill_parent" android:layout_above="@id/sub_layout1" android:layout_alignParentTop="true" />
+</RelativeLayout>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:background="#ff000000" android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+   
+   <SurfaceView android:id="@+id/video_surfaceview" android:layout_width="fill_parent" android:layout_height="fill_parent" />
+   
+   <com.wangling.remotephone.VJRSurfaceView android:id="@+id/vjr_surfaceview" android:layout_width="fill_parent" android:layout_height="fill_parent" />
+   
+   <RelativeLayout android:id="@+id/start_btn_layout" android:background="#00000000" android:layout_width="fill_parent" android:layout_height="fill_parent" >
+       <Button android:id="@+id/start_btn" android:text="@string/ui_start_btn" android:layout_width="260.0dip" android:layout_height="wrap_content" android:layout_alignParentTop="true" android:layout_marginTop="28.0dip" android:layout_centerHorizontal="true" />
+   </RelativeLayout>
+   
+   <RelativeLayout android:id="@+id/hud_view_layout" android:background="#00000000" android:layout_width="fill_parent" android:layout_height="fill_parent" >
+	   <com.wangling.remotephone.newHUD
+	            android:id="@+id/hudView"
+	            android:layout_width="180dip"
+	            android:layout_height="180dip"
+	            android:layout_centerHorizontal="true" 
+	            android:layout_centerVertical="true" />
+   </RelativeLayout>
+   
+</FrameLayout>

