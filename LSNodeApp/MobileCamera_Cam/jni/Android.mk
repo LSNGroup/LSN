@@ -189,12 +189,3 @@ LOCAL_LDLIBS += -llog -ldl
 
 include $(BUILD_SHARED_LIBRARY)
 
-
-
-# build droid-VNC-jni folder
-################################################################################
-include $(CLEAR_VARS)
-
-MY_LOCAL_PATH := $(call my-dir)
-include $(LOCAL_PATH)/droid-VNC-jni/Android.mk
-LOCAL_PATH := $(MY_LOCAL_PATH)
