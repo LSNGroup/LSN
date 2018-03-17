@@ -27,6 +27,7 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import com.lsngroup.live.R;
 
 public class VJRSurfaceView extends SurfaceView implements SurfaceHolder.Callback {
 	

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.wangling.remotephone"
+    package="com.lsngroup.live"
     android:versionCode="462"
     android:versionName="4.6.2" >
 
@@ -19,17 +19,17 @@
 
     <application android:icon="@drawable/ic_launcher" android:label="@string/app_name" >
 
-        <activity android:label="@string/app_name" android:name=".MainListActivity" android:launchMode="singleTop" android:screenOrientation="portrait" >
+        <activity android:label="@string/app_name" android:name="com.wangling.remotephone.MainListActivity" android:launchMode="singleTop" android:screenOrientation="portrait" >
             <intent-filter >
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
         
-        <activity android:name=".AddCamActivity" android:launchMode="singleTop" android:screenOrientation="portrait" />
-        <activity android:name=".AvParamActivity" android:launchMode="singleTop" android:screenOrientation="portrait" />
-        <activity android:name=".AvPlayActivity" android:launchMode="singleTop" android:configChanges="keyboardHidden|orientation" android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
-		<activity android:name=".AvCtrlActivity" android:launchMode="singleTop" android:screenOrientation="landscape" android:theme="@style/Theme.DoNotDim" />
+        <activity android:name="com.wangling.remotephone.AddCamActivity" android:launchMode="singleTop" android:screenOrientation="portrait" />
+        <activity android:name="com.wangling.remotephone.AvParamActivity" android:launchMode="singleTop" android:screenOrientation="portrait" />
+        <activity android:name="com.wangling.remotephone.AvPlayActivity" android:launchMode="singleTop" android:configChanges="keyboardHidden|orientation" android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+		<activity android:name="com.wangling.remotephone.AvCtrlActivity" android:launchMode="singleTop" android:screenOrientation="landscape" android:theme="@style/Theme.DoNotDim" />
 		
     </application>
 

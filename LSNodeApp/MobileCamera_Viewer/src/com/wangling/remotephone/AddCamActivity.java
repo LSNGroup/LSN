@@ -7,7 +7,7 @@ import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.EditText;
-import com.wangling.remotephone.R;
+import com.lsngroup.live.R;
 
 
 public class AddCamActivity extends Activity {

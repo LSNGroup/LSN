@@ -1,12 +1,10 @@
 *~
-*.a
 *.diff
 *.orig
 *.rej
 *.dll*
 *.exe
 *.def
-*.lib
 *.pdb
 *.mo
 *.o
@@ -18,10 +16,8 @@
 .*.swp
 .depend
 .DS_Store
-config.h
 config.mak
 config.log
-x264_config.h
 x264
 checkasm
 

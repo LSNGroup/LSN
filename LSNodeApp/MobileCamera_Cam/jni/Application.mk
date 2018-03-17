@@ -23,5 +23,8 @@ APP_CFLAGS += -DANDROID_NDK
 
 APP_CFLAGS += -Wno-error=format-security
 
+APP_CFLAGS += -fPIC
+APP_LDFLAGS += -fPIC
+
 APP_STL := gnustl_static
 APP_PLATFORM := android-9

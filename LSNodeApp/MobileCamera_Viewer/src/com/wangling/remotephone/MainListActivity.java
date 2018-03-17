@@ -27,7 +27,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.ListView;
-import com.wangling.remotephone.R;
+import com.lsngroup.live.R;
 
 
 public class MainListActivity extends ListActivity {

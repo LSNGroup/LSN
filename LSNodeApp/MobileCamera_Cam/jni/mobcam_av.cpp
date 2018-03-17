@@ -95,7 +95,7 @@ static void init_x264_param(int cx, int cy, int framerate, BOOL videoReliable)
 	pX264Param->i_width = cx;
 	pX264Param->i_height = cy;
 	pX264Param->i_frame_total = 0;
-	pX264Param->i_keyint_max = videoReliable ? (framerate * 10) : (framerate / 2);//10秒 0.5秒,关键帧IDR最大间隔 
+	pX264Param->i_keyint_max = videoReliable ? (framerate * 1) : (framerate / 2);//1秒 0.5秒,关键帧IDR最大间隔 
 	pX264Param->b_repeat_headers = 0;// 是否重复SPS/PPS 放到关键帧IDR前面
 	
 	pX264Param->i_fps_den = 1;//帧率分母

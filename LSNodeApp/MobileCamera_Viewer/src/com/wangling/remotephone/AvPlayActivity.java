@@ -37,7 +37,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.TextView;
-import com.wangling.remotephone.R;
+import com.lsngroup.live.R;
 
 
 public class AvPlayActivity extends Activity {

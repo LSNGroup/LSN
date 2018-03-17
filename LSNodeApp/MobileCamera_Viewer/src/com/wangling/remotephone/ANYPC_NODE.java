@@ -1,6 +1,6 @@
 package com.wangling.remotephone;
 
-import com.wangling.remotephone.R;
+import com.lsngroup.live.R;
 
 
 public class ANYPC_NODE

@@ -1,7 +1,7 @@
 package com.wangling.remotephone;
 
 import android.os.Looper;
-import com.wangling.remotephone.R;
+import com.lsngroup.live.R;
 
 
 public class Worker implements Runnable {

@@ -3,7 +3,7 @@ package com.wangling.remotephone;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
-import com.wangling.remotephone.R;
+import com.lsngroup.live.R;
 
 
 public class AppSettings {

@@ -7,7 +7,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.view.Gravity;
 import android.widget.Toast;
-import com.wangling.remotephone.R;
+import com.lsngroup.live.R;
 
 
 public class SharedFuncLib {

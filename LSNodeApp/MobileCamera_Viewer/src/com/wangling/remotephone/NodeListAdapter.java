@@ -10,7 +10,7 @@ import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.ImageView;
 import android.widget.TextView;
-import com.wangling.remotephone.R;
+import com.lsngroup.live.R;
 
 
 public class NodeListAdapter extends BaseAdapter

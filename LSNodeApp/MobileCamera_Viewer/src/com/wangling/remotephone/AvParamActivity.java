@@ -14,7 +14,7 @@ import android.widget.ImageButton;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.TextView;
-import com.wangling.remotephone.R;
+import com.lsngroup.live.R;
 
 
 public class AvParamActivity extends Activity {
