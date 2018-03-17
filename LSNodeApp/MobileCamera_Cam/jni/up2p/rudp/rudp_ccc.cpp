@@ -6,16 +6,16 @@
 
 BASE_NAMESPACE_BEGIN_DECL
 //默认窗口大小
-#define DEFAULT_CWND_SIZE	8
+#define DEFAULT_CWND_SIZE	16
 //最小窗口
-#define MIN_CWND_SIZE		1
+#define MIN_CWND_SIZE		8
 
 //默认RTT
-#define DEFAULT_RTT			100
+#define DEFAULT_RTT			50
 //最小RTT
-#define MIN_RTT				20
+#define MIN_RTT				5
 //最大RTT
-#define MAX_RTT				2000
+#define MAX_RTT				1000
 
 RUDPCCCObject::RUDPCCCObject()
 {
