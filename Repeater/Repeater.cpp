@@ -118,7 +118,7 @@ static void UiLoop(void)
 		{
 			sscanf(cmd, "%s%d", temp, &index);
 			printf("To disconnect index(%d)...\n", index);
-			if (g_pShiyong->viewerArray[index].bUsing == FALSE || g_pShiyong->viewerArray[index].m_pFRR == NULL) {
+			if (g_pShiyong->viewerArray[index].bUsing == FALSE) {
 				printf("ViewerNode not using!\n");
 			}
 			else {
@@ -129,7 +129,7 @@ static void UiLoop(void)
 		{
 			sscanf(cmd, "%s%d", temp, &index);
 			printf("To switch to index(%d)...\n", index);
-			if (g_pShiyong->viewerArray[index].bUsing == FALSE || g_pShiyong->viewerArray[index].m_pFRR == NULL) {
+			if (g_pShiyong->viewerArray[index].bUsing == FALSE) {
 				printf("ViewerNode not using!\n");
 			}
 			else {
@@ -169,7 +169,7 @@ static void UiLoop(void)
 		else if (strncmp(cmd, "v ", 2) == 0)
 		{
 			sscanf(cmd, "%s%d", temp, &index);
-			if (g_pShiyong->currentSourceIndex == -1 || g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].bUsing == FALSE || g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].m_pFRR == NULL) {
+			if (g_pShiyong->currentSourceIndex == -1 || g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].bUsing == FALSE) {
 				printf("Current ViewerNode not using!\n");
 			}
 			else {
@@ -187,7 +187,7 @@ static void UiLoop(void)
 			if (arrServerProcesses != NULL) {
 				printf("不能重复上线！\n");
 			}
-			else if (g_pShiyong->currentSourceIndex == -1 || g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].bUsing == FALSE || g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].m_pFRR == NULL) {
+			else if (g_pShiyong->currentSourceIndex == -1 || g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].bUsing == FALSE) {
 				printf("请先连接并选中视频源！\n");
 			}
 			else {

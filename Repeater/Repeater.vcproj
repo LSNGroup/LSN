@@ -64,7 +64,7 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="udtx.lib G729a.lib"
 				LinkIncremental="2"
-				AdditionalLibraryDirectories="D:\WM_Projects\G729a\Release;&quot;..\revolver-master\udtx\Release&quot;"
+				AdditionalLibraryDirectories="E:\WM_Projects\G729a\Release;&quot;..\revolver-master\udtx\Release&quot;"
 				GenerateDebugInformation="true"
 				SubSystem="1"
 				TargetMachine="1"
@@ -141,7 +141,7 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="udtx.lib G729a.lib"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="D:\WM_Projects\G729a\Release;&quot;..\revolver-master\udtx\Release&quot;"
+				AdditionalLibraryDirectories="E:\WM_Projects\G729a\Release;&quot;..\revolver-master\udtx\Release&quot;"
 				GenerateDebugInformation="true"
 				SubSystem="1"
 				OptimizeReferences="2"
@@ -236,10 +236,6 @@
 			</File>
 			<File
 				RelativePath=".\Shiyong.cpp"
-				>
-			</File>
-			<File
-				RelativePath=".\SimpleRtpRecv.cpp"
 				>
 			</File>
 			<File
@@ -366,10 +362,6 @@
 			</File>
 			<File
 				RelativePath=".\Shiyong.h"
-				>
-			</File>
-			<File
-				RelativePath=".\SimpleRtpRecv.h"
 				>
 			</File>
 			<File

@@ -6,7 +6,6 @@
 #include "HttpOperate.h"
 
 #include "avrtp_def.h"
-#include "SimpleRtpRecv.h"
 
 
 
@@ -18,8 +17,9 @@ typedef struct _tag_viewer_node {
 	CRITICAL_SECTION localbind_csec;
 	ANYPC_NODE anypcNode;
 	HttpOperate httpOP;
-	FAKERTPRECV *m_pFRR;
+	//FAKERTPRECV *m_pFRR;
 	//TLV_RECV *m_pTlvRecv;
+	BOOL bQuitRecvSocketLoop;
 	unsigned char m_sps_buff[1024];//包含8字节头部
 	int m_sps_len;
 	unsigned char m_pps_buff[1024];//包含8字节头部

@@ -11,26 +11,6 @@
 #include "LogMsg.h"
 
 
-static VIEWER_NODE* FindViewerNodeByFRR(FAKERTPRECV *pFRR)
-{
-	if (NULL == pFRR) {
-		return NULL;
-	}
-	if (NULL == g_pShiyong) {
-		return NULL;
-	}
-	for (int i = 0; i < MAX_VIEWER_NUM; i++)
-	{
-		if (g_pShiyong->viewerArray[i].bUsing == FALSE || g_pShiyong->viewerArray[i].m_pFRR == NULL) {
-			continue;
-		}
-		if ((UINT_PTR)(g_pShiyong->viewerArray[i].m_pFRR) == (UINT_PTR)pFRR) {
-			return &(g_pShiyong->viewerArray[i]);
-		}
-	}
-	return NULL;
-}
-
 
 static BYTE CheckNALUType(BYTE bNALUHdr)
 {
@@ -44,8 +24,7 @@ static BYTE CheckNALUNri(BYTE bNALUHdr)
 
 void fake_rtp_recv_fn(void *ctx, int payload_type, unsigned long rtptimestamp, unsigned char *data, int len)
 {
-	FAKERTPRECV *pFRR = (FAKERTPRECV *)ctx;
-	VIEWER_NODE *pViewerNode =  FindViewerNodeByFRR(pFRR);
+	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)ctx;
 	if (NULL == pViewerNode) {
 		return;
 	}

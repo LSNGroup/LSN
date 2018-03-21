@@ -49,13 +49,7 @@ static void GetProgramDir(LPTSTR szDirectory, int nMaxChars)
 	}
 }
 
-static unsigned long get_rtp_timestamp()//milliseconds
-{
-	unsigned long ret = GetTickCount();
-	return ret;
-}
-
-static void on_fake_rtp_payload(int payload_type, unsigned char *data, int len)
+static void on_fake_rtp_payload(int payload_type, DWORD timestamp, unsigned char *data, int len)
 {
 	if (g_pServerNode->m_bConnected == FALSE || g_pServerNode->m_bAVStarted == FALSE || g_pServerNode->m_pFRS == NULL) {
 		return;
@@ -74,7 +68,7 @@ static void on_fake_rtp_payload(int payload_type, unsigned char *data, int len)
 			bSendNri = 2;
 		}
 
-		FakeRtpSend_sendpacket(g_pServerNode->m_pFRS, get_rtp_timestamp(), data, len, payload_type, AUDIO_CODEC_G729A, bSendNri);
+		FakeRtpSend_sendpacket(g_pServerNode->m_pFRS, timestamp, data, len, payload_type, AUDIO_CODEC_G729A, bSendNri);
 
 	}
 	else if (payload_type == PAYLOAD_VIDEO && g_pServerNode->m_bVideoEnable) {
@@ -83,11 +77,11 @@ static void on_fake_rtp_payload(int payload_type, unsigned char *data, int len)
 			bSendNri |= FAKERTP_RELIABLE_FLAG;
 		}
 
-		FakeRtpSend_sendpacket(g_pServerNode->m_pFRS, get_rtp_timestamp(), data, len, payload_type, 0, bSendNri);
+		FakeRtpSend_sendpacket(g_pServerNode->m_pFRS, timestamp, data, len, payload_type, 0, bSendNri);
 	}
 }
 
-static void record_fake_rtp_payload(FILE *fp_record, int payload_type, unsigned char *data, int len)
+static void record_fake_rtp_payload(FILE *fp_record, int payload_type, DWORD timestamp, unsigned char *data, int len)
 {
 	
 }
@@ -200,6 +194,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 		WORD wCmd;
 		DWORD copy_len;
 		BYTE bPayloadType;
+		DWORD dwTimeStamp;
 
 		if (RecvStream(SOCKET_TYPE_TCP, g_fhandle, buf, 6) < 0)
 		{
@@ -233,11 +228,12 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 		ret = RecvStream(SOCKET_TYPE_TCP, g_fhandle, (char *)(pPack), copy_len);
 		if (ret == 0) {
 			bPayloadType = pPack[0];
-			on_fake_rtp_payload(bPayloadType, pPack + 8, copy_len - 8);
+			dwTimeStamp = ntohl(pf_get_dword(pPack + 4));
+			on_fake_rtp_payload(bPayloadType, dwTimeStamp, pPack + 8, copy_len - 8);
 
 			//第一个RepeaterNode负责录制Av。。。
 			if (FIRST_CONNECT_PORT == P2P_PORT) {
-				record_fake_rtp_payload(fp_record, bPayloadType, pPack + 8, copy_len - 8);
+				record_fake_rtp_payload(fp_record, bPayloadType, dwTimeStamp, pPack + 8, copy_len - 8);
 			}
 		}
 		else {

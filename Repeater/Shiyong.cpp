@@ -17,7 +17,7 @@
 
 int g_video_width  = 640;
 int g_video_height = 480;
-int g_video_fps = 20;
+int g_video_fps = 25;
 
 
 CShiyong* g_pShiyong = NULL;
@@ -278,6 +278,80 @@ int CheckPassword(VIEWER_NODE *pViewerNode, SOCKET_TYPE sock_type, SOCKET fhandl
 	}
 }
 
+static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCKET fhandle)
+{
+	BOOL bRecvEnd = FALSE;
+
+	if (fhandle == INVALID_SOCKET) {
+		return;
+	}
+
+	while (FALSE == pViewerNode->bQuitRecvSocketLoop)
+	{
+		char buf[6];
+		WORD wCmd;
+		DWORD copy_len;
+		unsigned char *pRecvData;
+		int ret;
+
+
+		if (RecvStream(ftype, fhandle, buf, 6) < 0)
+		{
+			break;
+		}
+
+		wCmd = ntohs(pf_get_word(buf + 0));
+		copy_len = ntohl(pf_get_dword(buf + 2));
+		//assert(wCmd == CMD_CODE_FAKERTP_RESP && copy_len > 0);
+
+		switch (wCmd)
+		{
+		case CMD_CODE_FAKERTP_RESP:
+
+			pRecvData = (unsigned char *)malloc(copy_len);
+			if (NULL == pRecvData) {
+#if LOG_MSG
+				log_msg("RecvSocketDataLoop: No memory!\n", LOG_LEVEL_DEBUG);
+#endif
+				return;
+			}
+
+
+			ret = RecvStream(ftype, fhandle, (char *)pRecvData, copy_len);
+			if (ret == 0) {
+				fake_rtp_recv_fn(pViewerNode, pRecvData[0], ntohl(pf_get_dword(pRecvData + 4)), pRecvData, copy_len);
+				free(pRecvData);
+			}
+			else {
+				free(pRecvData);
+				return;
+			}
+
+			break;
+
+		case CMD_CODE_END:
+			bRecvEnd = TRUE;
+#if LOG_MSG
+			log_msg("RecvSocketDataLoop: CMD_CODE_END?????????\n", LOG_LEVEL_DEBUG);
+#endif
+			break;
+
+		default:
+
+			break;
+		}
+
+	}//while
+
+
+	if (bRecvEnd == FALSE) {
+#if LOG_MSG
+		log_msg("RecvSocketDataLoop: CtrlCmd_Recv_AV_END()...\n", LOG_LEVEL_DEBUG);
+#endif
+		CtrlCmd_Recv_AV_END(ftype, fhandle);
+	}
+}
+
 void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy = FALSE);
 void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 {
@@ -304,24 +378,12 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 		CtrlCmd_AV_START(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
 
 
-		T_RTPPARAM param;
-		//param.pFRR = NULL;
-		param.dwDestIp = pViewerNode->httpOP.m1_use_peer_ip;
-		param.nDestPort = pViewerNode->httpOP.m1_use_peer_port;
-		param.udpSock = pViewerNode->httpOP.m1_use_udp_sock;
-		param.fhandle = pViewerNode->httpOP.m1_use_udt_sock;
-		param.ftype = pViewerNode->httpOP.m1_use_sock_type;
-
-		FakeRtpRecv_init(&(pViewerNode->m_pFRR), &param);
-		FakeRtpRecv_setflags(pViewerNode->m_pFRR, false, bFlags & AV_FLAGS_AUDIO_ENABLE, bFlags & AV_FLAGS_VIDEO_ENABLE);
-		FakeRtpRecv_setfn(pViewerNode->m_pFRR, fake_rtp_recv_fn);
-
 		//Loop...,需要CtrlCmd_AV_STOP()才能退出Loop！！！
-		RecvUdtSocketData(pViewerNode->m_pFRR);
+		pViewerNode->bQuitRecvSocketLoop = FALSE;
+		RecvSocketDataLoop(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
 
 
-		FakeRtpRecv_uninit(pViewerNode->m_pFRR);
-
+		//CtrlCmd_AV_STOP()将在CShiyong::DisconnectNode()中调用
 		//CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
 	}
 	SetStatusInfo(pDlg->m_hWnd, _T("即将断开连接。。。"));
@@ -959,7 +1021,7 @@ CShiyong::CShiyong()
 		viewerArray[i].httpOP.m0_is_busy = FALSE;
 		viewerArray[i].httpOP.m0_p2p_port = FIRST_CONNECT_PORT - (i+1)*4;
 		
-		viewerArray[i].m_pFRR = NULL;
+		viewerArray[i].bQuitRecvSocketLoop = TRUE;
 
 		viewerArray[i].m_sps_len = 0;
 		viewerArray[i].m_pps_len = 0;
@@ -1053,7 +1115,7 @@ void CShiyong::ConnectNode(char *anypc_node_id, char *password)
 	viewerArray[i].bFirstCheckStun = TRUE;
 	viewerArray[i].bNeedRegister = TRUE;
 	viewerArray[i].anypcNode = anypcNode;
-	viewerArray[i].m_pFRR = NULL;
+	viewerArray[i].bQuitRecvSocketLoop = TRUE;
 
 	viewerArray[i].m_sps_len = 0;
 	viewerArray[i].m_pps_len = 0;
@@ -1081,11 +1143,11 @@ void CShiyong::ConnectNode(char *anypc_node_id, char *password)
 
 void CShiyong::DisconnectNode(VIEWER_NODE *pViewerNode)
 {
-	if (pViewerNode->bUsing == FALSE || pViewerNode->m_pFRR == NULL) {
+	if (pViewerNode->bUsing == FALSE || pViewerNode->bQuitRecvSocketLoop == TRUE) {
 		return;
 	}
 	CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
-	FakeRtpRecv_setquit(pViewerNode->m_pFRR);
+	pViewerNode->bQuitRecvSocketLoop = TRUE;
 }
 
 void CShiyong::ReturnViewerNode(VIEWER_NODE *pViewerNode)
