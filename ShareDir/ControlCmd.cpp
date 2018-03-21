@@ -182,7 +182,10 @@ void CtrlCmd_Recv_AV_END(SOCKET_TYPE type, SOCKET fhandle)
 			else                              log_msg("CtrlCmd_Recv_AV_END(): CMD_CODE_???????...\n", LOG_LEVEL_DEBUG);
 			
 			for (int i = 0; i < dwDataLength; i++) {
-				RecvStream(type, fhandle, buff, 1);
+				ret = RecvStream(type, fhandle, buff, 1);
+				if (ret != 0) {
+					break;
+				}
 			}
 		}
 	}
