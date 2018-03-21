@@ -638,7 +638,7 @@ MAKE_JNI_FUNC_NAME_FOR_MobileCameraActivity(PutVideoData)
 	{
 		BYTE fake_audio[640];//g729编码,每次只能编码160个字节,编码后为10个字节大小,16:1的压缩比
 		memset(fake_audio, 0, sizeof(fake_audio));
-		PutAudioData(get_rtp_timestamp(), fake_audio, sizeof(fake_audio));
+		PutAudioData(get_rtp_timestamp() - sizeof(fake_audio)/16, fake_audio, sizeof(fake_audio));
 	}
 	
 	ret = PutVideoData(get_rtp_timestamp(), (const BYTE *)pData, len, format, width, height, fps);

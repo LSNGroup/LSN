@@ -277,7 +277,7 @@ public class AvPlayActivity extends Activity {
         			}
         					
 	            	try {
-	        			Thread.sleep(20);
+	        			Thread.sleep(30);
 	        		} catch (Exception e) {
 	        			// TODO Auto-generated catch block
 	        			e.printStackTrace();

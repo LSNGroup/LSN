@@ -28,8 +28,8 @@
 
 
 #define GET_TLV_PACKET_WAIT_TIME	50  /* ms */
-#define GET_AUDIO_PACKET_WAIT_TIME	150 /* ms */
-#define GET_VIDEO_PACKET_WAIT_TIME	150 /* ms */
+#define GET_AUDIO_PACKET_WAIT_TIME	350 /* ms */
+#define GET_VIDEO_PACKET_WAIT_TIME	350 /* ms */
 
 
 static BOOL bInit = FALSE;

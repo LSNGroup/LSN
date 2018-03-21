@@ -97,6 +97,9 @@ int AudioSendData(DWORD rtptimestamp, const unsigned char *pSourceBuffer, int lS
 		return -1;
 	}
 	
+	//这个是转发器的应用场景，必须可靠传输
+	m_bAudioNri |= FAKERTP_RELIABLE_FLAG;
+	
 	/* 参看 AnyPC, DShowAV.cpp, set_audio_record_buffer(pAudioSrc, 160*4, 6), 40ms, 40bytes */
 	return FakeRtpSend_sendpacket(rtptimestamp, pSourceBuffer, lSourceSize, PAYLOAD_AUDIO, m_bCodec, m_bAudioNri);
 }
