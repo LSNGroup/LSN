@@ -50,6 +50,8 @@ extern int  P2P_PORT;
 
 extern int  IPC_BIND_PORT;
 
+extern int g_topo_level;
+
 extern int g_video_width;
 extern int g_video_height;
 extern int g_video_fps;

@@ -73,6 +73,21 @@ N Bytes, Data.
 #define AV_CONTRL_SYSTEM_SHUTDOWN		0x0021
 #define AV_CONTRL_SYSTEM_REBOOT			0x0022
 
+#define AV_CONTRL_DPAD_UP			AV_CONTRL_TURN_UP
+#define AV_CONTRL_DPAD_DOWN			AV_CONTRL_TURN_DOWN
+#define AV_CONTRL_DPAD_LEFT			AV_CONTRL_TURN_LEFT
+#define AV_CONTRL_DPAD_RIGHT		AV_CONTRL_TURN_RIGHT
+#define AV_CONTRL_JOYSTICK1			0x0031  /* L|angle */
+#define AV_CONTRL_JOYSTICK2			0x0032  /* L|angle */ //throttle
+#define AV_CONTRL_BUTTON_A			0x0033
+#define AV_CONTRL_BUTTON_B			0x0034
+#define AV_CONTRL_BUTTON_X			0x0035
+#define AV_CONTRL_BUTTON_Y			0x0036
+#define AV_CONTRL_BUTTON_L1			0x0037
+#define AV_CONTRL_BUTTON_L2			0x0038  /* 0,1 */
+#define AV_CONTRL_BUTTON_R1			0x0039
+#define AV_CONTRL_BUTTON_R2			0x003a  /* 0,1 */
+
 
 /* Definition of func_flags */
 #define FUNC_FLAGS_AV		0x01
@@ -85,6 +100,12 @@ N Bytes, Data.
 #define FUNC_FLAGS_ACTIVATED	0x80
 
 
+/* Definition of multi-hop route item type */
+#define ROUTE_ITEM_TYPE_DEVICENODE		0x01
+#define ROUTE_ITEM_TYPE_VIEWERNODE		0x02
+#define ROUTE_ITEM_TYPE_GUAJINODE		0x03
+
+
 /* Command Code Definiton */
 
 #define CMD_CODE_FAKERTP_RESP	0x0000  /* CMD_CODE_FAKERTP_RESP | n | FakeRtp Packet */
@@ -93,8 +114,18 @@ N Bytes, Data.
 
 #define CMD_CODE_NULL			0x00EE  /* CMD_CODE_NULL  | 0 */
 
+#define CMD_CODE_IPC_REPORT		0x00D0  /* CMD_CODE_IPC_REPORT  | 12 + n |   source_node_id  | 00:00:00:00:00:00 | report_string */
+
+#define CMD_CODE_TOPO_REPORT	0x00D1  /* CMD_CODE_TOPO_REPORT | 12 + n |   source_node_id  | 00:00:00:00:00:00 | report_string */
+
+#define CMD_CODE_TOPO_EVALUATE	0x00D2  /* CMD_CODE_TOPO_EVALUATE | 12 + 4 + 4 + 4 | source_node_id | object_node_id | begin_time | end_time | stream_flow */
+
+#define CMD_CODE_TOPO_EVENT		0x00D3  /* CMD_CODE_TOPO_EVENT  | 12 + n | 00:00:00:00:00:00 |  dest_node_id  | event_string */
+
+#define CMD_CODE_TOPO_PACKET	0x00D4  /* CMD_CODE_TOPO_PACKET | 1 + 20 + 6 + 6 + n | hop_count | packet_uuid | source_node_id  |  dest_node_id  | n bytes data */
+
 #define CMD_CODE_HELLO_REQ		0x0001  /* CMD_CODE_HELLO_REQ | 6+4+256 | client_node_id | client_version | password */
-#define CMD_CODE_HELLO_RESP		0x8001  /* CMD_CODE_HELLO_RESP | 6+4+1+2 | server_node_id | server_version | func_flags | result_code */
+#define CMD_CODE_HELLO_RESP		0x8001  /* CMD_CODE_HELLO_RESP | 6+4+1+1+2 | server_node_id | server_version | func_flags | topo_level | result_code */
 
 #define CMD_CODE_RUN_REQ		0x0002  /* CMD_CODE_RUN_REQ | n | run_exe */
 #define CMD_CODE_RUN_RESP		0x8002  /* CMD_CODE_RUN_RESP | n | result string */
@@ -123,6 +154,18 @@ N Bytes, Data.
 
 #define CMD_CODE_BYE_REQ		0x000E  /* CMD_CODE_BYE_REQ | 0 */
 
+#define CMD_CODE_MAV_START_REQ	0x0010  /* CMD_CODE_MAV_START_REQ | 0  */
+
+#define CMD_CODE_MAV_STOP_REQ	0x0011  /* CMD_CODE_MAV_STOP_REQ | 0 */
+
+#define CMD_CODE_MAV_WP_REQ		0x0012  /* CMD_CODE_MAV_WP_REQ | 0 */
+#define CMD_CODE_MAV_WP_RESP	0x8012  /* CMD_CODE_MAV_WP_RESP | n byte | WP items */
+
+#define CMD_CODE_MAV_TLV_REQ	0x0013  /* CMD_CODE_MAV_TLV_REQ | 0 */
+#define CMD_CODE_MAV_TLV_RESP	0x8013  /* CMD_CODE_MAV_TLV_RESP | n byte | TLV items */
+
+#define CMD_CODE_MAV_GUID_REQ	0x0014  /* CMD_CODE_MAV_GUID_REQ | 4+4+4 | lati*100000 | longi*100000 | alti*100000 */
+
 
 
 int  CtrlCmd_Init();
@@ -146,6 +189,11 @@ void CtrlCmd_Recv_AV_END(SOCKET_TYPE type, SOCKET fhandle);
 //#else
 int CtrlCmd_HELLO(SOCKET_TYPE type, SOCKET fhandle, BYTE *client_node_id, DWORD client_version, const char *password, BYTE *server_node_id, DWORD *server_version, BYTE *func_flags, WORD *result_code);////Send/Recv
 int CtrlCmd_RUN(SOCKET_TYPE type, SOCKET fhandle, const char *exe_cmd, char *result_buf, int buf_size);////Send/Recv
+
+int CtrlCmd_IPC_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string);
+int CtrlCmd_TOPO_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string);
+int CtrlCmd_TOPO_EVALUATE(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, BYTE *object_node_id, DWORD begin_time, DWORD end_time, DWORD stream_flow);
+int CtrlCmd_TOPO_EVENT(SOCKET_TYPE type, SOCKET fhandle, BYTE *dest_node_id, const char *event_string);
 
 int CtrlCmd_PROXY(SOCKET_TYPE type, SOCKET fhandle, WORD wTcpPort);
 int CtrlCmd_PROXY_DATA(SOCKET_TYPE type, SOCKET fhandle, BYTE *data, int len);

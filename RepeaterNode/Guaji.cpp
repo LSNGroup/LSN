@@ -32,6 +32,8 @@ int  P2P_PORT = FIRST_CONNECT_PORT;
 
 int  IPC_BIND_PORT = 20000;
 
+int g_topo_level = 1;
+
 int g_video_width  = 0;
 int g_video_height = 0;
 int g_video_fps = 0;

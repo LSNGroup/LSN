@@ -1029,6 +1029,9 @@ CShiyong::CShiyong()
 	
 	currentSourceIndex = -1;
 
+	device_topo_level = 1;
+	generate_nodeid(device_node_id, sizeof(device_node_id));
+
 	g_pShiyong = this;
 
 	OnInit();

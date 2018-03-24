@@ -27,12 +27,17 @@
 #define usleep(u)					Sleep((u)/1000)
 
 
-
+static BOOL m_bInit = FALSE;
 static pthread_mutex_t m_mutexSend;
 
 
 int  CtrlCmd_Init()
 {
+	if (m_bInit) {
+		return 0;
+	}
+	m_bInit = TRUE;
+
 	log_msg("CtrlCmd_Init()...\n", LOG_LEVEL_DEBUG);
 	pthread_mutex_init(&m_mutexSend, NULL);
 	return 0;
@@ -40,6 +45,11 @@ int  CtrlCmd_Init()
 
 void CtrlCmd_Uninit()
 {
+	if (FALSE == m_bInit) {
+		return;
+	}
+	m_bInit = FALSE;
+
 	log_msg("CtrlCmd_Uninit()...\n", LOG_LEVEL_DEBUG);
 	pthread_mutex_destroy(&m_mutexSend);
 }
@@ -310,6 +320,92 @@ int CtrlCmd_RUN(SOCKET_TYPE type, SOCKET fhandle, const char *exe_cmd, char *res
 	}
 
 	return 0;
+}
+
+int CtrlCmd_IPC_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string)
+{
+	int ret;
+	char bSendPacket[32];
+	int str_len = strlen(report_string);
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_IPC_REPORT));
+	pf_set_dword(bSendPacket + 2, htonl(12 + str_len));
+	memcpy(bSendPacket + 6, source_node_id, 6);
+	memset(bSendPacket + 12, 0, 6);
+	
+	pthread_mutex_lock(&m_mutexSend);
+	ret = SendStream(type, fhandle, bSendPacket, 6 + 12);
+	ret += SendStream(type, fhandle, (char *)report_string, str_len);
+	if (ret != 0) {
+		ret = -1;
+	}
+	pthread_mutex_unlock(&m_mutexSend);
+	return ret;
+}
+
+int CtrlCmd_TOPO_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string)
+{
+	int ret;
+	char bSendPacket[32];
+	int str_len = strlen(report_string);
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_TOPO_REPORT));
+	pf_set_dword(bSendPacket + 2, htonl(12 + str_len));
+	memcpy(bSendPacket + 6, source_node_id, 6);
+	memset(bSendPacket + 12, 0, 6);
+	
+	pthread_mutex_lock(&m_mutexSend);
+	ret = SendStream(type, fhandle, bSendPacket, 6 + 12);
+	ret += SendStream(type, fhandle, (char *)report_string, str_len);
+	if (ret != 0) {
+		ret = -1;
+	}
+	pthread_mutex_unlock(&m_mutexSend);
+	return ret;
+}
+
+int CtrlCmd_TOPO_EVALUATE(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, BYTE *object_node_id, DWORD begin_time, DWORD end_time, DWORD stream_flow)
+{
+	int ret;
+	char bSendPacket[64];
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_TOPO_EVALUATE));
+	pf_set_dword(bSendPacket + 2, htonl(12 + 4 + 4 + 4));
+	memcpy(bSendPacket + 6, source_node_id, 6);
+	memcpy(bSendPacket + 12, object_node_id, 6);
+	pf_set_dword(bSendPacket + 18, htonl(begin_time));
+	pf_set_dword(bSendPacket + 22, htonl(end_time));
+	pf_set_dword(bSendPacket + 26, htonl(stream_flow));
+	
+	pthread_mutex_lock(&m_mutexSend);
+	ret = SendStream(type, fhandle, bSendPacket, 6+12+4+4+4);
+	pthread_mutex_unlock(&m_mutexSend);
+	return ret;
+}
+
+int CtrlCmd_TOPO_EVENT(SOCKET_TYPE type, SOCKET fhandle, BYTE *dest_node_id, const char *event_string)
+{
+	int ret;
+	char bSendPacket[32];
+	int str_len = strlen(event_string);
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_TOPO_EVENT));
+	pf_set_dword(bSendPacket + 2, htonl(12 + str_len));
+	memset(bSendPacket + 6, 0, 6);
+	memcpy(bSendPacket + 12, dest_node_id, 6);
+	
+	pthread_mutex_lock(&m_mutexSend);
+	ret = SendStream(type, fhandle, bSendPacket, 6 + 12);
+	ret += SendStream(type, fhandle, (char *)event_string, str_len);
+	if (ret != 0) {
+		ret = -1;
+	}
+	pthread_mutex_unlock(&m_mutexSend);
+	return ret;
 }
 
 int CtrlCmd_PROXY(SOCKET_TYPE type, SOCKET fhandle, WORD wTcpPort)
