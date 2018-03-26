@@ -214,6 +214,15 @@ DWORD WINAPI UpgradeThreadFn(LPVOID pvThreadParam)
 	return 0;
 }
 
+//
+// Return Value:
+// -1: Error
+//  0: Success
+//
+int ParseTopoSettings(const char *settings_string)
+{
+	return 0;
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -488,11 +497,6 @@ BOOL HttpOperate::ParseEventValue(char *value)
 		priv_port_str = value;
 		m1_peer_pri_port = atoi(priv_port_str);
 
-
-		/* 作为区别Accept类型的标志 */
-		m1_peer_pri_ipCount = 0;
-		m1_peer_pri_port = SECOND_CONNECT_PORT;
-
 	}
 	else if (strcmp(type_str, "AcceptProxy") == 0)
 	{
@@ -533,11 +537,6 @@ BOOL HttpOperate::ParseEventValue(char *value)
 		}
 		port_str = value;
 		m1_peer_port = atoi(port_str);
-
-
-		/* 作为区别Accept类型的标志 */
-		m1_peer_pri_ipCount = 0;
-		m1_peer_pri_port = 0;
 
 	}
 	else if (strcmp(type_str, "AcceptProxyTcp") == 0)
@@ -589,12 +588,9 @@ BOOL HttpOperate::ParseEventValue(char *value)
 		port_str = value;
 		m1_peer_port = atoi(port_str);
 
-
-		/* 作为区别Accept类型的标志 */
-		m1_peer_pri_ipCount = 0;
-		m1_peer_pri_port = func_port;//FIRST_CONNECT_PORT
-
 	}
+
+	strncpy(m1_event_type, type_str, sizeof(m1_event_type));
 
 	return TRUE;
 }

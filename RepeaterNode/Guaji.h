@@ -50,7 +50,9 @@ extern int  P2P_PORT;
 
 extern int  IPC_BIND_PORT;
 
-extern int g_topo_level;
+extern BYTE g_device_topo_level;
+extern BYTE g_device_node_id[6];
+extern BYTE g_peer_node_id[6];
 
 extern int g_video_width;
 extern int g_video_height;

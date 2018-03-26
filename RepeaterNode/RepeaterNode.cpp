@@ -100,6 +100,39 @@ static void generate_record_filename(char *buff)
 		p->tm_hour, p->tm_min, p->tm_sec, (BYTE)rand(), (BYTE)rand());
 }
 
+static int DoIpcReportInConnection()
+{
+	int ret = 0;
+	char szIpcReport[512];
+	snprintf(szIpcReport, sizeof(szIpcReport), 
+		"node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+		"&peer_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+		"&is_busy=%d"
+		"&is_streaming=%d"
+		"&device_uuid=%s"
+		"&node_name=%s"
+		"&version=%ld"
+		"&os_info=%s"
+		"&ip=%s"
+		"&port=%d"
+		"&pub_ip=%s"
+		"&pub_port=%d"
+		"&no_nat=%d"
+		"&nat_type=%d",
+		g_pServerNode->myHttpOperate.m0_node_id[0], g_pServerNode->myHttpOperate.m0_node_id[1], g_pServerNode->myHttpOperate.m0_node_id[2], g_pServerNode->myHttpOperate.m0_node_id[3], g_pServerNode->myHttpOperate.m0_node_id[4], g_pServerNode->myHttpOperate.m0_node_id[5], 
+		g_peer_node_id[0], g_peer_node_id[1], g_peer_node_id[2], g_peer_node_id[3], g_peer_node_id[4], g_peer_node_id[5],
+		(g_pServerNode->m_bConnected ? 1 : 0),
+		(g_pServerNode->m_bAVStarted ? 1 : 0),
+		g0_device_uuid, UrlEncode(g0_node_name).c_str(), g0_version, g0_os_info,
+		g_pServerNode->myHttpOperate.MakeIpStr(), g_pServerNode->myHttpOperate.m0_port, g_pServerNode->myHttpOperate.MakePubIpStr(), g_pServerNode->myHttpOperate.m0_pub_port, 
+		(g_pServerNode->myHttpOperate.m0_no_nat ? 1 : 0),
+		g_pServerNode->myHttpOperate.m0_nat_type);
+
+	ret = CtrlCmd_IPC_REPORT(SOCKET_TYPE_TCP, g_fhandle, g_pServerNode->myHttpOperate.m0_node_id, szIpcReport);
+
+	return ret;
+}
+
 
 int APIENTRY _tWinMain(HINSTANCE hInstance,
                      HINSTANCE hPrevInstance,
@@ -188,9 +221,15 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	StartAnyPC();
 
 
+	DWORD server_version;
+	BYTE func_flags;
+	WORD result_code;
+	CtrlCmd_HELLO(SOCKET_TYPE_TCP, g_fhandle, g_pServerNode->myHttpOperate.m0_node_id, g0_version, 1, "password", g_device_node_id, &server_version, &func_flags, &g_device_topo_level, &result_code);
+
+
 	while (true)
 	{
-		char buf[6];
+		char buf[32];
 		WORD wCmd;
 		DWORD copy_len;
 		BYTE bPayloadType;
@@ -206,12 +245,95 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 		copy_len = ntohl(pf_get_dword(buf + 2));
 		if (wCmd == CMD_CODE_END)
 		{
-			log_msg("wCmd == CMD_CODE_END, Exit Process...", LOG_LEVEL_INFO);
-			break;
+			log_msg("wCmd == CMD_CODE_END...", LOG_LEVEL_INFO);
 		}
-		else if (wCmd != CMD_CODE_FAKERTP_RESP || copy_len == 0)
+		else if (wCmd == CMD_CODE_FAKERTP_RESP && copy_len != 0)
 		{
-			sprintf(msg, "wCmd(0x%x) != CMD_CODE_FAKERTP_RESP || copy_len(%ld) == 0, read...", wCmd, copy_len);
+			unsigned char *pPack = (unsigned char *)malloc(copy_len);////////
+			ret = RecvStream(SOCKET_TYPE_TCP, g_fhandle, (char *)(pPack), copy_len);
+			if (ret == 0) {
+				bPayloadType = pPack[0];
+				dwTimeStamp = ntohl(pf_get_dword(pPack + 4));
+				on_fake_rtp_payload(bPayloadType, dwTimeStamp, pPack + 8, copy_len - 8);
+
+				//第一个RepeaterNode负责录制Av。。。
+				if (FIRST_CONNECT_PORT == P2P_PORT) {
+					record_fake_rtp_payload(fp_record, bPayloadType, dwTimeStamp, pPack + 8, copy_len - 8);
+				}
+			}
+			else {
+				log_msg("RecvStream() != copy_len", LOG_LEVEL_INFO);
+			}
+			free(pPack);////////
+		}
+		else if (wCmd == CMD_CODE_TOPO_EVENT && copy_len != 0)
+		{
+			if (RecvStream(SOCKET_TYPE_TCP, g_fhandle, buf, 6) != 0) {
+				break;
+			}
+			if (RecvStream(SOCKET_TYPE_TCP, g_fhandle, buf, 6) != 0) {
+				break;
+			}
+
+			unsigned char *pRecvData = (unsigned char *)malloc(copy_len - 12);
+			if (RecvStream(SOCKET_TYPE_TCP, g_fhandle, (char *)pRecvData, copy_len - 12) != 0) {
+				free(pRecvData);
+				break;
+			}
+
+			// buf: dest_node_id
+			if (memcmp(buf, g_pServerNode->myHttpOperate.m0_node_id, 6) == 0)
+			{
+				g_pServerNode->myHttpOperate.ParseEventValue((char *)pRecvData);
+			}
+			else {
+				if (g_pServerNode->m_bConnected == TRUE) {
+					CtrlCmd_TOPO_EVENT(g_pServerNode->myHttpOperate.m1_use_sock_type, g_pServerNode->myHttpOperate.m1_use_udt_sock, (BYTE *)buf, (const char *)pRecvData);;
+				}
+			}
+			free(pRecvData);
+		}
+		else if (wCmd == CMD_CODE_TOPO_SETTINGS && copy_len != 0)
+		{
+			if (RecvStream(SOCKET_TYPE_TCP, g_fhandle, buf, 6) != 0) {
+				break;
+			}
+			if (RecvStream(SOCKET_TYPE_TCP, g_fhandle, buf, 6) != 0) {
+				break;
+			}
+
+			if (RecvStream(SOCKET_TYPE_TCP, g_fhandle, buf, 1) != 0) {
+				break;
+			}
+			BYTE topo_level = *(BYTE *)buf;
+			if (g_device_topo_level > 1 && g_device_topo_level != topo_level) {
+#if LOG_MSG
+				log_msg("g_device_topo_level != topo_level\n", LOG_LEVEL_DEBUG);
+#endif
+			}
+			g_device_topo_level = topo_level;
+
+			unsigned char *pRecvData = (unsigned char *)malloc(copy_len - 12 -1);
+			if (RecvStream(SOCKET_TYPE_TCP, g_fhandle, (char *)pRecvData, copy_len - 12 -1) != 0) {
+				free(pRecvData);
+				break;
+			}
+
+			ParseTopoSettings((const char *)pRecvData);
+
+			if (g_pServerNode->m_bConnected == TRUE) {
+				CtrlCmd_TOPO_SETTINGS(g_pServerNode->myHttpOperate.m1_use_sock_type, g_pServerNode->myHttpOperate.m1_use_udt_sock, g_device_topo_level, (const char *)pRecvData);;
+			}
+			free(pRecvData);
+
+			//每隔一定周期g1_register_period，会收到一个CMD_CODE_TOPO_SETTINGS消息
+			if (g_pServerNode->m_bConnected == TRUE) {
+				DoIpcReportInConnection();
+			}
+		}
+		else
+		{
+			sprintf(msg, "Unknow wCmd(0x%x), read...", wCmd);
 			log_msg(msg, LOG_LEVEL_INFO);
 			//if (copy_len > (DWORD)(1024*1024)) {
 			//	break;
@@ -220,26 +342,9 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 				RecvStream(SOCKET_TYPE_TCP, g_fhandle, buf, 1);
 				Sleep(10);
 			}
-			log_msg("wCmd != CMD_CODE_FAKERTP_RESP || copy_len == 0, read done!", LOG_LEVEL_INFO);
+			log_msg("Unknow wCmd, read done!", LOG_LEVEL_INFO);
 			continue;
 		}
-
-		unsigned char *pPack = (unsigned char *)malloc(copy_len);////////
-		ret = RecvStream(SOCKET_TYPE_TCP, g_fhandle, (char *)(pPack), copy_len);
-		if (ret == 0) {
-			bPayloadType = pPack[0];
-			dwTimeStamp = ntohl(pf_get_dword(pPack + 4));
-			on_fake_rtp_payload(bPayloadType, dwTimeStamp, pPack + 8, copy_len - 8);
-
-			//第一个RepeaterNode负责录制Av。。。
-			if (FIRST_CONNECT_PORT == P2P_PORT) {
-				record_fake_rtp_payload(fp_record, bPayloadType, dwTimeStamp, pPack + 8, copy_len - 8);
-			}
-		}
-		else {
-			log_msg("RecvStream() != copy_len", LOG_LEVEL_INFO);
-		}
-		free(pPack);////////
 	}
 
 	closesocket(g_fhandle);

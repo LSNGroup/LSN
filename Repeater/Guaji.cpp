@@ -27,6 +27,20 @@ char CONNECT_PASSWORD[MAX_PATH];
 char g_tcp_address[MAX_PATH] = "127.0.0.1";
 
 
+static BYTE getServerFuncFlags()
+{
+	BYTE ret = 0;
+	ret |= FUNC_FLAGS_AV;
+	ret |= FUNC_FLAGS_SHELL;
+	if (strcmp(SERVER_TYPE, "ANYPC") == 0) {
+		ret |= FUNC_FLAGS_HASROOT;
+	}
+	if (g1_is_activated) {
+		ret |= FUNC_FLAGS_ACTIVATED;
+	}
+	return ret;
+}
+
 static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 {
 	SOCKET_TYPE type = SOCKET_TYPE_TCP;
@@ -48,6 +62,36 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 
 	switch (wCommand)
 	{
+			case CMD_CODE_HELLO_REQ:
+
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					break;
+				}
+				//if (memcmp(g1_peer_node_id, buff, 6) != 0) {
+				//	break;
+				//}
+
+				ret = RecvStream(type, fhandle, buff, 4);
+				if (ret != 0) {
+					break;
+				}
+
+				ret = RecvStream(type, fhandle, buff, 1);
+				if (ret != 0) {
+					break;
+				}
+				pServerPorcess->m_bPeerPrimary = (*(BYTE *)buff == 1) ? TRUE : FALSE;
+
+				ret = RecvStream(type, fhandle, buff, 256);
+				if (ret != 0) {
+					break;
+				}
+
+				CtrlCmd_Send_HELLO_RESP(type, fhandle, g_pShiyong->device_node_id, g0_version, getServerFuncFlags(), g_pShiyong->device_topo_level, CTRLCMD_RESULT_OK);
+
+				break;
+
 			case CMD_CODE_ARM_REQ:
 				printf("if_mc_arm() fd=%ld \n", fhandle);
 				//if_mc_arm();
@@ -63,7 +107,8 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				if (ret != 0) {
 					break;
 				}
-
+				
+				pServerPorcess->m_bPeerPrimary = TRUE;
 				pServerPorcess->m_bAVStarted = TRUE;
 				pServerPorcess->m_bVideoEnable = ((BYTE)(buff[0]) & AV_FLAGS_VIDEO_ENABLE) != 0;
 				pServerPorcess->m_bAudioEnable = ((BYTE)(buff[0]) & AV_FLAGS_AUDIO_ENABLE) != 0;
@@ -87,6 +132,7 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				break;
 
 			case CMD_CODE_AV_STOP_REQ:
+				pServerPorcess->m_bPeerPrimary = FALSE;
 				pServerPorcess->m_bAVStarted = FALSE;
 				break;
 
@@ -224,6 +270,8 @@ void StartServerProcesses()
 
 		arrServerProcesses[i].m_fhandle = INVALID_SOCKET;
 
+		arrServerProcesses[i].m_bPeerConnected = FALSE;
+		arrServerProcesses[i].m_bPeerPrimary = FALSE;
 		arrServerProcesses[i].m_bAVStarted = FALSE;
 
 		arrServerProcesses[i].m_bVideoEnable = FALSE;

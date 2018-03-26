@@ -42,6 +42,8 @@ extern DWORD g1_comments_id;
 //#endif
 
 
+int ParseTopoSettings(const char *settings_string);
+
 
 class HttpOperate
 {
@@ -81,7 +83,8 @@ public:
 	UDPSOCKET m1_use_udp_sock;
 	UDTSOCKET m1_use_udt_sock;
 	SOCKET_TYPE m1_use_sock_type;
-	
+	char m1_event_type[32];
+
 public:
 	
 	const char *MakeIpStr();

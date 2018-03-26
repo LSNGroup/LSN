@@ -32,7 +32,9 @@ int  P2P_PORT = FIRST_CONNECT_PORT;
 
 int  IPC_BIND_PORT = 20000;
 
-int g_topo_level = 1;
+BYTE g_device_topo_level = 1;
+BYTE g_device_node_id[6];
+BYTE g_peer_node_id[6];//下级的Viewer Node id
 
 int g_video_width  = 0;
 int g_video_height = 0;
@@ -40,7 +42,7 @@ int g_video_fps = 0;
 
 char g_tcp_address[MAX_PATH];
 
-
+static void InitVar();
 int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandle);
 
 DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam);
@@ -74,6 +76,8 @@ void StartAnyPC()
 		g_pServerNode->m_bDoConnection2 = TRUE;
 		g_pServerNode->m_InConnection1 = FALSE;
 		g_pServerNode->m_InConnection2 = FALSE;
+
+		InitVar();
 
 		DWORD dwThreadID;
 		HANDLE hThread = ::CreateThread(NULL,0,WinMainThreadFn,g_pServerNode,0,&dwThreadID);
@@ -350,20 +354,6 @@ int if_get_osinfo(char *buff, int size)
 //Register Result
 void if_on_register_result(int comments_id, bool approved)
 {
-	char msg[MAX_LOADSTRING];
-	sprintf(msg, "if_on_register_result: comments_id=%d, approved=%d\n", comments_id, (approved ? 1 : 0));
-	log_msg(msg, LOG_LEVEL_DEBUG);
-
-	if (approved)
-	{
-		SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_CAMID, comments_id);
-		SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_CAMID_EXP, 0);
-	}
-	else
-	{
-		SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_CAMID, comments_id);
-		SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_CAMID_EXP, 1);
-	}
 }
 
 void if_on_client_connected(SERVER_NODE* pServerNode)
@@ -465,7 +455,6 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 	SERVER_NODE* pServerNode = (SERVER_NODE*)pvThreadParam;
 	int ret;
 	int last_register_time = 0, now_time;
-	BOOL bShouldStop = TRUE;
 	StunAddress4 mapped;
 	BOOL bNoNAT;
 	int  nNatType;
@@ -481,9 +470,6 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 
 	SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_CAMID, 0);
 	SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_CAMID_EXP, 0);
-
-
-	InitVar();
 
 
 	hThread2 = ::CreateThread(NULL,0,WorkingThreadFn2,(void *)pServerNode,0,&dwThreadID2);
@@ -507,173 +493,191 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 		GetLocalInformation(&(pServerNode->myHttpOperate));
 
 
-		if (bShouldStop && pServerNode->m_bDoConnection1)
+		if (pServerNode->m_bDoConnection1)
 		{
-			ret = pServerNode->myHttpOperate.DoRegister1("gbk", "zh");
-			sprintf(msg, "DoRegister1() = %d", ret);
-			log_msg(msg, LOG_LEVEL_DEBUG);
-			//如果DoRegister1成功，下一轮可以立即DoRegister2
-			if (ret == 2) {
-				last_register_time = 0;
-			}
-		}
-		else
-		{
-			if (pServerNode->m_bDoConnection1)
+			/* STUN Information */
+			if (strcmp(g1_stun_server, "NONE") == 0)
 			{
-				/* STUN Information */
-				if (strcmp(g1_stun_server, "NONE") == 0)
-				{
-					ret = CheckStunMyself(g1_http_server, pServerNode->myHttpOperate.m0_p2p_port, &mapped, &bNoNAT, &nNatType, &(pServerNode->myHttpOperate.m0_net_time));
-					if (ret == -1) {
-					   log_msg("CheckStunMyself() failed!", LOG_LEVEL_ERROR);
-					   
-					   mapped.addr = ntohl(pServerNode->myHttpOperate.m1_http_client_ip);
-					   mapped.port = pServerNode->myHttpOperate.m0_p2p_port;
-					   
-					   Socket s = openPort( 0/*use ephemeral*/, mapped.addr, false);
-					   if (s != INVALID_SOCKET)
-					   {
-					      closesocket(s);
-					      bNoNAT = TRUE;
-					      nNatType = StunTypeOpen;
-					   }
-					   else
-					   {
-					      bNoNAT = FALSE;
-					      nNatType = StunTypeIndependentFilter;
-					   }
-					   
-						pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
-						pServerNode->myHttpOperate.m0_pub_port = mapped.port;
-						pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
-						pServerNode->myHttpOperate.m0_nat_type = nNatType;
-						sprintf(msg, "CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x000000ff) >> 0,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x0000ff00) >> 8,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x00ff0000) >> 16,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0xff000000) >> 24,
-							pServerNode->myHttpOperate.m0_pub_port,  pServerNode->myHttpOperate.m0_no_nat ? 1 : 0);
-						log_msg(msg, LOG_LEVEL_DEBUG);
-					}
-					else {
-						pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
-						pServerNode->myHttpOperate.m0_pub_port = mapped.port;
-						pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
-						pServerNode->myHttpOperate.m0_nat_type = nNatType;
-						sprintf(msg, "CheckStunMyself: %d.%d.%d.%d[%d]\n", 
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x000000ff) >> 0,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x0000ff00) >> 8,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x00ff0000) >> 16,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0xff000000) >> 24,
-							pServerNode->myHttpOperate.m0_pub_port);
-						log_msg(msg, LOG_LEVEL_DEBUG);
-					}
-				}
-				else if (pServerNode->m_bFirstCheckStun) {
-					ret = CheckStun(g1_stun_server, pServerNode->myHttpOperate.m0_p2p_port, &mapped, &bNoNAT, &nNatType);
-					if (ret == -1) {
-					   log_msg("CheckStun() failed!", LOG_LEVEL_ERROR);
-					   
-					   mapped.addr = ntohl(pServerNode->myHttpOperate.m1_http_client_ip);
-					   mapped.port = pServerNode->myHttpOperate.m0_p2p_port;
-					   
-					   Socket s = openPort( 0/*use ephemeral*/, mapped.addr, false);
-					   if (s != INVALID_SOCKET)
-					   {
-					      closesocket(s);
-					      bNoNAT = TRUE;
-					      nNatType = StunTypeOpen;
-					   }
-					   else
-					   {
-					      bNoNAT = FALSE;
-					      nNatType = StunTypeIndependentFilter;
-					   }
-					   
-						pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
-						pServerNode->myHttpOperate.m0_pub_port = mapped.port;
-						pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
-						pServerNode->myHttpOperate.m0_nat_type = nNatType;
-						sprintf(msg, "CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x000000ff) >> 0,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x0000ff00) >> 8,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x00ff0000) >> 16,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0xff000000) >> 24,
-							pServerNode->myHttpOperate.m0_pub_port,  pServerNode->myHttpOperate.m0_no_nat ? 1 : 0);
-						log_msg(msg, LOG_LEVEL_DEBUG);
-					}
-					else if (ret == 0) {
-						log_msg("CheckStun() blocked!", LOG_LEVEL_WARNING);
-						pServerNode->myHttpOperate.m0_pub_ip = 0;
-						pServerNode->myHttpOperate.m0_pub_port = 0;
-						pServerNode->myHttpOperate.m0_no_nat = FALSE;
-						pServerNode->myHttpOperate.m0_nat_type = nNatType;
-					}
-					else {
-						pServerNode->m_bFirstCheckStun = FALSE;
-						pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
-						pServerNode->myHttpOperate.m0_pub_port = mapped.port;
-						pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
-						pServerNode->myHttpOperate.m0_nat_type = nNatType;
-						sprintf(msg, "CheckStun: %d.%d.%d.%d[%d]", 
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x000000ff) >> 0,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x0000ff00) >> 8,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x00ff0000) >> 16,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0xff000000) >> 24,
-							pServerNode->myHttpOperate.m0_pub_port);
-						log_msg(msg, LOG_LEVEL_DEBUG);
-					}
+				ret = CheckStunMyself(g1_http_server, pServerNode->myHttpOperate.m0_p2p_port, &mapped, &bNoNAT, &nNatType, &(pServerNode->myHttpOperate.m0_net_time));
+				if (ret == -1) {
+				   log_msg("CheckStunMyself() failed!", LOG_LEVEL_ERROR);
+				   
+				   mapped.addr = ntohl(pServerNode->myHttpOperate.m1_http_client_ip);
+				   mapped.port = pServerNode->myHttpOperate.m0_p2p_port;
+				   
+				   Socket s = openPort( 0/*use ephemeral*/, mapped.addr, false);
+				   if (s != INVALID_SOCKET)
+				   {
+				      closesocket(s);
+				      bNoNAT = TRUE;
+				      nNatType = StunTypeOpen;
+				   }
+				   else
+				   {
+				      bNoNAT = FALSE;
+				      nNatType = StunTypeIndependentFilter;
+				   }
+				   
+					pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
+					pServerNode->myHttpOperate.m0_pub_port = mapped.port;
+					pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
+					pServerNode->myHttpOperate.m0_nat_type = nNatType;
+					sprintf(msg, "CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x000000ff) >> 0,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x0000ff00) >> 8,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x00ff0000) >> 16,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0xff000000) >> 24,
+						pServerNode->myHttpOperate.m0_pub_port,  pServerNode->myHttpOperate.m0_no_nat ? 1 : 0);
+					log_msg(msg, LOG_LEVEL_DEBUG);
 				}
 				else {
-					ret = CheckStunSimple(g1_stun_server, pServerNode->myHttpOperate.m0_p2p_port, &mapped);
-					if (ret == -1) {
-						log_msg("CheckStunSimple() failed!", LOG_LEVEL_ERROR);
-						mapped.addr = ntohl(pServerNode->myHttpOperate.m1_http_client_ip);
-						mapped.port = pServerNode->myHttpOperate.m0_p2p_port;
-						pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
-						pServerNode->myHttpOperate.m0_pub_port = mapped.port;
-						pServerNode->m_bFirstCheckStun = TRUE;
-					}
-					else {
-						pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
-						pServerNode->myHttpOperate.m0_pub_port = mapped.port;
-						sprintf(msg, "CheckStunSimple: %d.%d.%d.%d[%d]", 
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x000000ff) >> 0,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x0000ff00) >> 8,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0x00ff0000) >> 16,
-							(pServerNode->myHttpOperate.m0_pub_ip & 0xff000000) >> 24,
-							pServerNode->myHttpOperate.m0_pub_port);
-						log_msg(msg, LOG_LEVEL_DEBUG);
-					}
+					pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
+					pServerNode->myHttpOperate.m0_pub_port = mapped.port;
+					pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
+					pServerNode->myHttpOperate.m0_nat_type = nNatType;
+					sprintf(msg, "CheckStunMyself: %d.%d.%d.%d[%d]\n", 
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x000000ff) >> 0,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x0000ff00) >> 8,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x00ff0000) >> 16,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0xff000000) >> 24,
+						pServerNode->myHttpOperate.m0_pub_port);
+					log_msg(msg, LOG_LEVEL_DEBUG);
 				}
-
-				
-				//修正公网IP受控端的连接端口问题,2014-6-15
-				if (bNoNAT) {
-					pServerNode->myHttpOperate.m0_pub_port = pServerNode->myHttpOperate.m0_p2p_port - 2;//SECOND_CONNECT_PORT;
+			}
+			else if (pServerNode->m_bFirstCheckStun) {
+				ret = CheckStun(g1_stun_server, pServerNode->myHttpOperate.m0_p2p_port, &mapped, &bNoNAT, &nNatType);
+				if (ret == -1) {
+				   log_msg("CheckStun() failed!", LOG_LEVEL_ERROR);
+				   
+				   mapped.addr = ntohl(pServerNode->myHttpOperate.m1_http_client_ip);
+				   mapped.port = pServerNode->myHttpOperate.m0_p2p_port;
+				   
+				   Socket s = openPort( 0/*use ephemeral*/, mapped.addr, false);
+				   if (s != INVALID_SOCKET)
+				   {
+				      closesocket(s);
+				      bNoNAT = TRUE;
+				      nNatType = StunTypeOpen;
+				   }
+				   else
+				   {
+				      bNoNAT = FALSE;
+				      nNatType = StunTypeIndependentFilter;
+				   }
+				   
+					pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
+					pServerNode->myHttpOperate.m0_pub_port = mapped.port;
+					pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
+					pServerNode->myHttpOperate.m0_nat_type = nNatType;
+					sprintf(msg, "CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x000000ff) >> 0,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x0000ff00) >> 8,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x00ff0000) >> 16,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0xff000000) >> 24,
+						pServerNode->myHttpOperate.m0_pub_port,  pServerNode->myHttpOperate.m0_no_nat ? 1 : 0);
+					log_msg(msg, LOG_LEVEL_DEBUG);
 				}
-
-				if (pServerNode->myHttpOperate.m0_no_nat) {
-					pServerNode->myHttpOperate.m0_port = SECOND_CONNECT_PORT;//
+				else if (ret == 0) {
+					log_msg("CheckStun() blocked!", LOG_LEVEL_WARNING);
+					pServerNode->myHttpOperate.m0_pub_ip = 0;
+					pServerNode->myHttpOperate.m0_pub_port = 0;
+					pServerNode->myHttpOperate.m0_no_nat = FALSE;
+					pServerNode->myHttpOperate.m0_nat_type = nNatType;
 				}
-
-				ret = pServerNode->myHttpOperate.DoRegister2("gbk", "zh");
-				sprintf(msg, "DoRegister2() = %d, comments_id=%ld", ret, g1_comments_id);
-				log_msg(msg, LOG_LEVEL_DEBUG);
-
-				/* 如果DoRegister2()返回正常，则执行一次DoOnline() */
-				if (ret != -1 && ret != 0 && ret != 1 && g1_comments_id > 0) {
-					if (FALSE == pServerNode->m_bOnlineSuccess) {
-						DoOnline();
-						pServerNode->m_bOnlineSuccess = TRUE;
-					}
-					if_on_register_result(g1_comments_id, g1_is_activated);
+				else {
+					pServerNode->m_bFirstCheckStun = FALSE;
+					pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
+					pServerNode->myHttpOperate.m0_pub_port = mapped.port;
+					pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
+					pServerNode->myHttpOperate.m0_nat_type = nNatType;
+					sprintf(msg, "CheckStun: %d.%d.%d.%d[%d]", 
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x000000ff) >> 0,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x0000ff00) >> 8,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x00ff0000) >> 16,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0xff000000) >> 24,
+						pServerNode->myHttpOperate.m0_pub_port);
+					log_msg(msg, LOG_LEVEL_DEBUG);
 				}
 			}
 			else {
-				ret = 0;
+				ret = CheckStunSimple(g1_stun_server, pServerNode->myHttpOperate.m0_p2p_port, &mapped);
+				if (ret == -1) {
+					log_msg("CheckStunSimple() failed!", LOG_LEVEL_ERROR);
+					mapped.addr = ntohl(pServerNode->myHttpOperate.m1_http_client_ip);
+					mapped.port = pServerNode->myHttpOperate.m0_p2p_port;
+					pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
+					pServerNode->myHttpOperate.m0_pub_port = mapped.port;
+					pServerNode->m_bFirstCheckStun = TRUE;
+				}
+				else {
+					pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
+					pServerNode->myHttpOperate.m0_pub_port = mapped.port;
+					sprintf(msg, "CheckStunSimple: %d.%d.%d.%d[%d]", 
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x000000ff) >> 0,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x0000ff00) >> 8,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0x00ff0000) >> 16,
+						(pServerNode->myHttpOperate.m0_pub_ip & 0xff000000) >> 24,
+						pServerNode->myHttpOperate.m0_pub_port);
+					log_msg(msg, LOG_LEVEL_DEBUG);
+				}
 			}
+
+			
+			//修正公网IP受控端的连接端口问题,2014-6-15
+			if (bNoNAT) {
+				pServerNode->myHttpOperate.m0_pub_port = pServerNode->myHttpOperate.m0_p2p_port - 2;//SECOND_CONNECT_PORT;
+			}
+
+			if (pServerNode->myHttpOperate.m0_no_nat) {
+				pServerNode->myHttpOperate.m0_port = SECOND_CONNECT_PORT;//
+			}
+
+			
+			char szIpcReport[512];
+			snprintf(szIpcReport, sizeof(szIpcReport), 
+				"node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+				"&peer_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+				"&is_busy=%d"
+				"&is_streaming=%d"
+				"&device_uuid=%s"
+				"&node_name=%s"
+				"&version=%ld"
+				"&os_info=%s"
+				"&ip=%s"
+				"&port=%d"
+				"&pub_ip=%s"
+				"&pub_port=%d"
+				"&no_nat=%d"
+				"&nat_type=%d",
+				pServerNode->myHttpOperate.m0_node_id[0], pServerNode->myHttpOperate.m0_node_id[1], pServerNode->myHttpOperate.m0_node_id[2], pServerNode->myHttpOperate.m0_node_id[3], pServerNode->myHttpOperate.m0_node_id[4], pServerNode->myHttpOperate.m0_node_id[5], 
+				g_peer_node_id[0], g_peer_node_id[1], g_peer_node_id[2], g_peer_node_id[3], g_peer_node_id[4], g_peer_node_id[5],
+				(pServerNode->m_bConnected ? 1 : 0),
+				(pServerNode->m_bAVStarted ? 1 : 0),
+				g0_device_uuid, UrlEncode(g0_node_name).c_str(), g0_version, g0_os_info,
+				pServerNode->myHttpOperate.MakeIpStr(), pServerNode->myHttpOperate.m0_port, pServerNode->myHttpOperate.MakePubIpStr(), pServerNode->myHttpOperate.m0_pub_port, 
+				(pServerNode->myHttpOperate.m0_no_nat ? 1 : 0),
+				pServerNode->myHttpOperate.m0_nat_type);
+
+			CtrlCmd_IPC_REPORT(SOCKET_TYPE_TCP, g_fhandle, pServerNode->myHttpOperate.m0_node_id, szIpcReport);
+
+			ret = 3;
+
+			//ret = pServerNode->myHttpOperate.DoRegister2("gbk", "zh");
+			//sprintf(msg, "DoRegister2() = %d, comments_id=%ld", ret, g1_comments_id);
+			//log_msg(msg, LOG_LEVEL_DEBUG);
+
+			/* 如果DoRegister2()返回正常，则执行一次DoOnline() */
+			/*
+			if (ret != -1 && ret != 0 && ret != 1 && g1_comments_id > 0) {
+				if (FALSE == pServerNode->m_bOnlineSuccess) {
+					DoOnline();
+					pServerNode->m_bOnlineSuccess = TRUE;
+				}
+				if_on_register_result(g1_comments_id, g1_is_activated);
+			}*/
+		}
+		else {
+			ret = 0;
 		}
 
 		if (ret == -1) {
@@ -686,25 +690,21 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 			pServerNode->m_bDoConnection1 = FALSE;
 			continue;
 		}
-		else if (ret == 1) {
-			bShouldStop = TRUE;
-			continue;
-		}
 
-		bShouldStop = FALSE;
 
 		/* Connection */
 		if (ret == 3) {
 
-			if (pServerNode->myHttpOperate.m1_peer_pri_ipCount != 0 && pServerNode->myHttpOperate.m1_peer_pri_port != 0)  /* Accept */
+			if (stricmp(pServerNode->myHttpOperate.m1_event_type, "Accept") == 0)  /* Accept */
 			{
+				strcpy(pServerNode->myHttpOperate.m1_event_type, "");
+
 				pServerNode->m_InConnection1 = TRUE;
 
 				hThread = ::CreateThread(NULL,0,WorkingThreadFn1,(void *)pServerNode,0,&dwThreadID);
 				if (hThread == NULL) {
 					pServerNode->m_InConnection1 = FALSE;
 					log_msg("Create WorkingThreadFn1 failed!", LOG_LEVEL_ERROR);
-					bShouldStop = TRUE;
 					continue;
 				}
 				if (pServerNode->m_bDoConnection1) {
@@ -719,15 +719,16 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 
 				pServerNode->m_InConnection1 = FALSE;
 			}
-			else if (pServerNode->myHttpOperate.m1_peer_pri_ipCount == 0 && pServerNode->myHttpOperate.m1_peer_pri_port == SECOND_CONNECT_PORT)  /* AcceptRev */
+			else if (stricmp(pServerNode->myHttpOperate.m1_event_type, "AcceptRev") == 0)  /* AcceptRev */
 			{
+				strcpy(pServerNode->myHttpOperate.m1_event_type, "");
+
 				pServerNode->m_InConnection1 = TRUE;
 
 				hThread = ::CreateThread(NULL,0,WorkingThreadFnRev,(void *)pServerNode,0,&dwThreadID);
 				if (hThread == NULL) {
 					pServerNode->m_InConnection1 = FALSE;
 					log_msg("Create WorkingThreadFnRev failed!", LOG_LEVEL_ERROR);
-					bShouldStop = TRUE;
 					continue;
 				}
 				if (pServerNode->m_bDoConnection1) {
@@ -742,12 +743,16 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 
 				pServerNode->m_InConnection1 = FALSE;
 			}
-			else if (pServerNode->myHttpOperate.m1_peer_pri_ipCount == 0 && pServerNode->myHttpOperate.m1_peer_pri_port == 0)  /* AcceptProxy */
+			else if (stricmp(pServerNode->myHttpOperate.m1_event_type, "AcceptProxy") == 0)  /* AcceptProxy */
 			{
+				strcpy(pServerNode->myHttpOperate.m1_event_type, "");
+
 				log_msg("AcceptProxy, ################...\n", LOG_LEVEL_INFO);
 			}
-			else if (pServerNode->myHttpOperate.m1_peer_pri_ipCount == 0 && pServerNode->myHttpOperate.m1_peer_pri_port != 0) /* AcceptProxyTcp */
+			else if (stricmp(pServerNode->myHttpOperate.m1_event_type, "AcceptProxyTcp") == 0) /* AcceptProxyTcp */
 			{
+				strcpy(pServerNode->myHttpOperate.m1_event_type, "");
+
 				log_msg("AcceptProxyTcp, ################...\n", LOG_LEVEL_INFO);
 			}
 
@@ -1277,9 +1282,6 @@ static BYTE getServerFuncFlags()
 {
 	BYTE ret = 0;
 	ret |= FUNC_FLAGS_AV;
-	ret |= FUNC_FLAGS_VNC;
-	ret |= FUNC_FLAGS_FT;
-	ret |= FUNC_FLAGS_WEBMONI;
 	ret |= FUNC_FLAGS_SHELL;
 	if (strcmp(SERVER_TYPE, "ANYPC") == 0) {
 		ret |= FUNC_FLAGS_HASROOT;
@@ -1351,6 +1353,12 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 					break;
 				}
 
+				ret = RecvStream(type, fhandle, buff, 1);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
+
 				ret = RecvStream(type, fhandle, buff, 256);
 				if (ret != 0) {
 					bQuitLoop = TRUE;
@@ -1361,12 +1369,12 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 				{
 					php_md5(szValueData, szPassEnc, sizeof(szPassEnc));
 					if (strcmp(szPassEnc, buff) != 0) {
-						CtrlCmd_Send_HELLO_RESP(type, fhandle, pServerNode->myHttpOperate.m0_node_id, g0_version, getServerFuncFlags(), CTRLCMD_RESULT_NG);
+						CtrlCmd_Send_HELLO_RESP(type, fhandle, pServerNode->myHttpOperate.m0_node_id, g0_version, getServerFuncFlags(), g_device_topo_level, CTRLCMD_RESULT_NG);
 						log_msg("ControlChannelLoop: Password failed!\n", LOG_LEVEL_INFO);
 						break;
 					}
 				}
-				CtrlCmd_Send_HELLO_RESP(type, fhandle, pServerNode->myHttpOperate.m0_node_id, g0_version, getServerFuncFlags(), CTRLCMD_RESULT_OK);
+				CtrlCmd_Send_HELLO_RESP(type, fhandle, pServerNode->myHttpOperate.m0_node_id, g0_version, getServerFuncFlags(), g_device_topo_level, CTRLCMD_RESULT_OK);
 				log_msg("ControlChannelLoop: Password OK!\n", LOG_LEVEL_INFO);
 				bAuthOK = TRUE;
 

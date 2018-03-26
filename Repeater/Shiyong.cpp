@@ -255,18 +255,21 @@ DWORD WINAPI WorkingThreadFn(LPVOID pvThreadParam)
 //
 int CheckPassword(VIEWER_NODE *pViewerNode, SOCKET_TYPE sock_type, SOCKET fhandle, ANYPC_NODE *nodeInfo, int nRetry)
 {
+	BYTE bTopoPrimary = 1;
 	DWORD dwServerVersion;
 	BYTE bFuncFlags;
+	BYTE bTopoLevel;
 	WORD wResult;
 	char szPassEnc[MAX_PATH];
 
 
 	php_md5(pViewerNode->password, szPassEnc, sizeof(szPassEnc));
 
-	if (CtrlCmd_HELLO(sock_type, fhandle, pViewerNode->httpOP.m0_node_id, g0_version, szPassEnc, pViewerNode->httpOP.m1_peer_node_id, &dwServerVersion, &bFuncFlags, &wResult) == 0) {
+	if (CtrlCmd_HELLO(sock_type, fhandle, pViewerNode->httpOP.m0_node_id, g0_version, bTopoPrimary, szPassEnc, pViewerNode->httpOP.m1_peer_node_id, &dwServerVersion, &bFuncFlags, &bTopoLevel, &wResult) == 0) {
 		if (wResult == CTRLCMD_RESULT_OK) {
 			//set_encdec_key((unsigned char *)szPassEnc, strlen(szPassEnc));
 			nodeInfo->func_flags = bFuncFlags;
+			g_pShiyong->device_topo_level = bTopoLevel + 1;
 			return 1;
 		}
 		else {
@@ -288,9 +291,10 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 
 	while (FALSE == pViewerNode->bQuitRecvSocketLoop)
 	{
-		char buf[6];
+		char buf[32];
 		WORD wCmd;
 		DWORD copy_len;
+		BYTE topo_level;
 		unsigned char *pRecvData;
 		int ret;
 
@@ -336,8 +340,61 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 #endif
 			break;
 
-		default:
+		case CMD_CODE_TOPO_EVENT:
+			break;
 
+		case CMD_CODE_TOPO_SETTINGS:
+
+			if (RecvStream(ftype, fhandle, buf, 6) != 0) {
+				return;
+			}
+			if (RecvStream(ftype, fhandle, buf, 6) != 0) {
+				return;
+			}
+
+			if (RecvStream(ftype, fhandle, buf, 1) != 0) {
+				return;
+			}
+			topo_level = *(BYTE *)buf;
+			if (g_pShiyong->device_topo_level > 1 && g_pShiyong->device_topo_level != topo_level + 1) {
+#if LOG_MSG
+				log_msg("RecvSocketDataLoop: device_topo_level != topo_level + 1\n", LOG_LEVEL_DEBUG);
+#endif
+			}
+			g_pShiyong->device_topo_level = topo_level + 1;
+
+			pRecvData = (unsigned char *)malloc(copy_len - 12 -1);
+			if (RecvStream(ftype, fhandle, (char *)pRecvData, copy_len - 12 -1) != 0) {
+				free(pRecvData);
+				return;
+			}
+
+			ParseTopoSettings((const char *)pRecvData);
+
+			for (int i = 0; i < MAX_SERVER_NUM; i++)
+			{
+				if (arrServerProcesses[i].m_bPeerConnected == FALSE) {
+					continue;
+				}
+				int ret = CtrlCmd_TOPO_SETTINGS(SOCKET_TYPE_TCP, arrServerProcesses[i].m_fhandle, g_pShiyong->device_topo_level, (const char *)pRecvData);
+				if (ret < 0) {
+					continue;
+				}
+			}
+			free(pRecvData);
+
+			break;
+
+		default:
+#if LOG_MSG
+			log_msg("RecvSocketDataLoop: CMD_CODE_???????...\n", LOG_LEVEL_DEBUG);
+#endif
+			for (int i = 0; i < copy_len; i++) {
+				ret = RecvStream(ftype, fhandle, buf, 1);
+				if (ret != 0) {
+					return;
+				}
+			}
 			break;
 		}
 

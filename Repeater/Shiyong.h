@@ -35,7 +35,7 @@ typedef struct _tag_topo_route_item {
 
 
 
-#define MAX_VIEWER_NUM		5
+#define MAX_VIEWER_NUM		3
 
 typedef struct _tag_viewer_node {
 	BOOL bFirstCheckStun;

@@ -122,9 +122,11 @@ N Bytes, Data.
 
 #define CMD_CODE_TOPO_EVENT		0x00D3  /* CMD_CODE_TOPO_EVENT  | 12 + n | 00:00:00:00:00:00 |  dest_node_id  | event_string */
 
-#define CMD_CODE_TOPO_PACKET	0x00D4  /* CMD_CODE_TOPO_PACKET | 1 + 20 + 6 + 6 + n | hop_count | packet_uuid | source_node_id  |  dest_node_id  | n bytes data */
+#define CMD_CODE_TOPO_SETTINGS	0x00D4  /* CMD_CODE_TOPO_SETTINGS | 12 + 1 + n | 00:00:00:00:00:00 | FF:FF:FF:FF:FF:FF | topo_level | settings_string */
 
-#define CMD_CODE_HELLO_REQ		0x0001  /* CMD_CODE_HELLO_REQ | 6+4+256 | client_node_id | client_version | password */
+#define CMD_CODE_TOPO_PACKET	0x00D5  /* CMD_CODE_TOPO_PACKET | 1 + 20 + 6 + 6 + n | hop_count | packet_uuid | source_node_id  |  dest_node_id  | n bytes data */
+
+#define CMD_CODE_HELLO_REQ		0x0001  /* CMD_CODE_HELLO_REQ | 6+4+1+256 | client_node_id | client_version | topo_primary | password */
 #define CMD_CODE_HELLO_RESP		0x8001  /* CMD_CODE_HELLO_RESP | 6+4+1+1+2 | server_node_id | server_version | func_flags | topo_level | result_code */
 
 #define CMD_CODE_RUN_REQ		0x0002  /* CMD_CODE_RUN_REQ | n | run_exe */
@@ -175,7 +177,7 @@ void CtrlCmd_Uninit();
 //#ifdef JNI_FOR_MOBILECAMERA
 int CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *packet, int len);
 int CtrlCmd_Send_FAKERTP_RESP_NOMUTEX(SOCKET_TYPE type, SOCKET fhandle, BYTE *packet, int len);
-int CtrlCmd_Send_HELLO_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *server_node_id, DWORD server_version, BYTE func_flags, WORD result_code);
+int CtrlCmd_Send_HELLO_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *server_node_id, DWORD server_version, BYTE func_flags, BYTE topo_level, WORD result_code);
 int CtrlCmd_Send_RUN_RESP(SOCKET_TYPE type, SOCKET fhandle, const char *result_str);
 
 int CtrlCmd_Send_NULL(SOCKET_TYPE type, SOCKET fhandle);
@@ -187,13 +189,14 @@ void CtrlCmd_Recv_AV_END(SOCKET_TYPE type, SOCKET fhandle);
 
 
 //#else
-int CtrlCmd_HELLO(SOCKET_TYPE type, SOCKET fhandle, BYTE *client_node_id, DWORD client_version, const char *password, BYTE *server_node_id, DWORD *server_version, BYTE *func_flags, WORD *result_code);////Send/Recv
+int CtrlCmd_HELLO(SOCKET_TYPE type, SOCKET fhandle, BYTE *client_node_id, DWORD client_version, BYTE topo_primary, const char *password, BYTE *server_node_id, DWORD *server_version, BYTE *func_flags, BYTE *topo_level, WORD *result_code);////Send/Recv
 int CtrlCmd_RUN(SOCKET_TYPE type, SOCKET fhandle, const char *exe_cmd, char *result_buf, int buf_size);////Send/Recv
 
 int CtrlCmd_IPC_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string);
 int CtrlCmd_TOPO_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string);
 int CtrlCmd_TOPO_EVALUATE(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, BYTE *object_node_id, DWORD begin_time, DWORD end_time, DWORD stream_flow);
 int CtrlCmd_TOPO_EVENT(SOCKET_TYPE type, SOCKET fhandle, BYTE *dest_node_id, const char *event_string);
+int CtrlCmd_TOPO_SETTINGS(SOCKET_TYPE type, SOCKET fhandle, BYTE topo_level, const char *settings_string);
 
 int CtrlCmd_PROXY(SOCKET_TYPE type, SOCKET fhandle, WORD wTcpPort);
 int CtrlCmd_PROXY_DATA(SOCKET_TYPE type, SOCKET fhandle, BYTE *data, int len);
