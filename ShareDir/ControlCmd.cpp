@@ -28,8 +28,19 @@
 
 
 static BOOL m_bInit = FALSE;
-static pthread_mutex_t m_mutexSend;
+static pthread_mutex_t m_mutexSendArray[2];
 
+
+static pthread_mutex_t * getMutexSend(SOCKET_TYPE type)
+{
+	if (type == SOCKET_TYPE_UDT) {
+		return &(m_mutexSendArray[0]);
+	}
+	else // SOCKET_TYPE_TCP
+	{
+		return &(m_mutexSendArray[1]);
+	}
+}
 
 int  CtrlCmd_Init()
 {
@@ -39,7 +50,8 @@ int  CtrlCmd_Init()
 	m_bInit = TRUE;
 
 	log_msg("CtrlCmd_Init()...\n", LOG_LEVEL_DEBUG);
-	pthread_mutex_init(&m_mutexSend, NULL);
+	pthread_mutex_init(&(m_mutexSendArray[0]), NULL);
+	pthread_mutex_init(&(m_mutexSendArray[1]), NULL);
 	return 0;
 }
 
@@ -51,7 +63,8 @@ void CtrlCmd_Uninit()
 	m_bInit = FALSE;
 
 	log_msg("CtrlCmd_Uninit()...\n", LOG_LEVEL_DEBUG);
-	pthread_mutex_destroy(&m_mutexSend);
+	pthread_mutex_destroy(&(m_mutexSendArray[0]));
+	pthread_mutex_destroy(&(m_mutexSendArray[1]));
 }
 
 
@@ -66,13 +79,13 @@ int CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *packet, in
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_FAKERTP_RESP));
 	pf_set_dword(bSendPacket + 2, htonl(len));
 	
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
 	ret += SendStream(type, fhandle, (char *)packet, len);
 	if (ret != 0) {
 		ret = -1;
 	}
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -85,14 +98,14 @@ int CtrlCmd_Send_FAKERTP_RESP_NOMUTEX(SOCKET_TYPE type, SOCKET fhandle, BYTE *pa
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_FAKERTP_RESP));
 	pf_set_dword(bSendPacket + 2, htonl(len));
 	
-	//pthread_mutex_lock(&m_mutexSend);
+	//pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
 	ret += SendStream(type, fhandle, (char *)packet, len/2);
 	ret += SendStream(type, fhandle, (char *)packet + (len/2), len - (len/2));
 	if (ret != 0) {
 		ret = -1;
 	}
-	//pthread_mutex_unlock(&m_mutexSend);
+	//pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -110,9 +123,9 @@ int CtrlCmd_Send_HELLO_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *server_node_
 	*((BYTE *)bSendPacket + 17) = topo_level;
 	pf_set_word(bSendPacket + 18, htons(result_code));
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6 + 6 + 4 + 1 + 1 + 2);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -126,13 +139,13 @@ int CtrlCmd_Send_RUN_RESP(SOCKET_TYPE type, SOCKET fhandle, const char *result_s
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_RUN_RESP));
 	pf_set_dword(bSendPacket + 2, htonl(len));
 	
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
 	ret += SendStream(type, fhandle, (char *)result_str, len);
 	if (ret != 0) {
 		ret = -1;
 	}
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -145,9 +158,9 @@ int CtrlCmd_Send_NULL(SOCKET_TYPE type, SOCKET fhandle)
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_NULL));
 	pf_set_dword(bSendPacket + 2, htonl(0));
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -160,9 +173,9 @@ int CtrlCmd_Send_END(SOCKET_TYPE type, SOCKET fhandle)
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_END));
 	pf_set_dword(bSendPacket + 2, htonl(0));
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -221,14 +234,14 @@ int CtrlCmd_HELLO(SOCKET_TYPE type, SOCKET fhandle, BYTE *client_node_id, DWORD 
 	*((BYTE *)bSendPacket + 16) = topo_primary;
 	strcpy(bSendPacket + 17, password);
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 
 	if (SendStream(type, fhandle, bSendPacket, 6+6+4+1+256) < 0) {
-		pthread_mutex_unlock(&m_mutexSend);
+		pthread_mutex_unlock(getMutexSend(type));
 		return -1;
 	}
 
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 
 	ret = RecvStream(type, fhandle, buff, 6);
 	if (ret != 0) {
@@ -290,18 +303,18 @@ int CtrlCmd_RUN(SOCKET_TYPE type, SOCKET fhandle, const char *exe_cmd, char *res
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_RUN_REQ));
 	pf_set_dword(bSendPacket + 2, htonl(len));
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	
 	if (SendStream(type, fhandle, bSendPacket, 6) < 0) {
-		pthread_mutex_unlock(&m_mutexSend);
+		pthread_mutex_unlock(getMutexSend(type));
 		return -1;
 	}
 	if (SendStream(type, fhandle, (char *)exe_cmd, len) < 0) {
-		pthread_mutex_unlock(&m_mutexSend);
+		pthread_mutex_unlock(getMutexSend(type));
 		return -1;
 	}
 	
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 
 	ret = RecvStream(type, fhandle, buff, 6);
 	if (ret != 0) {
@@ -342,13 +355,13 @@ int CtrlCmd_IPC_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, c
 	memcpy(bSendPacket + 6, source_node_id, 6);
 	memset(bSendPacket + 12, 0, 6);
 	
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6 + 12);
 	ret += SendStream(type, fhandle, (char *)report_string, len);
 	if (ret != 0) {
 		ret = -1;
 	}
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -364,13 +377,30 @@ int CtrlCmd_TOPO_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, 
 	memcpy(bSendPacket + 6, source_node_id, 6);
 	memset(bSendPacket + 12, 0, 6);
 	
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6 + 12);
 	ret += SendStream(type, fhandle, (char *)report_string, len);
 	if (ret != 0) {
 		ret = -1;
 	}
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
+	return ret;
+}
+
+int CtrlCmd_TOPO_DROP(SOCKET_TYPE type, SOCKET fhandle, BYTE node_type, BYTE *node_id)
+{
+	int ret;
+	char bSendPacket[32];
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_TOPO_DROP));
+	pf_set_dword(bSendPacket + 2, htonl(1 + 6));
+	*(BYTE *)(bSendPacket + 6) = node_type;
+	memcpy(bSendPacket + 7, node_id, 6);
+	
+	pthread_mutex_lock(getMutexSend(type));
+	ret = SendStream(type, fhandle, bSendPacket, 6+1+6);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -388,9 +418,9 @@ int CtrlCmd_TOPO_EVALUATE(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id
 	pf_set_dword(bSendPacket + 22, htonl(end_time));
 	pf_set_dword(bSendPacket + 26, htonl(stream_flow));
 	
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6+12+4+4+4);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -406,13 +436,13 @@ int CtrlCmd_TOPO_EVENT(SOCKET_TYPE type, SOCKET fhandle, BYTE *dest_node_id, con
 	memset(bSendPacket + 6, 0, 6);
 	memcpy(bSendPacket + 12, dest_node_id, 6);
 	
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6 + 12);
 	ret += SendStream(type, fhandle, (char *)event_string, len);
 	if (ret != 0) {
 		ret = -1;
 	}
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -429,13 +459,13 @@ int CtrlCmd_TOPO_SETTINGS(SOCKET_TYPE type, SOCKET fhandle, BYTE topo_level, con
 	memset(bSendPacket + 12, 0xff, 6);
 	bSendPacket[18] = (char)topo_level;
 	
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6 + 12 + 1);
 	ret += SendStream(type, fhandle, (char *)settings_string, len);
 	if (ret != 0) {
 		ret = -1;
 	}
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -449,9 +479,9 @@ int CtrlCmd_PROXY(SOCKET_TYPE type, SOCKET fhandle, WORD wTcpPort)
 	pf_set_dword(bSendPacket + 2, htonl(2));
 	pf_set_word(bSendPacket + 6, htons(wTcpPort));
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6+2);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -464,13 +494,13 @@ int CtrlCmd_PROXY_DATA(SOCKET_TYPE type, SOCKET fhandle, BYTE *data, int len)
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_PROXY_DATA));
 	pf_set_dword(bSendPacket + 2, htonl(len));
 	
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
 	ret += SendStream(type, fhandle, (char *)data, len);
 	if (ret != 0) {
 		ret = -1;
 	}
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -483,9 +513,9 @@ int CtrlCmd_PROXY_END(SOCKET_TYPE type, SOCKET fhandle)
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_PROXY_END));
 	pf_set_dword(bSendPacket + 2, htonl(0));
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -498,9 +528,9 @@ int CtrlCmd_ARM(SOCKET_TYPE type, SOCKET fhandle)
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_ARM_REQ));
 	pf_set_dword(bSendPacket + 2, htonl(0));
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -513,9 +543,9 @@ int CtrlCmd_DISARM(SOCKET_TYPE type, SOCKET fhandle)
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_DISARM_REQ));
 	pf_set_dword(bSendPacket + 2, htonl(0));
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -533,9 +563,9 @@ int CtrlCmd_AV_START(SOCKET_TYPE type, SOCKET fhandle, BYTE flags, BYTE video_si
 	pf_set_dword(bSendPacket + 9, htonl(audio_channel));
 	pf_set_dword(bSendPacket + 13, htonl(video_channel));
 	
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6 + 3 + 4 + 4);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -548,9 +578,9 @@ int CtrlCmd_AV_STOP(SOCKET_TYPE type, SOCKET fhandle)
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_AV_STOP_REQ));
 	pf_set_dword(bSendPacket + 2, htonl(0));
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -564,9 +594,9 @@ int CtrlCmd_AV_SWITCH(SOCKET_TYPE type, SOCKET fhandle, DWORD video_channel)
 	pf_set_dword(bSendPacket + 2, htonl(4));
 	pf_set_dword(bSendPacket + 6, htonl(video_channel));
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6 + 4);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -581,9 +611,9 @@ int CtrlCmd_AV_CONTRL(SOCKET_TYPE type, SOCKET fhandle, WORD contrl, DWORD contr
 	pf_set_word(bSendPacket + 6, htons(contrl));
 	pf_set_dword(bSendPacket + 8, htonl(contrl_param));
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6 + 2 + 4);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -596,13 +626,13 @@ int CtrlCmd_VOICE(SOCKET_TYPE type, SOCKET fhandle, BYTE *data, int len)
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_VOICE_REQ));
 	pf_set_dword(bSendPacket + 2, htonl(len));
 	
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
 	ret += SendStream(type, fhandle, (char *)data, len);
 	if (ret != 0) {
 		ret = -1;
 	}
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -616,9 +646,9 @@ int CtrlCmd_TEXT(SOCKET_TYPE type, SOCKET fhandle, BYTE *data, int len)
 	pf_set_dword(bSendPacket + 2, htonl(512));
 	memcpy(bSendPacket + 6, data, len);
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6+512);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 
@@ -631,9 +661,9 @@ int CtrlCmd_BYE(SOCKET_TYPE type, SOCKET fhandle)
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_BYE_REQ));
 	pf_set_dword(bSendPacket + 2, htonl(0));
 
-	pthread_mutex_lock(&m_mutexSend);
+	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
-	pthread_mutex_unlock(&m_mutexSend);
+	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }
 

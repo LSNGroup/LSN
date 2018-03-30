@@ -101,9 +101,6 @@ static void UiLoop(void)
 			printf("---------------------------------------------------------------\n");
 			for (int i = 0; i < MAX_VIEWER_NUM; i++)
 			{
-				if (g_pShiyong->viewerArray[i].bUsing) {
-					printf("index(%d)  cam_id(%ld)  %s \n", g_pShiyong->viewerArray[i].nID, g_pShiyong->viewerArray[i].anypcNode.comments_id, g_pShiyong->viewerArray[i].anypcNode.node_name);
-				}
 			}
 			printf("---------------------------------------------------------------\n");
 			printf("\nServerNodes=%d, connected_av=%d\n", MAX_SERVER_NUM, GetAvClientsCount());
@@ -112,7 +109,6 @@ static void UiLoop(void)
 		{
 			sscanf(cmd, "%s%s%s", temp, cam_id, pass);
 			printf("To connect id(%s) with password(%s)...\n", cam_id, pass);
-			g_pShiyong->ConnectNode(cam_id, pass);
 		}
 		else if (strncmp(cmd, "d ", 2) == 0)
 		{
@@ -129,7 +125,7 @@ static void UiLoop(void)
 		{
 			sscanf(cmd, "%s%d", temp, &index);
 			printf("To switch to index(%d)...\n", index);
-			if (g_pShiyong->viewerArray[index].bUsing == FALSE) {
+			if (g_pShiyong->viewerArray[index].bUsing == FALSE || g_pShiyong->viewerArray[index].bConnected == FALSE) {
 				printf("ViewerNode not using!\n");
 			}
 			else {
@@ -169,7 +165,7 @@ static void UiLoop(void)
 		else if (strncmp(cmd, "v ", 2) == 0)
 		{
 			sscanf(cmd, "%s%d", temp, &index);
-			if (g_pShiyong->currentSourceIndex == -1 || g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].bUsing == FALSE) {
+			if (g_pShiyong->currentSourceIndex == -1 || g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].bUsing == FALSE || g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].bConnected == FALSE) {
 				printf("Current ViewerNode not using!\n");
 			}
 			else {

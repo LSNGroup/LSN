@@ -46,33 +46,12 @@ static void HandleDoUnregister(void *eloop_ctx, void *timeout_ctx)
 static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 {
 	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)eloop_ctx;
-	//CShiyongDlg *pDlg = g_pMainDlg1;
-	//HWND pDlgWnd = pDlg->m_hWnd;
 	int ret;
 	StunAddress4 mapped;
 	static BOOL bNoNAT;
 	static int  nNatType;
 	DWORD ipArrayTemp[MAX_ADAPTER_NUM];  /* Network byte order */
 	int ipCountTemp;
-
-
-	ret = pViewerNode->httpOP.DoRegister1("gbk", "zh");
-	TRACE("DoRegister1...ret=%d\n", ret);
-
-	if (ret == -1) {
-		pViewerNode->bNeedRegister = TRUE;
-		return;
-	}
-	else if (ret == 0) {
-		/* Exit this applicantion. */
-		//::PostMessage(pDlgWnd, WM_REGISTER_EXIT, 0, 0);
-		pViewerNode->bNeedRegister = TRUE;
-		return;
-	}
-	else if (ret == 1) {
-		pViewerNode->bNeedRegister = TRUE;
-		return;
-	}
 
 
 	::EnterCriticalSection(&(pViewerNode->localbind_csec));////////
@@ -226,12 +205,11 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 		pViewerNode->httpOP.m0_port = SECOND_CONNECT_PORT;
 	}
 
-	pViewerNode->bNeedRegister = FALSE;
-
-
 _OUT:
 	::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
-	return;
+
+
+	eloop_register_timeout(g1_register_period, 0, HandleRegister, pViewerNode, NULL);
 }
 
 DWORD WINAPI WorkingThreadFn(LPVOID pvThreadParam)
@@ -239,6 +217,10 @@ DWORD WINAPI WorkingThreadFn(LPVOID pvThreadParam)
 	eloop_init(NULL);
 
 	eloop_register_timeout(2, 0, HandleKeepLoop, NULL, NULL);
+	for (int i = 0; i < MAX_VIEWER_NUM; i++)
+	{
+		eloop_register_timeout(1 + i * 2, 0, HandleRegister, &(g_pShiyong->viewerArray[i]), NULL);
+	}
 
 	/* Loop... */
 	eloop_run();
@@ -253,9 +235,8 @@ DWORD WINAPI WorkingThreadFn(LPVOID pvThreadParam)
 //  0: NG
 //  1: OK
 //
-int CheckPassword(VIEWER_NODE *pViewerNode, SOCKET_TYPE sock_type, SOCKET fhandle, ANYPC_NODE *nodeInfo, int nRetry)
+int CheckPassword(VIEWER_NODE *pViewerNode, SOCKET_TYPE sock_type, SOCKET fhandle, int nRetry)
 {
-	BYTE bTopoPrimary = 1;
 	DWORD dwServerVersion;
 	BYTE bFuncFlags;
 	BYTE bTopoLevel;
@@ -263,12 +244,31 @@ int CheckPassword(VIEWER_NODE *pViewerNode, SOCKET_TYPE sock_type, SOCKET fhandl
 	char szPassEnc[MAX_PATH];
 
 
+	//检查看是否第一个rudp连接，第一个rudp连接应该是TopoPrimary
+	BOOL hasConnection = FALSE;
+	for (int i = 0; i < MAX_VIEWER_NUM; i++)
+	{
+		if (g_pShiyong->viewerArray[i].bUsing == FALSE) {
+			continue;
+		}
+		if (g_pShiyong->viewerArray[i].bConnected) {
+			hasConnection = TRUE;
+			break;
+		}
+	}
+	if (hasConnection) {
+		pViewerNode->bTopoPrimary = FALSE;
+	}
+	else {
+		pViewerNode->bTopoPrimary = TRUE;
+	}
+
 	php_md5(pViewerNode->password, szPassEnc, sizeof(szPassEnc));
 
-	if (CtrlCmd_HELLO(sock_type, fhandle, pViewerNode->httpOP.m0_node_id, g0_version, bTopoPrimary, szPassEnc, pViewerNode->httpOP.m1_peer_node_id, &dwServerVersion, &bFuncFlags, &bTopoLevel, &wResult) == 0) {
+	if (CtrlCmd_HELLO(sock_type, fhandle, pViewerNode->httpOP.m0_node_id, g0_version, pViewerNode->bTopoPrimary, szPassEnc, pViewerNode->httpOP.m1_peer_node_id, &dwServerVersion, &bFuncFlags, &bTopoLevel, &wResult) == 0) {
 		if (wResult == CTRLCMD_RESULT_OK) {
 			//set_encdec_key((unsigned char *)szPassEnc, strlen(szPassEnc));
-			nodeInfo->func_flags = bFuncFlags;
+			//nodeInfo->func_flags = bFuncFlags;
 			g_pShiyong->device_topo_level = bTopoLevel + 1;
 			return 1;
 		}
@@ -295,6 +295,8 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 		WORD wCmd;
 		DWORD copy_len;
 		BYTE topo_level;
+		BYTE dest_node_id[6];
+		int index;
 		unsigned char *pRecvData;
 		int ret;
 
@@ -341,6 +343,49 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 			break;
 
 		case CMD_CODE_TOPO_EVENT:
+
+			if (RecvStream(ftype, fhandle, buf, 6) != 0) {
+				return;
+			}
+			if (RecvStream(ftype, fhandle, buf, 6) != 0) {
+				return;
+			}
+			memcpy(dest_node_id, buf, 6);
+
+			pRecvData = (unsigned char *)malloc(copy_len - 12);
+			if (RecvStream(ftype, fhandle, (char *)pRecvData, copy_len - 12) != 0) {
+				free(pRecvData);
+				return;
+			}
+
+			index = g_pShiyong->FindViewerNode(dest_node_id);
+			if (-1 != index)
+			{
+				g_pShiyong->viewerArray[index].httpOP.ParseEventValue((char *)pRecvData);
+				if (stricmp(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "Connect") == 0)
+				{
+					g_pShiyong->ConnectNode(index, REPEATER_PASSWORD);
+				}
+				else if (stricmp(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "ConnectRev") == 0)
+				{
+					g_pShiyong->ConnectRevNode(index, REPEATER_PASSWORD);
+				}
+				else if (stricmp(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "Disconnect") == 0)
+				{
+					g_pShiyong->DisconnectNode(&(g_pShiyong->viewerArray[index]));
+				}
+			}
+			else {
+				index = g_pShiyong->FindTopoRouteItem(dest_node_id);
+				if (-1 != index)
+				{
+					int guaji_index = g_pShiyong->device_route_table[index].guaji_index;
+					CtrlCmd_TOPO_EVENT(SOCKET_TYPE_TCP, arrServerProcesses[guaji_index].m_fhandle, dest_node_id, (const char *)pRecvData);
+				}
+			}
+
+			free(pRecvData);
+
 			break;
 
 		case CMD_CODE_TOPO_SETTINGS:
@@ -373,9 +418,6 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 
 			for (int i = 0; i < MAX_SERVER_NUM; i++)
 			{
-				if (arrServerProcesses[i].m_bPeerConnected == FALSE) {
-					continue;
-				}
 				int ret = CtrlCmd_TOPO_SETTINGS(SOCKET_TYPE_TCP, arrServerProcesses[i].m_fhandle, g_pShiyong->device_topo_level, (const char *)pRecvData);
 				if (ret < 0) {
 					continue;
@@ -412,11 +454,12 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy = FALSE);
 void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 {
-	//连接是为了视频监控。。。
-	//if (pDlg->m_bConnectAv == TRUE)
-	{
-		SetStatusInfo(pDlg->m_hWnd, _T("成功建立连接，正在接收音视频。。。"));
+	SetStatusInfo(pDlg->m_hWnd, _T("成功建立连接。。。"));
+	pViewerNode->bConnected = TRUE;
 
+	//连接是为了视频监控。。。
+	if (pViewerNode->bTopoPrimary)
+	{
 		//必须视频可靠传输，音频非冗余传输！！！
 		BYTE bFlags = AV_FLAGS_VIDEO_ENABLE | AV_FLAGS_AUDIO_ENABLE | AV_FLAGS_VIDEO_RELIABLE | AV_FLAGS_VIDEO_H264 | AV_FLAGS_AUDIO_G729A;
 		BYTE bVideoSize = AV_VIDEO_SIZE_VGA;
@@ -433,17 +476,19 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 		DWORD audioChannel = 0;
 		DWORD videoChannel = 0;
 		CtrlCmd_AV_START(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
+	}
 
+	//Loop...,需要CShiyong::DisconnectNode()才能退出Loop！！！
+	pViewerNode->bQuitRecvSocketLoop = FALSE;
+	RecvSocketDataLoop(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
 
-		//Loop...,需要CtrlCmd_AV_STOP()才能退出Loop！！！
-		pViewerNode->bQuitRecvSocketLoop = FALSE;
-		RecvSocketDataLoop(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
-
-
+	{
 		//CtrlCmd_AV_STOP()将在CShiyong::DisconnectNode()中调用
 		//CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
 	}
+
 	SetStatusInfo(pDlg->m_hWnd, _T("即将断开连接。。。"));
+	pViewerNode->bConnected = FALSE;
 }
 
 
@@ -451,8 +496,6 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 {
 	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)lpParameter;
 	CShiyong *pDlg = g_pShiyong;
-	TCHAR szNodeIdStr[MAX_LOADSTRING];
-	TCHAR szPubIpStr[16];
 	TCHAR szStatusStr[MAX_LOADSTRING];
 	sockaddr_in my_addr;
 	sockaddr_in their_addr;
@@ -464,19 +507,11 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 	int i, nRetry;
 
 
-	//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(FALSE);
-	//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(FALSE);
-	//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(FALSE);
-
-
-	if (	StunTypeUnknown == pViewerNode->anypcNode.nat_type ||
-			StunTypeFailure == pViewerNode->anypcNode.nat_type ||
-			StunTypeBlocked == pViewerNode->anypcNode.nat_type         )
+	if (	StunTypeUnknown == pViewerNode->httpOP.m1_peer_nattype ||
+			StunTypeFailure == pViewerNode->httpOP.m1_peer_nattype ||
+			StunTypeBlocked == pViewerNode->httpOP.m1_peer_nattype         )
 	{
 		SetStatusInfo(pDlg->m_hWnd, "StunType不支持，无法连接！");
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
@@ -484,54 +519,12 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 	}
 
 
-	SetStatusInfo(pDlg->m_hWnd, "正在提交本机连接信息，请稍候。。。");
-	nRetry = 3;
-	do {
-		HandleRegister(pViewerNode, NULL);
-	} while (nRetry-- > 0 && pViewerNode->bNeedRegister);
-	if (pViewerNode->bNeedRegister) {
-		SetStatusInfo(pDlg->m_hWnd, "提交连接信息失败！");
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
-		CloseHandle(pViewerNode->hConnectThread);
-		pViewerNode->hConnectThread = NULL;
-		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
-	}
+	//SetStatusInfo(pDlg->m_hWnd, "正在提交本机连接信息，请稍候。。。");
+	//nRetry = 3;
+	//do {
+	//	HandleRegister(pViewerNode, NULL);
+	//} while (nRetry-- > 0 && pViewerNode->bNeedRegister);
 
-
-	::EnterCriticalSection(&(pViewerNode->localbind_csec));////////
-
-	strncpy(szNodeIdStr, pViewerNode->anypcNode.node_id_str, sizeof(szNodeIdStr));
-	SetStatusInfo(pDlg->m_hWnd, "正在获取对方连接信息。。。");
-	nRetry = 3;
-	ret = -1;
-	while (nRetry-- > 0 && ret == -1) {
-		ret = pViewerNode->httpOP.DoConnect("gbk", "zh", szNodeIdStr);
-	}
-	if (ret < 1) {
-		::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
-		SetStatusInfo(pDlg->m_hWnd, "获取对方连接信息失败！");
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
-		CloseHandle(pViewerNode->hConnectThread);
-		pViewerNode->hConnectThread = NULL;
-		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
-	}
-
-	if (ret == 2) {
-		pViewerNode->httpOP.m1_wait_time -= 5;
-		if (pViewerNode->httpOP.m1_wait_time < 0) {
-			pViewerNode->httpOP.m1_wait_time = 0;
-		}
-	}
-
-	//if (pViewerNode->httpOP.m1_wait_time > 30) {
-	//	pDlg->ShowNotificationBox("提示：升级ID后可以快速获得服务响应，避免长时间排队等待。");
-	//}
 
 	for (i = pViewerNode->httpOP.m1_wait_time; i > 0; i--) {
 		_snprintf(szStatusStr, sizeof(szStatusStr), "正在排队等待服务响应，%d秒。。。", i);
@@ -539,32 +532,14 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 		Sleep(1000);
 	}
 
-	if (ret == 2) {
-		::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
-		
-		DWORD dwID = 0;
-		pViewerNode->hConnectThreadRev = CreateThread(NULL, 0, ConnectThreadFnRev, pViewerNode, 0, &dwID);
-		WaitForSingleObject(pViewerNode->hConnectThreadRev, INFINITE);
-		CloseHandle(pViewerNode->hConnectThreadRev);
-		pViewerNode->hConnectThreadRev = NULL;
-		
-		CloseHandle(pViewerNode->hConnectThread);
-		pViewerNode->hConnectThread = NULL;
-		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
-	}
+
+	::EnterCriticalSection(&(pViewerNode->localbind_csec));////////
 
 
 	pViewerNode->httpOP.m1_use_udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
 	if (pViewerNode->httpOP.m1_use_udp_sock == INVALID_SOCKET) {
 		::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
 		SetStatusInfo(pDlg->m_hWnd, "连接失败！(udp socket failed)");
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
@@ -583,9 +558,6 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 		SetStatusInfo(pDlg->m_hWnd, "连接失败！(udp bind failed)");
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
@@ -601,9 +573,6 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 		SetStatusInfo(pDlg->m_hWnd, "连接失败！(FindOutConnection failed)");
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
@@ -636,9 +605,6 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 		UDT::close(fhandle);
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
@@ -661,9 +627,6 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 		UDT::close(fhandle);
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
@@ -680,9 +643,6 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 		UDT::close(fhandle);
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
@@ -701,7 +661,7 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 
 
 	SetStatusInfo(pDlg->m_hWnd, _T("成功建立连接，正在验证访问密码。。。"));
-	ret = CheckPassword(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, &(pViewerNode->anypcNode), 2);
+	ret = CheckPassword(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, 2);
 	if (-1 == ret) {
 		SetStatusInfo(pDlg->m_hWnd, "验证密码时通信出错，无法连接！");
 	}
@@ -728,9 +688,6 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 	pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
 
 	::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
-	//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-	//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-	//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 	CloseHandle(pViewerNode->hConnectThread);
 	pViewerNode->hConnectThread = NULL;
 	pDlg->ReturnViewerNode(pViewerNode);
@@ -748,16 +705,8 @@ DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter)
 	int nRetry;
 
 
-	//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(FALSE);
-	//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(FALSE);
-	//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(FALSE);
-
-
-	pViewerNode->httpOP.m1_use_peer_ip = inet_addr(pViewerNode->anypcNode.pub_ip_str);
-	pViewerNode->httpOP.m1_use_peer_port = atol(pViewerNode->anypcNode.pub_port_str);
-	//if (FALSE == pViewerNode->anypcNode.bLanNode) {
-	//	pViewerNode->httpOP.m1_use_peer_port = pViewerNode->httpOP.m0_p2p_port - 2;//SECOND_CONNECT_PORT
-	//}
+	pViewerNode->httpOP.m1_use_peer_ip = pViewerNode->httpOP.m1_peer_ip;
+	pViewerNode->httpOP.m1_use_peer_port = pViewerNode->httpOP.m1_peer_port;
 	//TRACE("@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
 	//	(pViewerNode->httpOP.m1_use_peer_ip & 0x000000ff) >> 0,
 	//	(pViewerNode->httpOP.m1_use_peer_ip & 0x0000ff00) >> 8,
@@ -771,9 +720,6 @@ DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter)
 	pViewerNode->httpOP.m1_use_udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
 	if (pViewerNode->httpOP.m1_use_udp_sock == INVALID_SOCKET) {
 		SetStatusInfo(pDlg->m_hWnd, _T("连接失败！(udp socket failed)"));
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 		CloseHandle(pViewerNode->hConnectThread2);
 		pViewerNode->hConnectThread2 = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
@@ -791,9 +737,6 @@ DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter)
 		SetStatusInfo(pDlg->m_hWnd, _T("连接失败！(udp bind failed)"));
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 		CloseHandle(pViewerNode->hConnectThread2);
 		pViewerNode->hConnectThread2 = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
@@ -811,9 +754,6 @@ DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter)
 		UDT::close(fhandle);
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 		CloseHandle(pViewerNode->hConnectThread2);
 		pViewerNode->hConnectThread2 = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
@@ -836,9 +776,6 @@ DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter)
 		UDT::close(fhandle);
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 		CloseHandle(pViewerNode->hConnectThread2);
 		pViewerNode->hConnectThread2 = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
@@ -851,7 +788,7 @@ DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter)
 
 
 	SetStatusInfo(pDlg->m_hWnd, _T("成功建立连接，正在验证访问密码。。。"));
-	ret = CheckPassword(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, &(pViewerNode->anypcNode), 2);
+	ret = CheckPassword(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, 2);
 	if (-1 == ret) {
 		SetStatusInfo(pDlg->m_hWnd, "验证密码时通信出错，无法连接！");
 	}
@@ -877,9 +814,6 @@ DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter)
 	ret = closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 	pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
 
-	//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-	//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-	//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
 	CloseHandle(pViewerNode->hConnectThread2);
 	pViewerNode->hConnectThread2 = NULL;
 	pDlg->ReturnViewerNode(pViewerNode);
@@ -901,18 +835,26 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 	int i, nRetry;
 
 
-	//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(FALSE);
-	//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(FALSE);
-	//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(FALSE);
+	pViewerNode->httpOP.m1_wait_time -= 5;
+	if (pViewerNode->httpOP.m1_wait_time < 0) {
+		pViewerNode->httpOP.m1_wait_time = 0;
+	}
+
+	for (i = pViewerNode->httpOP.m1_wait_time; i > 0; i--) {
+		_snprintf(szStatusStr, sizeof(szStatusStr), "正在排队等待服务响应，%d秒。。。", i);
+		SetStatusInfo(pDlg->m_hWnd, szStatusStr);
+		Sleep(1000);
+	}
+
 
 	SetStatusInfo(pDlg->m_hWnd, "正在等待对方发起反向连接，请稍候。。。");
 
 	udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
 	if (udp_sock == INVALID_SOCKET) {
 		SetStatusInfo(pDlg->m_hWnd, "连接失败！(udp socket failed)");
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
+		CloseHandle(pViewerNode->hConnectThreadRev);
+		pViewerNode->hConnectThreadRev = NULL;
+		pDlg->ReturnViewerNode(pViewerNode);
 		return -1;
 	}
 
@@ -926,9 +868,9 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 	if (bind(udp_sock, (sockaddr *)&my_addr, sizeof(my_addr)) < 0) {
 		SetStatusInfo(pDlg->m_hWnd, "连接失败！(udp bind failed)");
 		closesocket(udp_sock);
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
+		CloseHandle(pViewerNode->hConnectThreadRev);
+		pViewerNode->hConnectThreadRev = NULL;
+		pDlg->ReturnViewerNode(pViewerNode);
 		return -1;
 	}
 
@@ -942,9 +884,9 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 		SetStatusInfo(pDlg->m_hWnd, "连接失败！(udt bind failed)");
 		UDT::close(serv);
 		closesocket(udp_sock);
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
+		CloseHandle(pViewerNode->hConnectThreadRev);
+		pViewerNode->hConnectThreadRev = NULL;
+		pDlg->ReturnViewerNode(pViewerNode);
 		return -1;
 	}
 
@@ -953,9 +895,9 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 		SetStatusInfo(pDlg->m_hWnd, "连接失败！(udt listen failed)");
 		UDT::close(serv);
 		closesocket(udp_sock);
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
+		CloseHandle(pViewerNode->hConnectThreadRev);
+		pViewerNode->hConnectThreadRev = NULL;
+		pDlg->ReturnViewerNode(pViewerNode);
 		return -1;
 	}
 	
@@ -969,9 +911,9 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 		SetStatusInfo(pDlg->m_hWnd, "暂时性网络状况不好，直连有点小困难，请稍后重试或者采用TCP连接");
 		UDT::close(serv);
 		closesocket(udp_sock);
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
+		CloseHandle(pViewerNode->hConnectThreadRev);
+		pViewerNode->hConnectThreadRev = NULL;
+		pDlg->ReturnViewerNode(pViewerNode);
 		return -1;
 	}
 	//////////////////
@@ -982,9 +924,9 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 		SetStatusInfo(pDlg->m_hWnd, "暂时性网络状况不好，直连有点小困难，请稍后重试或者采用TCP连接");
 		UDT::close(serv);
 		closesocket(udp_sock);
-		//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-		//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
+		CloseHandle(pViewerNode->hConnectThreadRev);
+		pViewerNode->hConnectThreadRev = NULL;
+		pDlg->ReturnViewerNode(pViewerNode);
 		return -1;
 	}
 
@@ -998,7 +940,7 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 
 
 	SetStatusInfo(pDlg->m_hWnd, _T("成功建立连接，正在验证访问密码。。。"));
-	ret = CheckPassword(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, &(pViewerNode->anypcNode), 2);
+	ret = CheckPassword(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, 2);
 	if (-1 == ret) {
 		SetStatusInfo(pDlg->m_hWnd, "验证密码时通信出错，无法连接！");
 	}
@@ -1024,9 +966,9 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 	ret = closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 	pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
 
-	//pDlg->GetDlgItem(IDC_BUTTON_USE_RECORD)->EnableWindow(TRUE);
-	//pDlg->GetDlgItem(IDC_LIST_REGION)->EnableWindow(TRUE);
-	//pDlg->GetDlgItem(IDC_LIST_MAIN)->EnableWindow(TRUE);
+	CloseHandle(pViewerNode->hConnectThreadRev);
+	pViewerNode->hConnectThreadRev = NULL;
+	pDlg->ReturnViewerNode(pViewerNode);
 	return 0;
 }
 
@@ -1043,17 +985,8 @@ static void InitVar()
 	strncpy(g1_http_server, DEFAULT_HTTP_SERVER, sizeof(g1_http_server));
 	strncpy(g1_stun_server, DEFAULT_STUN_SERVER, sizeof(g1_stun_server));
 
-	g0_audio_channels = 0;
-	g0_video_channels = 0;
 	g1_register_period = DEFAULT_REGISTER_PERIOD;  /* Seconds */
 	g1_expire_period = DEFAULT_EXPIRE_PERIOD;  /* Seconds */
-
-	g1_lowest_level_for_av = 0;
-	g1_lowest_level_for_vnc = 0;
-	g1_lowest_level_for_ft = 0;
-	g1_lowest_level_for_adb = 0;
-	g1_lowest_level_for_webmoni = 0;
-	g1_lowest_level_allow_hide = 0;
 }
 
 
@@ -1071,13 +1004,17 @@ CShiyong::CShiyong()
 		viewerArray[i].bUsing = FALSE;
 		viewerArray[i].nID = -1;
 		viewerArray[i].bFirstCheckStun = TRUE;
-		viewerArray[i].bNeedRegister = TRUE;
 		::InitializeCriticalSection(&(viewerArray[i].localbind_csec));
 		
+		viewerArray[i].bConnected = FALSE;
 		viewerArray[i].httpOP.m0_is_admin = TRUE;
 		viewerArray[i].httpOP.m0_is_busy = FALSE;
 		viewerArray[i].httpOP.m0_p2p_port = FIRST_CONNECT_PORT - (i+1)*4;
 		
+		//每次有不一样的node_id
+		Sleep(1100);
+		generate_nodeid(viewerArray[i].httpOP.m0_node_id, sizeof(viewerArray[i].httpOP.m0_node_id));
+
 		viewerArray[i].bQuitRecvSocketLoop = TRUE;
 
 		viewerArray[i].m_sps_len = 0;
@@ -1086,7 +1023,11 @@ CShiyong::CShiyong()
 	
 	currentSourceIndex = -1;
 
+#if FIRST_LEVEL_REPEATER
+	device_topo_level = 0;
+#else
 	device_topo_level = 1;
+#endif
 	generate_nodeid(device_node_id, sizeof(device_node_id));
 
 	g_pShiyong = this;
@@ -1122,60 +1063,27 @@ BOOL CShiyong::OnInit()
 	// 异常: OCX 属性页应返回 FALSE
 }
 
-void CShiyong::ConnectNode(char *anypc_node_id, char *password)
+void CShiyong::ConnectNode(int i, char *password)
 {
-	int i;
-	//{{{{--------------------------------------->
-	for (i = 0; i < MAX_VIEWER_NUM; i++ ) {
-		if (viewerArray[i].bUsing == FALSE) {
-			break;
-		}
+	if (i < 0 || i >= MAX_VIEWER_NUM) {
+		return;
 	}
 
-	if (i == MAX_VIEWER_NUM) { // no free node
-		printf("对不起，没有空闲的VIEWER_NODE!\n");
+	if (viewerArray[i].bUsing == TRUE) {
 		return;
 	}
 
 	viewerArray[i].bUsing = TRUE;
 	viewerArray[i].nID = i;
-	//<---------------------------------------}}}}
-
-
-
-	ANYPC_NODE anypcNode;
-	int cntServer = 1;
-	int nNum;
-	int ret = viewerArray[i].httpOP.DoQueryList("gbk", "zh", anypc_node_id, &anypcNode, &cntServer, &nNum);
-	if (ret == -1 || cntServer != 1) {
-		printf("无法获取该受控端的P2P连接信息!\n");
-		//{{{{--------------------------------------->
-		viewerArray[i].bUsing = FALSE;
-		viewerArray[i].nID = -1;
-		//<---------------------------------------}}}}
-		return;
-	}
-	anypcNode.bLanNode = FALSE;
-
-
-	if (strcmp(anypcNode.location, "") == 0) {
-		printf("该受控端的P2P连接信息无效!\n");
-		//{{{{--------------------------------------->
-		viewerArray[i].bUsing = FALSE;
-		viewerArray[i].nID = -1;
-		//<---------------------------------------}}}}
-		return;
-	}
 
 
 	//{{{{--------------------------------------->
 	viewerArray[i].hConnectThread = NULL;
 	viewerArray[i].hConnectThread2 = NULL;
 	viewerArray[i].hConnectThreadRev = NULL;
-	viewerArray[i].bFirstCheckStun = TRUE;
-	viewerArray[i].bNeedRegister = TRUE;
-	viewerArray[i].anypcNode = anypcNode;
 	viewerArray[i].bQuitRecvSocketLoop = TRUE;
+	viewerArray[i].bConnected = FALSE;
+	viewerArray[i].bTopoPrimary = FALSE;
 
 	viewerArray[i].m_sps_len = 0;
 	viewerArray[i].m_pps_len = 0;
@@ -1183,16 +1091,11 @@ void CShiyong::ConnectNode(char *anypc_node_id, char *password)
 	strncpy(viewerArray[i].password, password, sizeof(viewerArray[i].password));
 	//<---------------------------------------}}}}
 
-
-	//每次有不一样的node_id
-	generate_nodeid(viewerArray[i].httpOP.m0_node_id, sizeof(viewerArray[i].httpOP.m0_node_id));
-
-	mac_addr(viewerArray[i].anypcNode.node_id_str, viewerArray[i].httpOP.m1_peer_node_id, NULL);
+	//mac_addr(viewerArray[i].anypcNode.node_id_str, viewerArray[i].httpOP.m1_peer_node_id, NULL);
 
 
 	DWORD dwID = 0;
-	if ((FALSE == viewerArray[i].anypcNode.bLanNode) 
-		&& (FALSE == viewerArray[i].anypcNode.no_nat))
+	if (FALSE == viewerArray[i].httpOP.m1_peer_nonat)
 	{
 		viewerArray[i].hConnectThread = CreateThread(NULL, 0, ConnectThreadFn, (void *)(&(viewerArray[i])), 0, &dwID);
 	}
@@ -1201,12 +1104,51 @@ void CShiyong::ConnectNode(char *anypc_node_id, char *password)
 	}
 }
 
-void CShiyong::DisconnectNode(VIEWER_NODE *pViewerNode)
+void CShiyong::ConnectRevNode(int i, char *password)
 {
-	if (pViewerNode->bUsing == FALSE || pViewerNode->bQuitRecvSocketLoop == TRUE) {
+	if (i < 0 || i >= MAX_VIEWER_NUM) {
 		return;
 	}
-	CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+
+	if (viewerArray[i].bUsing == TRUE) {
+		return;
+	}
+
+	viewerArray[i].bUsing = TRUE;
+	viewerArray[i].nID = i;
+
+
+	//{{{{--------------------------------------->
+	viewerArray[i].hConnectThread = NULL;
+	viewerArray[i].hConnectThread2 = NULL;
+	viewerArray[i].hConnectThreadRev = NULL;
+	viewerArray[i].bQuitRecvSocketLoop = TRUE;
+	viewerArray[i].bConnected = FALSE;
+	viewerArray[i].bTopoPrimary = FALSE;
+
+	viewerArray[i].m_sps_len = 0;
+	viewerArray[i].m_pps_len = 0;
+
+	strncpy(viewerArray[i].password, password, sizeof(viewerArray[i].password));
+	//<---------------------------------------}}}}
+
+	//mac_addr(viewerArray[i].anypcNode.node_id_str, viewerArray[i].httpOP.m1_peer_node_id, NULL);
+
+
+	DWORD dwID = 0;
+	{
+		viewerArray[i].hConnectThreadRev = CreateThread(NULL, 0, ConnectThreadFnRev, (void *)(&(viewerArray[i])), 0, &dwID);
+	}
+}
+
+void CShiyong::DisconnectNode(VIEWER_NODE *pViewerNode)
+{
+	if (pViewerNode->bUsing == FALSE) {
+		return;
+	}
+	if (pViewerNode->bTopoPrimary) {
+		CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+	}
 	pViewerNode->bQuitRecvSocketLoop = TRUE;
 }
 
@@ -1217,6 +1159,33 @@ void CShiyong::ReturnViewerNode(VIEWER_NODE *pViewerNode)
 		pViewerNode->bUsing = FALSE;
 		pViewerNode->nID = -1;
 	}
+}
+
+// -1: Not exist
+int CShiyong::FindViewerNode(BYTE *viewer_node_id)
+{
+	for (int i = 0; i < MAX_VIEWER_NUM; i++)
+	{
+		if (memcmp(viewerArray[i].httpOP.m0_node_id, viewer_node_id, 6) == 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+// -1: Not exist
+int CShiyong::FindTopoRouteItem(BYTE *dest_node_id)
+{
+	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
+	{
+		if (device_route_table[i].bUsing == FALSE) {
+			continue;
+		}
+		if (memcmp(device_route_table[i].node_id, dest_node_id, 6) == 0) {
+			return i;
+		}
+	}
+	return -1;
 }
 
 void CShiyong::DoExit()

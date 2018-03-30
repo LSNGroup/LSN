@@ -17,7 +17,7 @@
 #define MAX_ROUTE_ITEM_NUM	2048
 
 typedef struct _tag_topo_route_item {
-	BYTE guaji_node_id[6];//向下的出口
+	int guaji_index;//向下的出口
 	BYTE route_item_type;
 	BYTE topo_level;
 	BYTE node_id[6];
@@ -30,7 +30,9 @@ typedef struct _tag_topo_route_item {
 		char  guaji_node_str[256];  //ip|port|pub_ip|pub_port|no_nat|nat_type
 		char viewer_node_str[256];  //
 		char device_node_str[256];  //device_uuid|node_name|version|os_info
-	}u; 
+	}u;
+	int nID;
+	BOOL bUsing;
 } TOPO_ROUTE_ITEM;
 
 
@@ -39,10 +41,10 @@ typedef struct _tag_topo_route_item {
 
 typedef struct _tag_viewer_node {
 	BOOL bFirstCheckStun;
-	BOOL bNeedRegister;
 	CRITICAL_SECTION localbind_csec;
-	ANYPC_NODE anypcNode;
 	HttpOperate httpOP;
+	BOOL bConnected;
+	BOOL bTopoPrimary;
 	//FAKERTPRECV *m_pFRR;
 	//TLV_RECV *m_pTlvRecv;
 	BOOL bQuitRecvSocketLoop;
@@ -84,11 +86,16 @@ public:
 	int currentSourceIndex;
 	void ReturnViewerNode(VIEWER_NODE *pViewerNode);
 
-	void ConnectNode(char *anypc_node_id, char *password);
+	void ConnectNode(int i, char *password);
+	void ConnectRevNode(int i, char *password);
 	void DisconnectNode(VIEWER_NODE *pViewerNode);
 
-	int device_topo_level;
+	BYTE device_topo_level;
 	BYTE device_node_id[6];
+	TOPO_ROUTE_ITEM device_route_table[MAX_ROUTE_ITEM_NUM];
+
+	int FindViewerNode(BYTE *viewer_node_id);
+	int FindTopoRouteItem(BYTE *dest_node_id);
 };
 
 extern CShiyong* g_pShiyong;

@@ -114,17 +114,19 @@ N Bytes, Data.
 
 #define CMD_CODE_NULL			0x00EE  /* CMD_CODE_NULL  | 0 */
 
-#define CMD_CODE_IPC_REPORT		0x00D0  /* CMD_CODE_IPC_REPORT  | 12 + n |   source_node_id  | 00:00:00:00:00:00 | report_string */
+#define CMD_CODE_IPC_REPORT		0x00D0  /* CMD_CODE_IPC_REPORT  | 12 + n |   (guaji)source_node_id  | 00:00:00:00:00:00 | report_string */
 
-#define CMD_CODE_TOPO_REPORT	0x00D1  /* CMD_CODE_TOPO_REPORT | 12 + n |   source_node_id  | 00:00:00:00:00:00 | report_string */
+#define CMD_CODE_TOPO_REPORT	0x00D1  /* CMD_CODE_TOPO_REPORT | 12 + n |  (device)source_node_id  | 00:00:00:00:00:00 | report_string */
 
-#define CMD_CODE_TOPO_EVALUATE	0x00D2  /* CMD_CODE_TOPO_EVALUATE | 12 + 4 + 4 + 4 | source_node_id | object_node_id | begin_time | end_time | stream_flow */
+#define CMD_CODE_TOPO_DROP		0x00D2  /* CMD_CODE_TOPO_DROP | 1 + 6 |  node_type | node_id */
 
-#define CMD_CODE_TOPO_EVENT		0x00D3  /* CMD_CODE_TOPO_EVENT  | 12 + n | 00:00:00:00:00:00 |  dest_node_id  | event_string */
+#define CMD_CODE_TOPO_EVALUATE	0x00D3  /* CMD_CODE_TOPO_EVALUATE | 12 + 4 + 4 + 4 | (device)source_node_id | (guaji)object_node_id | begin_time | end_time | stream_flow */
 
-#define CMD_CODE_TOPO_SETTINGS	0x00D4  /* CMD_CODE_TOPO_SETTINGS | 12 + 1 + n | 00:00:00:00:00:00 | FF:FF:FF:FF:FF:FF | topo_level | settings_string */
+#define CMD_CODE_TOPO_EVENT		0x00D4  /* CMD_CODE_TOPO_EVENT  | 12 + n | 00:00:00:00:00:00 |  dest_node_id  | event_string */
 
-#define CMD_CODE_TOPO_PACKET	0x00D5  /* CMD_CODE_TOPO_PACKET | 1 + 20 + 6 + 6 + n | hop_count | packet_uuid | source_node_id  |  dest_node_id  | n bytes data */
+#define CMD_CODE_TOPO_SETTINGS	0x00D5  /* CMD_CODE_TOPO_SETTINGS | 12 + 1 + n | 00:00:00:00:00:00 | FF:FF:FF:FF:FF:FF | topo_level | settings_string */
+
+#define CMD_CODE_TOPO_PACKET	0x00D6  /* CMD_CODE_TOPO_PACKET | 1 + 20 + 6 + 6 + n | hop_count | packet_uuid | source_node_id  |  dest_node_id  | n bytes data */
 
 #define CMD_CODE_HELLO_REQ		0x0001  /* CMD_CODE_HELLO_REQ | 6+4+1+256 | client_node_id | client_version | topo_primary | password */
 #define CMD_CODE_HELLO_RESP		0x8001  /* CMD_CODE_HELLO_RESP | 6+4+1+1+2 | server_node_id | server_version | func_flags | topo_level | result_code */
@@ -194,6 +196,7 @@ int CtrlCmd_RUN(SOCKET_TYPE type, SOCKET fhandle, const char *exe_cmd, char *res
 
 int CtrlCmd_IPC_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string);
 int CtrlCmd_TOPO_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string);
+int CtrlCmd_TOPO_DROP(SOCKET_TYPE type, SOCKET fhandle, BYTE node_type, BYTE *node_id);
 int CtrlCmd_TOPO_EVALUATE(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, BYTE *object_node_id, DWORD begin_time, DWORD end_time, DWORD stream_flow);
 int CtrlCmd_TOPO_EVENT(SOCKET_TYPE type, SOCKET fhandle, BYTE *dest_node_id, const char *event_string);
 int CtrlCmd_TOPO_SETTINGS(SOCKET_TYPE type, SOCKET fhandle, BYTE topo_level, const char *settings_string);

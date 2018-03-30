@@ -38,24 +38,15 @@
 char g0_device_uuid[MAX_LOADSTRING];
 char g0_node_name[MAX_LOADSTRING];
 DWORD g0_version;
-DWORD g0_audio_channels;
-DWORD g0_video_channels;
 char g0_os_info[MAX_LOADSTRING];
 
 BOOL g1_is_active;
 DWORD g1_lowest_version;
-DWORD g1_admin_lowest_version;
 char g1_http_server[MAX_LOADSTRING];
 char g1_stun_server[MAX_LOADSTRING];
-char g1_mayi_server[MAX_LOADSTRING];
+char g1_measure_server[MAX_LOADSTRING];
 int g1_register_period;  /* Seconds */
 int g1_expire_period;  /* Seconds */
-int g1_lowest_level_for_av;
-int g1_lowest_level_for_vnc;
-int g1_lowest_level_for_ft;
-int g1_lowest_level_for_adb;
-int g1_lowest_level_for_webmoni;
-int g1_lowest_level_allow_hide;
 
 //#ifdef JNI_FOR_MOBILECAMERA
 BOOL g1_is_activated = TRUE;
@@ -323,104 +314,54 @@ BOOL HttpOperate::ParseIpValue(char *value)
 }
 
 
-/* event=Accept|3F-1A-CD-90-4B-67|61.126.78.32|23745|0|5|192.168.1.101-192.168.110.103|3478 */
-/* event=AcceptProxy|3F-1A-CD-90-4B-67|1|61.126.78.32|23745 */
+//	event,  /* event=3F-1A-CD-90-4B-67|6|Accept    |4F-1A-CD-90-66-88|61.126.78.32|23745|0|5|192.168.1.101-192.168.110.103|3478 */
+//          /* event=3F-1A-CD-90-4B-67|6|AcceptRev |4F-1A-CD-90-66-88|61.126.78.32|23745|0|5|192.168.1.101-192.168.110.103|3478 */
+//          /* event=3F-1A-CD-90-4B-67|6|Connect   |4F-1A-CD-90-66-88|61.126.78.32|23745|0|5|192.168.1.101-192.168.110.103|3478 */
+//          /* event=3F-1A-CD-90-4B-67|6|ConnectRev|4F-1A-CD-90-66-88|61.126.78.32|23745|0|5|192.168.1.101-192.168.110.103|3478 */
+//          /* event=3F-1A-CD-90-4B-67|6|Disconnect|4F-1A-CD-90-66-88 */
+//                   the_node_id   wait_time  type     peer_node_id       pub_ip  pub_port  no_nat  nat_type  ip  port 
 BOOL HttpOperate::ParseEventValue(char *value)
 {
 	char *p;
-	char *type_str, *node_id_str, *ip_str, *port_str, *no_nat_str, *nat_type_str, *priv_ip_str, *priv_port_str;
+	char *the_node_id_str, *wait_time_str, *type_str, *node_id_str, *ip_str, *port_str, *no_nat_str, *nat_type_str, *priv_ip_str, *priv_port_str;
 	int func_port;
 
-	if (!value) {
+	if (NULL == value) {
 		return FALSE;
 	}
 
+	/* THE NODE ID */
+	p = strchr(value, '|');
+	if (p == NULL) {
+		return FALSE;
+	}
+	*p = '\0';
+	the_node_id_str = value;
+	BYTE the_node_id[6];
+	mac_addr(the_node_id_str, the_node_id, NULL);
+	if (memcmp(the_node_id, m0_node_id, 6) != 0) {
+		return FALSE;
+	}
 
+	/* WAIT SECONDS */
+	value = p + 1;
+	p = strchr(value, '|');
+	if (p == NULL) {
+		return FALSE;
+	}
+	*p = '\0';
+	wait_time_str = value;
+	m1_wait_time  = atoi(wait_time_str);
+
+	/* TYPE STR */
+	value = p + 1;
 	p = strchr(value, '|');
 	if (p == NULL) {
 		return FALSE;
 	}
 	*p = '\0';
 	type_str = value;
-	if (strcmp(type_str, "Accept") == 0)
-	{
-
-		/* NODE ID */
-		value = p + 1;
-		p = strchr(value, '|');
-		if (p == NULL) {
-			return FALSE;
-		}
-		*p = '\0';
-		node_id_str = value;
-		mac_addr(node_id_str, m1_peer_node_id, NULL);
-
-		/* IP */
-		value = p + 1;
-		p = strchr(value, '|');
-		if (p == NULL) {
-			return FALSE;
-		}
-		*p = '\0';
-		ip_str = value;
-		m1_peer_ip = inet_addr(ip_str);
-
-		/* PORT */
-		value = p + 1;
-		p = strchr(value, '|');
-		if (p == NULL) {
-			return FALSE;
-		}
-		*p = '\0';
-		port_str = value;
-		m1_peer_port = atoi(port_str);
-
-		/* NO_NAT */
-		value = p + 1;
-		p = strchr(value, '|');
-		if (p == NULL) {
-			return FALSE;
-		}
-		*p = '\0';
-		no_nat_str = value;
-		if (strcmp(no_nat_str, "1") == 0) {
-			m1_peer_nonat = TRUE;
-		}
-		else {
-			m1_peer_nonat = FALSE;
-		}
-
-		/* NAT_TYPE */
-		value = p + 1;
-		p = strchr(value, '|');
-		if (p == NULL) {
-			return FALSE;
-		}
-		*p = '\0';
-		nat_type_str = value;
-		m1_peer_nattype = atoi(nat_type_str);
-
-		/* PRIVATE IP */
-		value = p + 1;
-		p = strchr(value, '|');
-		if (p == NULL) {
-			return FALSE;
-		}
-		*p = '\0';
-		priv_ip_str = value;
-		ParseIpValue(priv_ip_str);
-
-		/* PRIVATE PORT */
-		value = p + 1;
-		p = strchr(value, '|');
-		if (p != NULL) {
-			*p = '\0';  /* Last field */
-		}
-		priv_port_str = value;
-		m1_peer_pri_port = atoi(priv_port_str);
-
-	}
-	else if (strcmp(type_str, "AcceptRev") == 0)
+	if (strcmp(type_str, "Accept") == 0 || strcmp(type_str, "AcceptRev") == 0 || strcmp(type_str, "Connect") == 0 || strcmp(type_str, "ConnectRev") == 0)
 	{
 
 		/* NODE ID */
@@ -589,9 +530,23 @@ BOOL HttpOperate::ParseEventValue(char *value)
 		m1_peer_port = atoi(port_str);
 
 	}
+	else if (strcmp(type_str, "Disconnect") == 0)
+	{
+
+		/* NODE ID */
+		value = p + 1;
+		p = strchr(value, '|');
+		if (p != NULL) {
+			*p = '\0';  /* Last field */
+		}
+		node_id_str = value;
+		mac_addr(node_id_str, m1_peer_node_id, NULL);
+	}
+	else {
+		return FALSE;
+	}
 
 	strncpy(m1_event_type, type_str, sizeof(m1_event_type));
-
 	return TRUE;
 }
 
@@ -701,13 +656,6 @@ int HttpOperate::DoRegister1(const char *client_charset, const char *client_lang
 					bUpgradeVersion = TRUE;
 				}
 			}
-#else
-			else if (strcmp(name, "admin_lowest_version") == 0) {
-				g1_admin_lowest_version = atol(value);
-				if (g1_admin_lowest_version > g0_version) {
-					bUpgradeVersion = TRUE;
-				}
-			}
 #endif
 			else if (strcmp(name, "http_server") == 0) {
 				strncpy(value, UrlDecode(value).c_str(), sizeof(value));
@@ -725,10 +673,10 @@ int HttpOperate::DoRegister1(const char *client_charset, const char *client_lang
 					strncpy(g1_stun_server, value, sizeof(g1_stun_server));
 				}
 			}
-			else if (strcmp(name, "mayi_server") == 0) {
+			else if (strcmp(name, "measure_server") == 0) {
 				strncpy(value, UrlDecode(value).c_str(), sizeof(value));
-				if (strcmp(value, g1_mayi_server) != 0) {
-					strncpy(g1_mayi_server, value, sizeof(g1_mayi_server));
+				if (strcmp(value, g1_measure_server) != 0) {
+					strncpy(g1_measure_server, value, sizeof(g1_measure_server));
 				}
 			}
 			else if (strcmp(name, "http_client_ip") == 0) {
@@ -742,24 +690,6 @@ int HttpOperate::DoRegister1(const char *client_charset, const char *client_lang
 			}
 			else if (strcmp(name, "expire_period") == 0) {
 				g1_expire_period = atol(value);
-			}
-			else if (strcmp(name, "lowest_level_for_av") == 0) {
-				g1_lowest_level_for_av = atoi(value);
-			}
-			else if (strcmp(name, "lowest_level_for_vnc") == 0) {
-				g1_lowest_level_for_vnc = atoi(value);
-			}
-			else if (strcmp(name, "lowest_level_for_ft") == 0) {
-				g1_lowest_level_for_ft = atoi(value);
-			}
-			else if (strcmp(name, "lowest_level_for_adb") == 0) {
-				g1_lowest_level_for_adb = atoi(value);
-			}
-			else if (strcmp(name, "lowest_level_for_webmoni") == 0) {
-				g1_lowest_level_for_webmoni = atoi(value);
-			}
-			else if (strcmp(name, "lowest_level_allow_hide") == 0) {
-				g1_lowest_level_allow_hide = atoi(value);
 			}
 		}
 
@@ -846,10 +776,6 @@ int HttpOperate::DoRegister2(const char *client_charset, const char *client_lang
 		"&pub_port=%d"
 		"&no_nat=%d"
 		"&nat_type=%d"
-		"&is_admin=%d"
-		"&is_busy=%d"
-		"&audio_channels=%d"
-		"&video_channels=%d"
 		"&os_info=%s"
 		"&client_charset=%s"
 		"&client_lang=%s",
@@ -858,10 +784,6 @@ int HttpOperate::DoRegister2(const char *client_charset, const char *client_lang
 		UrlEncode(g0_node_name).c_str(), g0_version, MakeIpStr(), m0_port, MakePubIpStr(), m0_pub_port, 
 		(m0_no_nat ? 1 : 0),
 		m0_nat_type,
-		(m0_is_admin ? 1 : 0),
-		(m0_is_busy ? 1 : 0),
-		g0_audio_channels,
-		g0_video_channels,
 		g0_os_info,
 		client_charset, client_lang);
 	
@@ -935,10 +857,10 @@ int HttpOperate::DoRegister2(const char *client_charset, const char *client_lang
 					strncpy(g1_stun_server, value, sizeof(g1_stun_server));
 				}
 			}
-			else if (strcmp(name, "mayi_server") == 0) {
+			else if (strcmp(name, "measure_server") == 0) {
 				strncpy(value, UrlDecode(value).c_str(), sizeof(value));
-				if (strcmp(value, g1_mayi_server) != 0) {
-					strncpy(g1_mayi_server, value, sizeof(g1_mayi_server));
+				if (strcmp(value, g1_measure_server) != 0) {
+					strncpy(g1_measure_server, value, sizeof(g1_measure_server));
 				}
 			}
 			else if (strcmp(name, "http_client_ip") == 0) {
@@ -952,24 +874,6 @@ int HttpOperate::DoRegister2(const char *client_charset, const char *client_lang
 			}
 			else if (strcmp(name, "expire_period") == 0) {
 				g1_expire_period = atoi(value);
-			}
-			else if (strcmp(name, "lowest_level_for_av") == 0) {
-				g1_lowest_level_for_av = atoi(value);
-			}
-			else if (strcmp(name, "lowest_level_for_vnc") == 0) {
-				g1_lowest_level_for_vnc = atoi(value);
-			}
-			else if (strcmp(name, "lowest_level_for_ft") == 0) {
-				g1_lowest_level_for_ft = atoi(value);
-			}
-			else if (strcmp(name, "lowest_level_for_adb") == 0) {
-				g1_lowest_level_for_adb = atoi(value);
-			}
-			else if (strcmp(name, "lowest_level_for_webmoni") == 0) {
-				g1_lowest_level_for_webmoni = atoi(value);
-			}
-			else if (strcmp(name, "lowest_level_allow_hide") == 0) {
-				g1_lowest_level_allow_hide = atoi(value);
 			}
 			else if (strcmp(name, "is_activated") == 0) {
 				if (strcmp(value, "1") == 0) {

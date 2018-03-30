@@ -68,6 +68,8 @@ static void on_fake_rtp_payload(int payload_type, DWORD timestamp, unsigned char
 			bSendNri = 2;
 		}
 
+		bSendNri |= FAKERTP_RELIABLE_FLAG;//LSN转发器的要求！！！
+
 		FakeRtpSend_sendpacket(g_pServerNode->m_pFRS, timestamp, data, len, payload_type, AUDIO_CODEC_G729A, bSendNri);
 
 	}
@@ -306,11 +308,6 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 				break;
 			}
 			BYTE topo_level = *(BYTE *)buf;
-			if (g_device_topo_level > 1 && g_device_topo_level != topo_level) {
-#if LOG_MSG
-				log_msg("g_device_topo_level != topo_level\n", LOG_LEVEL_DEBUG);
-#endif
-			}
 			g_device_topo_level = topo_level;
 
 			unsigned char *pRecvData = (unsigned char *)malloc(copy_len - 12 -1);
@@ -321,7 +318,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 
 			ParseTopoSettings((const char *)pRecvData);
 
-			if (g_pServerNode->m_bConnected == TRUE) {
+			if (g_pServerNode->m_bConnected == TRUE && g_is_topo_primary) {
 				CtrlCmd_TOPO_SETTINGS(g_pServerNode->myHttpOperate.m1_use_sock_type, g_pServerNode->myHttpOperate.m1_use_udt_sock, g_device_topo_level, (const char *)pRecvData);;
 			}
 			free(pRecvData);

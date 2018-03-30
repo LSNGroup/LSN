@@ -28,6 +28,8 @@
 #define SYS_TEMP_USER			"Assistant"
 #define SYS_TEMP_PASSWORD		"ykz123"
 
+#define REPEATER_PASSWORD		"repeaterpassword"
+
 
 typedef struct _tag_anypc_node {
 	BOOL bLanNode;  /* LAN_NODE_SUPPORT */
@@ -40,10 +42,6 @@ typedef struct _tag_anypc_node {
 	char pub_port_str[8];
 	BOOL no_nat;
 	int  nat_type;
-	BOOL is_admin;
-	BOOL is_busy;
-	DWORD audio_channels;
-	DWORD video_channels;
 	char os_info[MAX_LOADSTRING];
 	BYTE func_flags;////
 	char device_uuid[MAX_LOADSTRING];

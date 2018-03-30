@@ -35,6 +35,7 @@ int  IPC_BIND_PORT = 20000;
 BYTE g_device_topo_level = 1;
 BYTE g_device_node_id[6];
 BYTE g_peer_node_id[6];//下级的Viewer Node id
+BOOL g_is_topo_primary = FALSE;//是否下级的主通道
 
 int g_video_width  = 0;
 int g_video_height = 0;
@@ -111,17 +112,6 @@ void StopDoConnection(SERVER_NODE* pServerNode)
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-
-
-int if_get_audio_channels()
-{
-	return 1;
-}
-
-int if_get_video_channels()
-{
-	return 1;
-}
 
 //
 //  0: OK
@@ -403,15 +393,6 @@ static void GetLocalInformation(HttpOperate *httpOP)
 		log_msg(msg, LOG_LEVEL_DEBUG);
 	}
 
-	/* Audio & Video */
-	{
-		g0_audio_channels = if_get_audio_channels();
-		g0_video_channels = if_get_video_channels();
-		sprintf(msg, "GetAudioVideoInfo: audio_channels=%d, video_channels=%d", 
-			g0_audio_channels, g0_video_channels);
-		log_msg(msg, LOG_LEVEL_DEBUG);
-	}
-
 	
 	/* Node Name */
 	if_read_nodename(g0_node_name, sizeof(g0_node_name));
@@ -439,8 +420,6 @@ static void InitVar()
 	strncpy(g1_stun_server, DEFAULT_STUN_SERVER, sizeof(g1_stun_server));
 
 
-	g0_audio_channels = if_get_audio_channels();
-	g0_video_channels = if_get_video_channels();
 	g1_register_period = DEFAULT_REGISTER_PERIOD;  /* Seconds */
 	g1_expire_period = DEFAULT_EXPIRE_PERIOD;  /* Seconds */
 	
@@ -793,10 +772,18 @@ DWORD WINAPI WorkingThreadFn1(LPVOID pvThreadParam)
 	WORD use_port;
 	char msg[MAX_LOADSTRING];
 	int ret;
+	int i;
 	int nRetry;
 
 
 	log_msg("WorkingThreadFn1()...", LOG_LEVEL_INFO);
+
+
+	for (i = pServerNode->myHttpOperate.m1_wait_time; i > 0; i--) {
+		_snprintf(msg, sizeof(msg), "正在排队等待服务响应，%d秒。。。\n", i);
+		log_msg(msg, LOG_LEVEL_INFO);
+		Sleep(1000);
+	}
 
 	pServerNode->myHttpOperate.m1_use_udp_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (pServerNode->myHttpOperate.m1_use_udp_sock == INVALID_SOCKET) {
@@ -906,10 +893,17 @@ DWORD WINAPI WorkingThreadFnRev(LPVOID pvThreadParam)
 	WORD use_port;
 	char msg[MAX_LOADSTRING];
 	int ret;
+	int i;
 	int nRetry;
 
 
 	log_msg("WorkingThreadFnRev()...", LOG_LEVEL_INFO);
+
+	for (i = pServerNode->myHttpOperate.m1_wait_time; i > 0; i--) {
+		_snprintf(msg, sizeof(msg), "正在排队等待服务响应，%d秒。。。", i);
+		log_msg(msg, LOG_LEVEL_INFO);
+		Sleep(1000);
+	}
 
 	pServerNode->myHttpOperate.m1_use_udp_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (pServerNode->myHttpOperate.m1_use_udp_sock == INVALID_SOCKET) {
@@ -1302,6 +1296,11 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 	WORD wCommand;
 	DWORD dwDataLength;
 	WORD wTemp;
+	BYTE source_node_id[6];
+	BYTE dest_node_id[6];
+	BYTE object_node_id[6];
+	DWORD begin_time,end_time,stream_flow;
+	char *temp_ptr;
 	char msg[MAX_LOADSTRING];
 	char szPassEnc[PHP_MD5_OUTPUT_CHARS + 1];
 	TCHAR szValueData[_MAX_PATH];
@@ -1346,6 +1345,7 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 				//	bQuitLoop = TRUE;
 				//	break;
 				//}
+				memcpy(g_peer_node_id, buff, 6);
 
 				ret = RecvStream(type, fhandle, buff, 4);
 				if (ret != 0) {
@@ -1358,6 +1358,7 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 					bQuitLoop = TRUE;
 					break;
 				}
+				g_is_topo_primary = (*(BYTE *)buff == 1);
 
 				ret = RecvStream(type, fhandle, buff, 256);
 				if (ret != 0) {
@@ -1521,6 +1522,78 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 
 			case CMD_CODE_NULL:
 				//收到保活包，什么也不做
+				break;
+
+			case CMD_CODE_TOPO_REPORT:
+
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
+				memcpy(source_node_id, buff, 6);
+
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
+
+				temp_ptr = (char *)malloc(dwDataLength - 12);
+				ret = RecvStream(type, fhandle, temp_ptr, dwDataLength - 12);
+				if (ret != 0) {
+					free(temp_ptr);
+					bQuitLoop = TRUE;
+					break;
+				}
+				CtrlCmd_TOPO_REPORT(SOCKET_TYPE_TCP, g_fhandle, source_node_id, (const char *)temp_ptr);
+				free(temp_ptr);
+
+				break;
+
+			case CMD_CODE_TOPO_EVALUATE:
+
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
+				memcpy(source_node_id, buff, 6);
+
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
+				memcpy(object_node_id, buff, 6);
+
+				ret = RecvStream(type, fhandle, buff, 4);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
+				begin_time = ntohl(pf_get_dword(buff));
+
+				ret = RecvStream(type, fhandle, buff, 4);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
+				end_time = ntohl(pf_get_dword(buff));
+
+				ret = RecvStream(type, fhandle, buff, 4);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
+				stream_flow = ntohl(pf_get_dword(buff));
+
+				CtrlCmd_TOPO_EVALUATE(SOCKET_TYPE_TCP, g_fhandle, source_node_id, object_node_id, begin_time, end_time, stream_flow);
+
+				break;
+
+			case CMD_CODE_TOPO_PACKET:
+
 				break;
 
 			case CMD_CODE_BYE_REQ:

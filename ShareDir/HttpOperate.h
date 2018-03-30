@@ -17,24 +17,15 @@
 extern char g0_device_uuid[MAX_LOADSTRING];
 extern char g0_node_name[MAX_LOADSTRING];
 extern DWORD g0_version;
-extern DWORD g0_audio_channels;
-extern DWORD g0_video_channels;
 extern char g0_os_info[MAX_LOADSTRING];
 
 extern BOOL g1_is_active;
 extern DWORD g1_lowest_version;
-extern DWORD g1_admin_lowest_version;
 extern char g1_http_server[MAX_LOADSTRING];
 extern char g1_stun_server[MAX_LOADSTRING];
-extern char g1_mayi_server[MAX_LOADSTRING];
+extern char g1_measure_server[MAX_LOADSTRING];
 extern int g1_register_period;  /* Seconds */
 extern int g1_expire_period;  /* Seconds */
-extern int g1_lowest_level_for_av;
-extern int g1_lowest_level_for_vnc;
-extern int g1_lowest_level_for_ft;
-extern int g1_lowest_level_for_adb;
-extern int g1_lowest_level_for_webmoni;
-extern int g1_lowest_level_allow_hide;
 
 //#ifdef JNI_FOR_MOBILECAMERA
 extern BOOL g1_is_activated;

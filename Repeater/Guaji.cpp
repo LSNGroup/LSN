@@ -48,6 +48,11 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 	char buff[16*1024];
 	WORD wCommand;
 	DWORD dwDataLength;
+	BYTE source_node_id[6];
+	BYTE dest_node_id[6];
+	BYTE object_node_id[6];
+	DWORD begin_time,end_time,stream_flow;
+	char *temp_ptr;
 
 	ret = RecvStream(type, fhandle, buff, 6);
 	if (ret != 0) {
@@ -81,7 +86,7 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				if (ret != 0) {
 					break;
 				}
-				pServerPorcess->m_bPeerPrimary = (*(BYTE *)buff == 1) ? TRUE : FALSE;
+				//(*(BYTE *)buff == 1
 
 				ret = RecvStream(type, fhandle, buff, 256);
 				if (ret != 0) {
@@ -108,7 +113,6 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 					break;
 				}
 				
-				pServerPorcess->m_bPeerPrimary = TRUE;
 				pServerPorcess->m_bAVStarted = TRUE;
 				pServerPorcess->m_bVideoEnable = ((BYTE)(buff[0]) & AV_FLAGS_VIDEO_ENABLE) != 0;
 				pServerPorcess->m_bAudioEnable = ((BYTE)(buff[0]) & AV_FLAGS_AUDIO_ENABLE) != 0;
@@ -132,7 +136,6 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				break;
 
 			case CMD_CODE_AV_STOP_REQ:
-				pServerPorcess->m_bPeerPrimary = FALSE;
 				pServerPorcess->m_bAVStarted = FALSE;
 				break;
 
@@ -150,6 +153,111 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 					break;
 				}
 				//DShowAV_Contrl(pServerNode, ntohs(pf_get_word(buff+0)), ntohl(pf_get_dword(buff+2)));
+				break;
+
+			case CMD_CODE_IPC_REPORT:
+
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					break;
+				}
+				memcpy(pServerPorcess->m_node_id, buff, 6);
+
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					break;
+				}
+
+				if (dwDataLength - 12 <= sizeof(pServerPorcess->m_ipcReport)) {
+					ret = RecvStream(type, fhandle, pServerPorcess->m_ipcReport, dwDataLength - 12);
+				}
+				else {
+					ret = RecvStream(type, fhandle, pServerPorcess->m_ipcReport, sizeof(pServerPorcess->m_ipcReport));
+					pServerPorcess->m_ipcReport[sizeof(pServerPorcess->m_ipcReport) - 1] = '\0';
+					for (int i = 0; i < (dwDataLength - 12) - sizeof(pServerPorcess->m_ipcReport); i++)
+					{
+						RecvStream(type, fhandle, buff, 1);
+					}
+				}
+
+				break;
+
+			case CMD_CODE_TOPO_REPORT: //RepeaterNode 的 rudp server 向上转发来的
+
+				break;
+
+			case CMD_CODE_TOPO_EVALUATE: //RepeaterNode 的 rudp server 向上转发来的
+
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					break;
+				}
+				memcpy(source_node_id, buff, 6);
+
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					break;
+				}
+				memcpy(object_node_id, buff, 6);
+
+				ret = RecvStream(type, fhandle, buff, 4);
+				if (ret != 0) {
+					break;
+				}
+				begin_time = ntohl(pf_get_dword(buff));
+
+				ret = RecvStream(type, fhandle, buff, 4);
+				if (ret != 0) {
+					break;
+				}
+				end_time = ntohl(pf_get_dword(buff));
+
+				ret = RecvStream(type, fhandle, buff, 4);
+				if (ret != 0) {
+					break;
+				}
+				stream_flow = ntohl(pf_get_dword(buff));
+
+
+				if (g_pShiyong->device_topo_level <= 1)//Root Node
+				{
+
+				}
+				else
+				{//优先选择Secondary通道，向上转发。。。
+					BOOL bFoundSecondary = FALSE;
+					for (int i = 0; i < MAX_VIEWER_NUM; i++)
+					{
+						if (g_pShiyong->viewerArray[i].bUsing == FALSE || g_pShiyong->viewerArray[i].bConnected == FALSE) {
+							continue;
+						}
+						if (g_pShiyong->viewerArray[i].bTopoPrimary == FALSE)
+						{
+							bFoundSecondary = TRUE;
+							CtrlCmd_TOPO_EVALUATE(g_pShiyong->viewerArray[i].httpOP.m1_use_sock_type, g_pShiyong->viewerArray[i].httpOP.m1_use_udt_sock, source_node_id, object_node_id, begin_time, end_time, stream_flow);
+							break;
+						}
+					}
+					if (FALSE == bFoundSecondary)
+					{
+						for (int i = 0; i < MAX_VIEWER_NUM; i++)
+						{
+							if (g_pShiyong->viewerArray[i].bUsing == FALSE || g_pShiyong->viewerArray[i].bConnected == FALSE) {
+								continue;
+							}
+							//if (g_pShiyong->viewerArray[i].bTopoPrimary == TRUE)
+							{
+								CtrlCmd_TOPO_EVALUATE(g_pShiyong->viewerArray[i].httpOP.m1_use_sock_type, g_pShiyong->viewerArray[i].httpOP.m1_use_udt_sock, source_node_id, object_node_id, begin_time, end_time, stream_flow);
+								break;
+							}
+						}
+					}
+				}
+
+				break;
+
+			case CMD_CODE_TOPO_PACKET: //RepeaterNode 的 rudp server 向上转发来的
+
 				break;
 
 			default:
@@ -270,8 +378,6 @@ void StartServerProcesses()
 
 		arrServerProcesses[i].m_fhandle = INVALID_SOCKET;
 
-		arrServerProcesses[i].m_bPeerConnected = FALSE;
-		arrServerProcesses[i].m_bPeerPrimary = FALSE;
 		arrServerProcesses[i].m_bAVStarted = FALSE;
 
 		arrServerProcesses[i].m_bVideoEnable = FALSE;

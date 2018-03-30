@@ -53,6 +53,7 @@ extern int  IPC_BIND_PORT;
 extern BYTE g_device_topo_level;
 extern BYTE g_device_node_id[6];
 extern BYTE g_peer_node_id[6];
+extern BOOL g_is_topo_primary;
 
 extern int g_video_width;
 extern int g_video_height;

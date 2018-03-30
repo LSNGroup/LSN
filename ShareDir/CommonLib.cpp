@@ -831,53 +831,12 @@ BOOL ParseRowValue(char *value, ANYPC_NODE *lpNode)
 
 
 	/* is_admin */
-	value = p + 1;
-	p = strchr(value, '|');
-	if (p == NULL) {
-		return FALSE;
-	}
-	*p = '\0';
-	if (strcmp(value, "1") == 0) {
-		lpNode->is_admin = TRUE;
-	}
-	else {
-		lpNode->is_admin = FALSE;
-	}
-
 
 	/* is_busy */
-	value = p + 1;
-	p = strchr(value, '|');
-	if (p == NULL) {
-		return FALSE;
-	}
-	*p = '\0';
-	if (strcmp(value, "1") == 0) {
-		lpNode->is_busy = TRUE;
-	}
-	else {
-		lpNode->is_busy = FALSE;
-	}
-
 
 	/* audio_channels */
-	value = p + 1;
-	p = strchr(value, '|');
-	if (p == NULL) {
-		return FALSE;
-	}
-	*p = '\0';
-	lpNode->audio_channels = atol(value);
-
 
 	/* video_channels */
-	value = p + 1;
-	p = strchr(value, '|');
-	if (p == NULL) {
-		return FALSE;
-	}
-	*p = '\0';
-	lpNode->video_channels = atol(value);
 
 
 	/* os_info */
