@@ -8,7 +8,6 @@
 #include "platform.h"
 #include "CommonLib.h"
 #include "HttpOperate.h"
-#include "ProxyServer.h"
 #include "phpMd5.h"
 #include "base64.h"
 #include "LogMsg.h"
@@ -107,7 +106,6 @@ void StopDoConnection(SERVER_NODE* pServerNode)
 	pServerNode->m_bDoConnection2 = FALSE;
 
 	DShowAV_Stop(pServerNode);
-	ProxyServerAllQuit();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -614,28 +612,29 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 			
 			char szIpcReport[512];
 			snprintf(szIpcReport, sizeof(szIpcReport), 
-				"node_id=%02X-%02X-%02X-%02X-%02X-%02X"
-				"&peer_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
-				"&is_busy=%d"
-				"&is_streaming=%d"
-				"&device_uuid=%s"
-				"&node_name=%s"
-				"&version=%ld"
-				"&os_info=%s"
-				"&ip=%s"
-				"&port=%d"
-				"&pub_ip=%s"
-				"&pub_port=%d"
-				"&no_nat=%d"
-				"&nat_type=%d",
+				"%02X-%02X-%02X-%02X-%02X-%02X"//"node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+				"|%02X-%02X-%02X-%02X-%02X-%02X"//"&peer_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+				"|%d"//"&is_busy=%d"
+				"|%d"//"&is_streaming=%d"
+				"|%s"//"&ip=%s"
+				"|%d"//"&port=%d"
+				"|%s"//"&pub_ip=%s"
+				"|%d"//"&pub_port=%d"
+				"|%d"//"&no_nat=%d"
+				"|%d"//"&nat_type=%d"
+				"|%s"//"&device_uuid=%s"
+				"|%s"//"&node_name=%s"
+				"|%ld"//"&version=%ld"
+				"|%s"//"&os_info=%s"
+				,
 				pServerNode->myHttpOperate.m0_node_id[0], pServerNode->myHttpOperate.m0_node_id[1], pServerNode->myHttpOperate.m0_node_id[2], pServerNode->myHttpOperate.m0_node_id[3], pServerNode->myHttpOperate.m0_node_id[4], pServerNode->myHttpOperate.m0_node_id[5], 
 				g_peer_node_id[0], g_peer_node_id[1], g_peer_node_id[2], g_peer_node_id[3], g_peer_node_id[4], g_peer_node_id[5],
 				(pServerNode->m_bConnected ? 1 : 0),
 				(pServerNode->m_bAVStarted ? 1 : 0),
-				g0_device_uuid, UrlEncode(g0_node_name).c_str(), g0_version, g0_os_info,
 				pServerNode->myHttpOperate.MakeIpStr(), pServerNode->myHttpOperate.m0_port, pServerNode->myHttpOperate.MakePubIpStr(), pServerNode->myHttpOperate.m0_pub_port, 
 				(pServerNode->myHttpOperate.m0_no_nat ? 1 : 0),
-				pServerNode->myHttpOperate.m0_nat_type);
+				pServerNode->myHttpOperate.m0_nat_type,
+				g0_device_uuid, UrlEncode(g0_node_name).c_str(), g0_version, g0_os_info);
 
 			CtrlCmd_IPC_REPORT(SOCKET_TYPE_TCP, g_fhandle, pServerNode->myHttpOperate.m0_node_id, szIpcReport);
 
@@ -757,7 +756,7 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 DWORD WINAPI UnregisterThreadFn(LPVOID pvThreadParam)
 {
 	SERVER_NODE* pServerNode = (SERVER_NODE*)pvThreadParam;
-	pServerNode->myHttpOperate.DoUnregister("gbk", "zh");
+	CtrlCmd_TOPO_DROP(SOCKET_TYPE_TCP, g_fhandle, ROUTE_ITEM_TYPE_GUAJINODE, pServerNode->myHttpOperate.m0_node_id);
 	return 0;
 }
 
@@ -1296,6 +1295,7 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 	WORD wCommand;
 	DWORD dwDataLength;
 	WORD wTemp;
+	BYTE node_type;
 	BYTE source_node_id[6];
 	BYTE dest_node_id[6];
 	BYTE object_node_id[6];
@@ -1312,7 +1312,6 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 
 	//CoInitialize(NULL);
 	if_on_client_connected(pServerNode);
-	ProxyServerClearQuitFlag();
 
 	while (FALSE == bQuitLoop && 
 			(pServerNode->m_bDoConnection1 || pServerNode->m_bDoConnection2))
@@ -1404,41 +1403,8 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 					bQuitLoop = TRUE;
 					break;
 				}
-				
-				bSingleQuit = FALSE;
-				wLocalTcpPort = ntohs(pf_get_word(buff));
-				
-				if (SOCKET_TYPE_TCP == type)
-				{
-					//Blocking...
-					DoProxyServer(&bSingleQuit, type, fhandle, wLocalTcpPort, inet_addr(g_tcp_address));
-				}
-				else if (SOCKET_TYPE_UDT == type)
-				{
-					fhandle_slave = UDT::socket(AF_INET, SOCK_STREAM, 0);
-					
-					ConfigUdtSocket(fhandle_slave);
-					
-					if (UDT::ERROR == UDT::bind2(fhandle_slave, pServerNode->myHttpOperate.m1_use_udp_sock))
-					{
-						UDT::close(fhandle_slave);
-						break;
-					}
-					
-					their_addr.sin_family = AF_INET;
-					their_addr.sin_port = htons(pServerNode->myHttpOperate.m1_use_peer_port);
-					their_addr.sin_addr.s_addr = pServerNode->myHttpOperate.m1_use_peer_ip;
-					memset(&(their_addr.sin_zero), '\0', 8);
-					ret = UDT::connect(fhandle_slave, (sockaddr*)&their_addr, sizeof(their_addr));
-					if (UDT::ERROR == ret)
-					{
-						UDT::close(fhandle_slave);
-						break;
-					}
-					
-					
-					ProxyServerStartProxy(SOCKET_TYPE_UDT, fhandle_slave, TRUE, wLocalTcpPort, inet_addr(g_tcp_address));
-				}
+
+				// Do nothing...
 
 				break;
 				
@@ -1551,6 +1517,26 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 
 				break;
 
+			case CMD_CODE_TOPO_DROP:
+
+				ret = RecvStream(type, fhandle, buff, 1);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
+				node_type = *(BYTE *)buff;
+
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
+				memcpy(object_node_id, buff, 6);
+
+				CtrlCmd_TOPO_DROP(SOCKET_TYPE_TCP, g_fhandle, node_type, object_node_id);
+
+				break;
+
 			case CMD_CODE_TOPO_EVALUATE:
 
 				ret = RecvStream(type, fhandle, buff, 6);
@@ -1604,7 +1590,6 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 	} /* while */
 
 	DShowAV_Stop(pServerNode);
-	ProxyServerAllQuit();
 	if_on_client_disconnected(pServerNode);
 	//CoUninitialize();
 	return 0;

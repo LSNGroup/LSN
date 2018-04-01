@@ -8,7 +8,6 @@
 #include "platform.h"
 #include "CommonLib.h"
 #include "HttpOperate.h"
-#include "ProxyServer.h"
 #include "phpMd5.h"
 #include "base64.h"
 #include "PacketRepeater.h"
@@ -48,6 +47,7 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 	char buff[16*1024];
 	WORD wCommand;
 	DWORD dwDataLength;
+	BYTE node_type;
 	BYTE source_node_id[6];
 	BYTE dest_node_id[6];
 	BYTE object_node_id[6];
@@ -184,6 +184,85 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 
 			case CMD_CODE_TOPO_REPORT: //RepeaterNode 的 rudp server 向上转发来的
 
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					break;
+				}
+				memcpy(source_node_id, buff, 6);
+
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					break;
+				}
+
+				temp_ptr = (char *)malloc(dwDataLength - 12);
+
+				ret = RecvStream(type, fhandle, temp_ptr, dwDataLength - 12);
+				if (ret != 0) {
+					free(temp_ptr);
+					break;
+				}
+
+				g_pShiyong->UpdateRouteTable(pServerPorcess->m_nIndex, temp_ptr);
+
+				if (g_pShiyong->device_topo_level <= 1)//Root Node, DoReport()
+				{
+
+				}
+				else
+				{//优先选择Primary通道，向上转发。。。
+					for (int i = 0; i < MAX_VIEWER_NUM; i++)
+					{
+						if (g_pShiyong->viewerArray[i].bUsing == FALSE || g_pShiyong->viewerArray[i].bConnected == FALSE) {
+							continue;
+						}
+						if (g_pShiyong->viewerArray[i].bTopoPrimary == TRUE)
+						{
+							CtrlCmd_TOPO_REPORT(g_pShiyong->viewerArray[i].httpOP.m1_use_sock_type, g_pShiyong->viewerArray[i].httpOP.m1_use_udt_sock, source_node_id, temp_ptr);
+							break;
+						}
+					}
+				}
+
+				free(temp_ptr);
+
+				break;
+
+			case CMD_CODE_TOPO_DROP: //RepeaterNode 的 rudp server 向上转发来的
+
+				ret = RecvStream(type, fhandle, buff, 1);
+				if (ret != 0) {
+					break;
+				}
+				node_type = *(BYTE *)buff;
+
+				ret = RecvStream(type, fhandle, buff, 6);
+				if (ret != 0) {
+					break;
+				}
+				memcpy(object_node_id, buff, 6);
+
+				g_pShiyong->DropRouteItem(node_type, object_node_id);
+
+				if (g_pShiyong->device_topo_level <= 1)//Root Node, DoDrop()
+				{
+
+				}
+				else
+				{//优先选择Primary通道，向上转发。。。
+					for (int i = 0; i < MAX_VIEWER_NUM; i++)
+					{
+						if (g_pShiyong->viewerArray[i].bUsing == FALSE || g_pShiyong->viewerArray[i].bConnected == FALSE) {
+							continue;
+						}
+						if (g_pShiyong->viewerArray[i].bTopoPrimary == TRUE)
+						{
+							CtrlCmd_TOPO_DROP(g_pShiyong->viewerArray[i].httpOP.m1_use_sock_type, g_pShiyong->viewerArray[i].httpOP.m1_use_udt_sock, node_type, object_node_id);
+							break;
+						}
+					}
+				}
+
 				break;
 
 			case CMD_CODE_TOPO_EVALUATE: //RepeaterNode 的 rudp server 向上转发来的
@@ -219,7 +298,7 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				stream_flow = ntohl(pf_get_dword(buff));
 
 
-				if (g_pShiyong->device_topo_level <= 1)//Root Node
+				if (g_pShiyong->device_topo_level <= 1)//Root Node, DoEvaluate()
 				{
 
 				}
@@ -376,6 +455,8 @@ void StartServerProcesses()
 	{
 		printf("ServerProcessNode %d online...\n", i+1);
 
+		arrServerProcesses[i].m_nIndex = i;
+
 		arrServerProcesses[i].m_fhandle = INVALID_SOCKET;
 
 		arrServerProcesses[i].m_bAVStarted = FALSE;
@@ -390,7 +471,7 @@ void StartServerProcesses()
 		_snprintf(szExeCmd, MAX_PATH, "RepeaterNode.exe  %s %d %d %s %s %d %d %d %d %d %s", SERVER_TYPE, UUID_EXT, MAX_SERVER_NUM, NODE_NAME, CONNECT_PASSWORD, p2p_port, IPC_SERVER_BIND_PORT, g_video_width, g_video_height, g_video_fps, g_tcp_address);
 		RunExeNoWait(szExeCmd, FALSE);
 
-		Sleep(1500);//保证RepeaterNode.exe 生成的受控端node_id不重复
+		Sleep(200);//保证RepeaterNode.exe 生成的受控端node_id不重复
 	}
 }
 

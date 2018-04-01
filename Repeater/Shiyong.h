@@ -26,9 +26,15 @@ typedef struct _tag_topo_route_item {
 	BOOL is_streaming;
 	BYTE peer_node_id[6];
 	DWORD last_refresh_time;
-	union { 
-		char  guaji_node_str[256];  //ip|port|pub_ip|pub_port|no_nat|nat_type
-		char viewer_node_str[256];  //
+	union {
+		struct { //ip|port|pub_ip|pub_port|no_nat|nat_type
+			char ip_str[16*MAX_ADAPTER_NUM];
+			char port_str[8];
+			char pub_ip_str[16];
+			char pub_port_str[8];
+			BOOL no_nat;
+			int  nat_type;
+		}node_nat_info;
 		char device_node_str[256];  //device_uuid|node_name|version|os_info
 	}u;
 	int nID;
@@ -93,9 +99,14 @@ public:
 	BYTE device_topo_level;
 	BYTE device_node_id[6];
 	TOPO_ROUTE_ITEM device_route_table[MAX_ROUTE_ITEM_NUM];
+	CRITICAL_SECTION route_table_csec;
 
 	int FindViewerNode(BYTE *viewer_node_id);
 	int FindTopoRouteItem(BYTE *dest_node_id);
+	void DropRouteItem(BYTE node_type, BYTE *node_id);
+	void CheckTopoRouteTable();
+	int UpdateRouteTable(int guajiIndex, char *report_string);
+	int DeviceTopoReport();
 };
 
 extern CShiyong* g_pShiyong;

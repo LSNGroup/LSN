@@ -8,7 +8,7 @@
 
 #define MAX_LOADSTRING			256
 #define MAX_KEY_NAME			512
-#define MAX_ADAPTER_NUM			6
+#define MAX_ADAPTER_NUM			3
 
 
 

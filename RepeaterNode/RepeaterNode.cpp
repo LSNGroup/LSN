@@ -107,28 +107,29 @@ static int DoIpcReportInConnection()
 	int ret = 0;
 	char szIpcReport[512];
 	snprintf(szIpcReport, sizeof(szIpcReport), 
-		"node_id=%02X-%02X-%02X-%02X-%02X-%02X"
-		"&peer_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
-		"&is_busy=%d"
-		"&is_streaming=%d"
-		"&device_uuid=%s"
-		"&node_name=%s"
-		"&version=%ld"
-		"&os_info=%s"
-		"&ip=%s"
-		"&port=%d"
-		"&pub_ip=%s"
-		"&pub_port=%d"
-		"&no_nat=%d"
-		"&nat_type=%d",
+		"%02X-%02X-%02X-%02X-%02X-%02X"//"node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+		"|%02X-%02X-%02X-%02X-%02X-%02X"//"&peer_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+		"|%d"//"&is_busy=%d"
+		"|%d"//"&is_streaming=%d"
+		"|%s"//"&ip=%s"
+		"|%d"//"&port=%d"
+		"|%s"//"&pub_ip=%s"
+		"|%d"//"&pub_port=%d"
+		"|%d"//"&no_nat=%d"
+		"|%d"//"&nat_type=%d"
+		"|%s"//"&device_uuid=%s"
+		"|%s"//"&node_name=%s"
+		"|%ld"//"&version=%ld"
+		"|%s"//"&os_info=%s"
+		,
 		g_pServerNode->myHttpOperate.m0_node_id[0], g_pServerNode->myHttpOperate.m0_node_id[1], g_pServerNode->myHttpOperate.m0_node_id[2], g_pServerNode->myHttpOperate.m0_node_id[3], g_pServerNode->myHttpOperate.m0_node_id[4], g_pServerNode->myHttpOperate.m0_node_id[5], 
 		g_peer_node_id[0], g_peer_node_id[1], g_peer_node_id[2], g_peer_node_id[3], g_peer_node_id[4], g_peer_node_id[5],
 		(g_pServerNode->m_bConnected ? 1 : 0),
 		(g_pServerNode->m_bAVStarted ? 1 : 0),
-		g0_device_uuid, UrlEncode(g0_node_name).c_str(), g0_version, g0_os_info,
 		g_pServerNode->myHttpOperate.MakeIpStr(), g_pServerNode->myHttpOperate.m0_port, g_pServerNode->myHttpOperate.MakePubIpStr(), g_pServerNode->myHttpOperate.m0_pub_port, 
 		(g_pServerNode->myHttpOperate.m0_no_nat ? 1 : 0),
-		g_pServerNode->myHttpOperate.m0_nat_type);
+		g_pServerNode->myHttpOperate.m0_nat_type,
+		g0_device_uuid, UrlEncode(g0_node_name).c_str(), g0_version, g0_os_info);
 
 	ret = CtrlCmd_IPC_REPORT(SOCKET_TYPE_TCP, g_fhandle, g_pServerNode->myHttpOperate.m0_node_id, szIpcReport);
 

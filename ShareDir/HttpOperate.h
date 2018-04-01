@@ -33,6 +33,8 @@ extern DWORD g1_comments_id;
 //#endif
 
 
+BOOL ParseLine(char *start, char *name, int name_size, char *value, int value_size, char **next);
+
 int ParseTopoSettings(const char *settings_string);
 
 
@@ -84,36 +86,6 @@ public:
 	BOOL ParseEventValue(char *value);
 	BOOL ParseHisInfoValue(char *value);
 	
-	
-	//
-	// Return Value:
-	// -1: Error
-	//  0: Should exit.
-	//  1: Should stop.
-	//  2: OK, continue.
-	//
-	int DoRegister1(const char *client_charset, const char *client_lang);
-
-
-	//
-	// Return Value:
-	// -1: Error
-	//  0: Should exit.
-	//  1: Should stop.
-	//  2: OK, continue.
-	//  3: Setup connection
-	//
-	int DoRegister2(const char *client_charset, const char *client_lang);
-
-
-	//
-	// Return Value:
-	// -1: Error
-	//  0: NG.
-	//  1: OK.
-	//
-	int DoUnregister(const char *client_charset, const char *client_lang);
-
 
 	//
 	// Return Value:

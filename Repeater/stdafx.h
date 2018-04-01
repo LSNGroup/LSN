@@ -51,6 +51,9 @@
 #include "iphlpapi.h"
 #pragma comment(lib, "iphlpapi.lib")
 
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
+
 
 
 // TODO: 在此处引用程序需要的其他头文件

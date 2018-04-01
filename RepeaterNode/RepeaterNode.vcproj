@@ -217,10 +217,6 @@
 				>
 			</File>
 			<File
-				RelativePath="..\ShareDir\ProxyServer.cpp"
-				>
-			</File>
-			<File
 				RelativePath=".\RepeaterNode.cpp"
 				>
 			</File>
@@ -296,14 +292,6 @@
 			</File>
 			<File
 				RelativePath="..\ShareDir\platform.h"
-				>
-			</File>
-			<File
-				RelativePath="..\ShareDir\proxycommon.inl"
-				>
-			</File>
-			<File
-				RelativePath="..\ShareDir\ProxyServer.h"
 				>
 			</File>
 			<File

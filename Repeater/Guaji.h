@@ -22,6 +22,7 @@ typedef struct _tag_server_process_node {
 	BOOL m_bAudioEnable;
 	BOOL m_bTLVEnable;
 
+	int m_nIndex;
 } SERVER_PROCESS_NODE;
 
 

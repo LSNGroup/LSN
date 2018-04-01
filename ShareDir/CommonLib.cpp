@@ -161,7 +161,7 @@ void generate_nodeid(BYTE *bNodeId, int nBuffLen)
 #else
 #error ERROR: Please check here!
 #endif
-		srand(temp);
+		srand(timeGetTime());
 		for (i = 4; i < 6; i++) {
 			bClientID[i] = (BYTE)(rand());
 		}

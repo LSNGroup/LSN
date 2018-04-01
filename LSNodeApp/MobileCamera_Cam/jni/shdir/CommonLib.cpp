@@ -58,6 +58,16 @@ int mac_addr(const char *lpMacStr, BYTE *lpMacAddr, int *lpAddrLen)
 	return 0;
 }
 
+static inline unsigned int get_seed()
+{
+	struct timeval t_start;
+
+	gettimeofday(&t_start, NULL);
+	uint32_t _microsec = (uint32_t)(t_start.tv_usec);
+
+	return _microsec;
+}
+
 void generate_nodeid(BYTE *bNodeId, int nBuffLen)
 {
 	int i;
@@ -76,7 +86,7 @@ void generate_nodeid(BYTE *bNodeId, int nBuffLen)
 #else
 #error ERROR: Please check here!
 #endif
-		srand(temp);
+		srand(get_seed());
 		for (i = 4; i < 6; i++) {
 			bClientID[i] = (BYTE)(rand());
 		}
