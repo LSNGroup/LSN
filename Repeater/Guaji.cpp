@@ -246,7 +246,7 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 
 				if (g_pShiyong->device_topo_level <= 1)//Root Node, DoDrop()
 				{
-
+					HttpOperate::DoDrop("gbk", "zh", g_pShiyong->device_node_id, (node_type == ROUTE_ITEM_TYPE_VIEWERNODE), object_node_id);
 				}
 				else
 				{//优先选择Primary通道，向上转发。。。

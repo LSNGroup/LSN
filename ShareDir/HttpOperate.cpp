@@ -15,20 +15,20 @@
 #endif
 
 
-#define HTTP_REGISTER_URL		"/cloudctrl/Register.php"
-#define HTTP_REGISTER_REFERER	"/cloudctrl/Register.html"
-#define HTTP_UNREGISTER_URL		"/cloudctrl/Unregister.php"
-#define HTTP_UNREGISTER_REFERER	"/cloudctrl/Unregister.html"
-#define HTTP_QUERYLIST_URL		"/cloudctrl/QueryNodeList.php"
-#define HTTP_QUERYLIST_REFERER	"/cloudctrl/QueryNodeList.html"
-#define HTTP_CONNECT_URL			"/cloudctrl/Connect.php"
-#define HTTP_CONNECT_REFERER		"/cloudctrl/Connect.html"
-#define HTTP_PROXY_URL				"/cloudctrl/Proxy.php"
-#define HTTP_PROXY_REFERER			"/cloudctrl/Proxy.html"
-#define HTTP_SENDEMAIL_URL			"/cloudctrl/SendEmail.php"
-#define HTTP_SENDEMAIL_REFERER		"/cloudctrl/SendEmail.html"
-#define HTTP_FETCHNODE_URL			"/cloudctrl/FetchNode.php"
-#define HTTP_FETCHNODE_REFERER		"/cloudctrl/FetchNode.html"
+#define HTTP_REGISTER_URL		"/lsnctrl/Register.php"
+#define HTTP_REGISTER_REFERER	"/lsnctrl/Register.html"
+#define HTTP_UNREGISTER_URL		"/lsnctrl/Unregister.php"
+#define HTTP_UNREGISTER_REFERER	"/lsnctrl/Unregister.html"
+#define HTTP_QUERYLIST_URL		"/lsnctrl/QueryNodeList.php"
+#define HTTP_QUERYLIST_REFERER	"/lsnctrl/QueryNodeList.html"
+#define HTTP_CONNECT_URL			"/lsnctrl/Connect.php"
+#define HTTP_CONNECT_REFERER		"/lsnctrl/Connect.html"
+#define HTTP_REPORT_URL				"/lsnctrl/Report.php"
+#define HTTP_REPORT_REFERER			"/lsnctrl/Report.html"
+#define HTTP_DROP_URL				"/lsnctrl/Drop.php"
+#define HTTP_DROP_REFERER			"/lsnctrl/Drop.html"
+#define HTTP_EVALUATE_URL			"/lsnctrl/Evaluate.php"
+#define HTTP_EVALUATE_REFERER		"/lsnctrl/Evaluate.html"
 
 #define POST_RESULT_START		"FLAG5TGB6YHNSTART"
 #define POST_RESULT_END			"FLAG5TGB6YHNEND"
@@ -929,10 +929,414 @@ int HttpOperate::DoConnect(const char *client_charset, const char *client_lang, 
 //
 // Return Value:
 // -1: Error
+//  0: Should stop.
+//  1: OK.
+//  2: settings
+//  3: settings,event
+int HttpOperate::DoReport1(const char *client_charset, const char *client_lang, ON_REPORT_SETTINGS_FN on_settings_fn)
+{
+#define POST_BUFF_SIZE  (1024*4)
+
+	TWSocket sockClient;
+	char szKey1[PHP_MD5_OUTPUT_CHARS+1];
+	char szKey2[PHP_MD5_OUTPUT_CHARS+1];
+	char szPostBody[1024*4];
+	char *szPost;
+	char *start, *end;
+	int result = 1;
+	char name[32];
+	char value[1024];
+	char *next_start = NULL;
+	BOOL bUpgradeVersion = FALSE;
+
+
+	if (dwHttpServerIp == 0) {
+		if (TWSocket::GetIPAddr(g1_http_server, szIpAddr, sizeof(szIpAddr)) == 0) {
+			return -1;
+		}
+		dwHttpServerIp = inet_addr(szIpAddr);
+	}
+
+	if (sockClient.Create() < 0) {
+		return -1;
+	}
+
+	if (sockClient.Connect(szIpAddr, HTTP_SERVER_PORT) != 0) {
+		dwHttpServerIp = 0;
+		sockClient.CloseSocket();
+		return -1;
+	}
+
+	szPost = (char *)malloc(POST_BUFF_SIZE);
+
+
+	snprintf(szPostBody, sizeof(szPostBody), 
+			 "settings_only=1"
+			 "&client_charset=%s"
+			 "&client_lang=%s",
+			 client_charset, client_lang);
+	
+	php_md5(szPostBody, szKey1, sizeof(szKey1));
+	php_md5(szKey1, szKey2, sizeof(szKey2));
+	strcat(szPostBody, "&session_key=");
+	strcat(szPostBody, szKey2);
+	
+	snprintf(szPost, POST_BUFF_SIZE, szPostFormat, 
+										HTTP_REPORT_URL,
+										g1_http_server, HTTP_REPORT_REFERER,
+										g1_http_server,
+										strlen(szPostBody),
+										szPostBody);
+
+	if (sockClient.Send_Stream(szPost, strlen(szPost)) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+	
+	if (RecvHttpResponse(&sockClient, szPost, POST_BUFF_SIZE, &start, &end) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+
+	strcpy(szPostBody, "");
+
+	while(1) {
+
+		if (ParseLine(start, name, sizeof(name), value, sizeof(value), &next_start) == FALSE) {
+			sockClient.CloseSocket();
+			free(szPost);
+			return -1;
+		}
+
+
+		if (strcmp(value, "") != 0)
+		{
+			if (strcmp(name, "is_active") == 0) {
+				if (strcmp(value, "0") == 0) {
+					result = 0;  /* stop */
+					break;
+				}
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "lowest_version") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "http_server") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "stun_server") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "measure_server") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "http_client_ip") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "register_period") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "expire_period") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+		}
+
+
+		if (next_start == NULL) {
+			break;
+		}
+		start = next_start;
+	}
+
+
+	sockClient.ShutDown();
+	sockClient.CloseSocket();
+
+	if (NULL != on_settings_fn && strlen(szPostBody) > 0)
+	{
+		result = 2;
+		on_settings_fn(szPostBody);
+	}
+
+	if (bUpgradeVersion) {
+		if (NULL == hThread_Upgrade) {
+			hThread_Upgrade = ::CreateThread(NULL,0,UpgradeThreadFn,NULL,0,&dwThreadID_Upgrade);
+		}
+		result = 2;
+	}
+
+	free(szPost);
+	return result;
+
+#undef POST_BUFF_SIZE
+}
+
+
+//
+// Return Value:
+// -1: Error
+//  0: Should stop.
+//  1: OK.
+//  2: settings
+//  3: settings,event
+int HttpOperate::DoReport2(const char *client_charset, const char *client_lang, 
+	DWORD joined_channel_id, BYTE joined_node_id[6],
+	const char *root_device_uuid, const char *root_public_ip, BYTE device_node_id[6],
+	int route_item_num, int route_item_max,
+	int level_1_max_connections, int level_1_current_connections, int level_1_max_streams, int level_1_current_streams,
+	int level_2_max_connections, int level_2_current_connections, int level_2_max_streams, int level_2_current_streams,
+	int level_3_max_connections, int level_3_current_connections, int level_3_max_streams, int level_3_current_streams,
+	int level_4_max_connections, int level_4_current_connections, int level_4_max_streams, int level_4_current_streams,
+	const char *node_array, //待连接Node集合的String数据(,;)
+	ON_REPORT_SETTINGS_FN on_settings_fn, ON_REPORT_EVENT_FN on_event_fn)
+{
+#define POST_BUFF_SIZE  (1024*32)
+
+	TWSocket sockClient;
+	char szKey1[PHP_MD5_OUTPUT_CHARS+1];
+	char szKey2[PHP_MD5_OUTPUT_CHARS+1];
+	char szPostBody[1024*32];
+	char *szPost;
+	char *start, *end;
+	int result = 1;
+	char name[32];
+	char value[1024];
+	char *next_start = NULL;
+	BOOL bUpgradeVersion = FALSE;
+
+
+	if (dwHttpServerIp == 0) {
+		if (TWSocket::GetIPAddr(g1_http_server, szIpAddr, sizeof(szIpAddr)) == 0) {
+			return -1;
+		}
+		dwHttpServerIp = inet_addr(szIpAddr);
+	}
+
+	if (sockClient.Create() < 0) {
+		return -1;
+	}
+
+	if (sockClient.Connect(szIpAddr, HTTP_SERVER_PORT) != 0) {
+		dwHttpServerIp = 0;
+		sockClient.CloseSocket();
+		return -1;
+	}
+
+	szPost = (char *)malloc(POST_BUFF_SIZE);
+
+
+	snprintf(szPostBody, sizeof(szPostBody), 
+			 "settings_only=0"
+			 "&joined_channel_id=%ld"
+			 "&joined_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+			 "&root_device_uuid=%s"
+			 "&root_public_ip=%s"
+			 "&device_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+			 "&route_item_num=%d"
+			 "&route_item_max=%d"
+			 "&level_1_max_connections=%d"
+			 "&level_1_current_connections=%d"
+			 "&level_1_max_streams=%d"
+			 "&level_1_current_streams=%d"
+			 "&level_2_max_connections=%d"
+			 "&level_2_current_connections=%d"
+			 "&level_2_max_streams=%d"
+			 "&level_2_current_streams=%d"
+			 "&level_3_max_connections=%d"
+			 "&level_3_current_connections=%d"
+			 "&level_3_max_streams=%d"
+			 "&level_3_current_streams=%d"
+			 "&level_4_max_connections=%d"
+			 "&level_4_current_connections=%d"
+			 "&level_4_max_streams=%d"
+			 "&level_4_current_streams=%d"
+			 "&node_array=%s"
+			 "&client_charset=%s"
+			 "&client_lang=%s",
+			joined_channel_id, 
+			joined_node_id[0],joined_node_id[1],joined_node_id[2],joined_node_id[3],joined_node_id[4],joined_node_id[5],
+			root_device_uuid, root_public_ip, 
+			device_node_id[0],device_node_id[1],device_node_id[2],device_node_id[3],device_node_id[4],device_node_id[5],
+			route_item_num, route_item_max,
+			level_1_max_connections, level_1_current_connections, level_1_max_streams, level_1_current_streams,
+			level_2_max_connections, level_2_current_connections, level_2_max_streams, level_2_current_streams,
+			level_3_max_connections, level_3_current_connections, level_3_max_streams, level_3_current_streams,
+			level_4_max_connections, level_4_current_connections, level_4_max_streams, level_4_current_streams,
+			node_array,
+			client_charset, client_lang);
+	
+	php_md5(szPostBody, szKey1, sizeof(szKey1));
+	php_md5(szKey1, szKey2, sizeof(szKey2));
+	strcat(szPostBody, "&session_key=");
+	strcat(szPostBody, szKey2);
+	
+	snprintf(szPost, POST_BUFF_SIZE, szPostFormat, 
+										HTTP_REPORT_URL,
+										g1_http_server, HTTP_REPORT_REFERER,
+										g1_http_server,
+										strlen(szPostBody),
+										szPostBody);
+
+	if (sockClient.Send_Stream(szPost, strlen(szPost)) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+	
+	if (RecvHttpResponse(&sockClient, szPost, POST_BUFF_SIZE, &start, &end) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+
+	strcpy(szPostBody, "");
+
+	while(1) {
+
+		if (ParseLine(start, name, sizeof(name), value, sizeof(value), &next_start) == FALSE) {
+			sockClient.CloseSocket();
+			free(szPost);
+			return -1;
+		}
+
+
+		if (strcmp(value, "") != 0)
+		{
+			if (strcmp(name, "is_active") == 0) {
+				if (strcmp(value, "0") == 0) {
+					result = 0;  /* Stop */
+					break;
+				}
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "lowest_version") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "http_server") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "stun_server") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "measure_server") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "http_client_ip") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "register_period") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "expire_period") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "is_activated") == 0) {
+
+			}
+			else if (strcmp(name, "comments_id") == 0) {
+
+			}
+			else if (strcmp(name, "event") == 0) {
+				if (NULL != on_event_fn)
+				{
+					result = 3;
+					on_event_fn(value);
+				}
+			}
+		}
+
+
+		if (next_start == NULL) {
+			break;
+		}
+		start = next_start;
+	}
+
+
+	sockClient.ShutDown();
+	sockClient.CloseSocket();
+
+	if (NULL != on_settings_fn && strlen(szPostBody) > 0)
+	{
+		result = 2;
+		on_settings_fn(szPostBody);
+	}
+
+	if (bUpgradeVersion) {
+		if (NULL == hThread_Upgrade) {
+			hThread_Upgrade = ::CreateThread(NULL,0,UpgradeThreadFn,NULL,0,&dwThreadID_Upgrade);
+		}
+		result = 2;
+	}
+
+	free(szPost);
+	return result;
+
+#undef POST_BUFF_SIZE
+}
+
+
+//
+// Return Value:
+// -1: Error
 //  0: NG.
 //  1: OK.
 //
-int HttpOperate::DoProxy(const char *client_charset, const char *client_lang, char *his_node_id_str, BOOL bIsTcp, WORD wFuncPort)
+int HttpOperate::DoDrop(const char *client_charset, const char *client_lang, BYTE sender_node_id[6], BOOL is_admin, BYTE node_id[6])
 {
 #define POST_BUFF_SIZE	(2*1024)
 
@@ -943,7 +1347,6 @@ int HttpOperate::DoProxy(const char *client_charset, const char *client_lang, ch
 	char *szPost;
 	char *start, *end;
 	int result = 0;
-	BOOL bIsServerProxy;
 	int ret;
 	char name[32];
 	char value[1024];
@@ -973,18 +1376,13 @@ int HttpOperate::DoProxy(const char *client_charset, const char *client_lang, ch
 
 
 	snprintf(szPostBody, sizeof(szPostBody), "sender_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
-												"&proxy_proto=%d"
-												"&func_port=%d"
-												"&need_applet=0"
-												"&my_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
-												"&his_node_id=%s"
+												"&is_admin=%d"
+												"&node_id=%02X-%02X-%02X-%02X-%02X-%02X"
 												"&client_charset=%s"
 												"&client_lang=%s",
-					m0_node_id[0], m0_node_id[1], m0_node_id[2], m0_node_id[3], m0_node_id[4], m0_node_id[5],
-					(bIsTcp ? 1 : 0),
-					wFuncPort,
-					m0_node_id[0], m0_node_id[1], m0_node_id[2], m0_node_id[3], m0_node_id[4], m0_node_id[5],
-					his_node_id_str, 
+					sender_node_id[0], sender_node_id[1], sender_node_id[2], sender_node_id[3], sender_node_id[4], sender_node_id[5],
+					(is_admin ? 1 : 0),
+					node_id[0], node_id[1], node_id[2], node_id[3], node_id[4], node_id[5],
 					client_charset, client_lang);
 	
 	php_md5(szPostBody, szKey1, sizeof(szKey1));
@@ -993,8 +1391,8 @@ int HttpOperate::DoProxy(const char *client_charset, const char *client_lang, ch
 	strcat(szPostBody, szKey2);
 	
 	snprintf(szPost, POST_BUFF_SIZE, szPostFormat, 
-										HTTP_PROXY_URL,
-										g1_http_server, HTTP_PROXY_REFERER,
+										HTTP_DROP_URL,
+										g1_http_server, HTTP_DROP_REFERER,
 										g1_http_server,
 										strlen(szPostBody),
 										szPostBody);
@@ -1029,20 +1427,6 @@ int HttpOperate::DoProxy(const char *client_charset, const char *client_lang, ch
 				break;
 			}
 		}
-		else if (strcmp(name, "is_server_proxy") == 0) {
-			if (strcmp(value, "1") == 0) {
-				bIsServerProxy = TRUE;
-			}
-			else {
-				bIsServerProxy = FALSE;
-			}
-		}
-		else if (strcmp(name, "proxy_ip") == 0) {
-			m1_peer_ip = inet_addr(value);
-		}
-		else if (strcmp(name, "proxy_port") == 0) {
-			m1_peer_port = atol(value);
-		}
 
 		if (next_start == NULL) {
 			break;
@@ -1066,14 +1450,14 @@ int HttpOperate::DoProxy(const char *client_charset, const char *client_lang, ch
 //  0: NG.
 //  1: OK.
 //
-int HttpOperate::DoSendEmail(const char *client_charset, const char *client_lang, const char *to_email, const char *subject, const char *content)
+int HttpOperate::DoEvaluate(const char *client_charset, const char *client_lang, BYTE sender_node_id[6], const char *record_array)
 {
-#define POST_BUFF_SIZE	(6*1024)
+#define POST_BUFF_SIZE	(32*1024)
 
 	TWSocket sockClient;
 	char szKey1[PHP_MD5_OUTPUT_CHARS+1];
 	char szKey2[PHP_MD5_OUTPUT_CHARS+1];
-	char szPostBody[4*1024];
+	char szPostBody[32*1024];
 	char *szPost;
 	char *start, *end;
 	int result = 0;
@@ -1083,11 +1467,9 @@ int HttpOperate::DoSendEmail(const char *client_charset, const char *client_lang
 	char *next_start = NULL;
 
 
-#ifdef ANDROID_NDK ////Debug
-	__android_log_print(ANDROID_LOG_INFO, "DoSendEmail", "[%s, %s], to_email=%s", client_charset, client_lang, to_email);
-	__android_log_print(ANDROID_LOG_INFO, "DoSendEmail", "subject=%s", subject);
-	__android_log_print(ANDROID_LOG_INFO, "DoSendEmail", "content=%s", content);
-#endif
+	if (record_array == NULL) {
+		return -1;
+	}
 
 	if (dwHttpServerIp == 0) {
 		if (TWSocket::GetIPAddr(g1_http_server, szIpAddr, sizeof(szIpAddr)) == 0) {
@@ -1112,17 +1494,11 @@ int HttpOperate::DoSendEmail(const char *client_charset, const char *client_lang
 
 
 	snprintf(szPostBody, sizeof(szPostBody), "sender_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
-												"&sender_cam_id=%ld"
-												"&to_email=%s"
-												"&subject=%s"
-												"&content=%s"
+												"&record_array=%s"
 												"&client_charset=%s"
 												"&client_lang=%s",
-					m0_node_id[0], m0_node_id[1], m0_node_id[2], m0_node_id[3], m0_node_id[4], m0_node_id[5],
-					g1_comments_id,
-					to_email,
-					UrlEncode(subject).c_str(),
-					UrlEncode(content).c_str(),
+					sender_node_id[0], sender_node_id[1], sender_node_id[2], sender_node_id[3], sender_node_id[4], sender_node_id[5],
+					UrlEncode(record_array).c_str(),
 					client_charset, client_lang);
 	
 	php_md5(szPostBody, szKey1, sizeof(szKey1));
@@ -1131,21 +1507,18 @@ int HttpOperate::DoSendEmail(const char *client_charset, const char *client_lang
 	strcat(szPostBody, szKey2);
 	
 	snprintf(szPost, POST_BUFF_SIZE, szPostFormat, 
-										HTTP_SENDEMAIL_URL,
-										g1_http_server, HTTP_SENDEMAIL_REFERER,
+										HTTP_EVALUATE_URL,
+										g1_http_server, HTTP_EVALUATE_REFERER,
 										g1_http_server,
 										strlen(szPostBody),
 										szPostBody);
-
-#ifdef ANDROID_NDK ////Debug
-	__android_log_print(ANDROID_LOG_INFO, "DoSendEmail", "%s", szPost);
-#endif
 
 	if (sockClient.Send_Stream(szPost, strlen(szPost)) < 0) {
 		sockClient.CloseSocket();
 		free(szPost);
 		return -1;
 	}
+
 
 	if (RecvHttpResponse(&sockClient, szPost, POST_BUFF_SIZE, &start, &end) < 0) {
 		sockClient.CloseSocket();
@@ -1169,122 +1542,6 @@ int HttpOperate::DoSendEmail(const char *client_charset, const char *client_lang
 			else {
 				break;
 			}
-		}
-
-		if (next_start == NULL) {
-			break;
-		}
-		start = next_start;
-	}
-
-	sockClient.ShutDown();
-	sockClient.CloseSocket();
-
-	free(szPost);
-	return result;
-
-#undef POST_BUFF_SIZE
-}
-
-
-//
-// Return Value:
-// -1: Error
-//  0: NG.
-//  n: n>0  comments_id
-//
-int HttpOperate::DoFetchNode(const char *client_charset, const char *client_lang, const char *external_app_name, const char *external_app_key, const char *type, const char *region, char passwd_buff[], int buff_size, char desc_buff[], int desc_size)
-{
-#define POST_BUFF_SIZE	(2*1024)
-
-	TWSocket sockClient;
-	char szKey1[PHP_MD5_OUTPUT_CHARS+1];
-	char szKey2[PHP_MD5_OUTPUT_CHARS+1];
-	char szPostBody[1024];
-	char *szPost;
-	char *start, *end;
-	int result = 0;
-	int ret;
-	char name[32];
-	char value[1024];
-	char *next_start = NULL;
-
-
-	if (dwHttpServerIp == 0) {
-		if (TWSocket::GetIPAddr(g1_http_server, szIpAddr, sizeof(szIpAddr)) == 0) {
-			return -1;
-		}
-		dwHttpServerIp = inet_addr(szIpAddr);
-	}
-
-	if (sockClient.Create() < 0) {
-		return -1;
-	}
-
-	if (sockClient.Connect(szIpAddr, HTTP_SERVER_PORT) != 0) {
-		dwHttpServerIp = 0;
-		sockClient.CloseSocket();
-		return -1;
-	}
-
-
-	szPost = (char *)malloc(POST_BUFF_SIZE);
-
-
-
-	snprintf(szPostBody, sizeof(szPostBody), "external_app_name=%s"
-												"&external_app_key=%s"
-												"&type=%s"
-												"&region=%s"
-												"&client_charset=%s"
-												"&client_lang=%s",
-					external_app_name, external_app_key, type, region, 
-					client_charset, client_lang);
-	
-	php_md5(szPostBody, szKey1, sizeof(szKey1));
-	php_md5(szKey1, szKey2, sizeof(szKey2));
-	strcat(szPostBody, "&session_key=");
-	strcat(szPostBody, szKey2);
-	
-	snprintf(szPost, POST_BUFF_SIZE, szPostFormat, 
-										HTTP_FETCHNODE_URL,
-										g1_http_server, HTTP_FETCHNODE_REFERER,
-										g1_http_server,
-										strlen(szPostBody),
-										szPostBody);
-
-	if (sockClient.Send_Stream(szPost, strlen(szPost)) < 0) {
-		sockClient.CloseSocket();
-		free(szPost);
-		return -1;
-	}
-
-
-	if (RecvHttpResponse(&sockClient, szPost, POST_BUFF_SIZE, &start, &end) < 0) {
-		sockClient.CloseSocket();
-		free(szPost);
-		return -1;
-	}
-
-
-	while(1) {
-
-		if (ParseLine(start, name, sizeof(name), value, sizeof(value), &next_start) == FALSE) {
-			sockClient.CloseSocket();
-			free(szPost);
-			return -1;
-		}
-
-		if (strcmp(name, "comments_id") == 0) {
-			result = atoi(value);
-		}
-		else if (strcmp(name, "passwd") == 0) {
-			char szPasswd[MAX_PATH];
-			strncpy(szPasswd, value + 2, sizeof(szPasswd));
-			strncpy(passwd_buff, Base64::decode(szPasswd).c_str(), buff_size);
-		}
-		else if (strcmp(name, "description") == 0) {
-			strncpy(desc_buff, value, desc_size);
 		}
 
 		if (next_start == NULL) {

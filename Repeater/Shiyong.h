@@ -96,6 +96,8 @@ public:
 	void ConnectRevNode(int i, char *password);
 	void DisconnectNode(VIEWER_NODE *pViewerNode);
 
+	DWORD joined_channel_id;
+	BYTE joined_node_id[6];
 	BYTE device_topo_level;
 	BYTE device_node_id[6];
 	TOPO_ROUTE_ITEM device_route_table[MAX_ROUTE_ITEM_NUM];
@@ -103,10 +105,22 @@ public:
 
 	int FindViewerNode(BYTE *viewer_node_id);
 	int FindTopoRouteItem(BYTE *dest_node_id);
+	int FindRouteNode(BYTE *node_id);
+	int FindRouteNode_NoLock(BYTE *node_id);
 	void DropRouteItem(BYTE node_type, BYTE *node_id);
 	void CheckTopoRouteTable();
 	int UpdateRouteTable(int guajiIndex, char *report_string);
 	int DeviceTopoReport();
+
+	const char *get_public_ip();
+	const char *get_node_array();
+
+	int get_route_item_num();
+
+	int get_level_max_connections(int topo_level);
+	int get_level_current_connections(int topo_level);
+	int get_level_max_streams(int topo_level);
+	int get_level_current_streams(int topo_level);
 };
 
 extern CShiyong* g_pShiyong;

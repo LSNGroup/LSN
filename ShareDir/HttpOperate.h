@@ -5,13 +5,16 @@
 #include "CommonLib.h"
 
 
-#define DEFAULT_HTTP_SERVER		"ykz.e2eye.com"
+#define DEFAULT_HTTP_SERVER		"www.e2eye.com"
 #define DEFAULT_STUN_SERVER		"Unknown" /* 可以用来测试是否可以访问HTTP Server */
 #define HTTP_SERVER_PORT		80
 
 #define DEFAULT_REGISTER_PERIOD		10
 #define DEFAULT_EXPIRE_PERIOD		25
 
+
+typedef void (*ON_REPORT_SETTINGS_FN)(char *settings_str);
+typedef void (*ON_REPORT_EVENT_FN)(char *event_str);
 
 
 extern char g0_device_uuid[MAX_LOADSTRING];
@@ -108,10 +111,30 @@ public:
 	//
 	// Return Value:
 	// -1: Error
-	//  0: NG.
+	//  0: Should stop.
 	//  1: OK.
+	//  2: settings
+	//  3: settings,event
+	static int DoReport1(const char *client_charset, const char *client_lang, ON_REPORT_SETTINGS_FN on_settings_fn);
+
+
 	//
-	int DoProxy(const char *client_charset, const char *client_lang, char *his_node_id_str, BOOL bIsTcp = FALSE, WORD wFuncPort = 0);
+	// Return Value:
+	// -1: Error
+	//  0: Should stop.
+	//  1: OK.
+	//  2: settings
+	//  3: settings,event
+	static int DoReport2(const char *client_charset, const char *client_lang, 
+		DWORD joined_channel_id, BYTE joined_node_id[6],
+		const char *root_device_uuid, const char *root_public_ip, BYTE device_node_id[6],
+		int route_item_num, int route_item_max,
+		int level_1_max_connections, int level_1_current_connections, int level_1_max_streams, int level_1_current_streams,
+		int level_2_max_connections, int level_2_current_connections, int level_2_max_streams, int level_2_current_streams,
+		int level_3_max_connections, int level_3_current_connections, int level_3_max_streams, int level_3_current_streams,
+		int level_4_max_connections, int level_4_current_connections, int level_4_max_streams, int level_4_current_streams,
+		const char *node_array, //待连接Node集合的String数据(,;)
+		ON_REPORT_SETTINGS_FN on_settings_fn, ON_REPORT_EVENT_FN on_event_fn);
 
 
 	//
@@ -120,17 +143,16 @@ public:
 	//  0: NG.
 	//  1: OK.
 	//
-	int DoSendEmail(const char *client_charset, const char *client_lang, const char *to_email, const char *subject, const char *content);
+	static int DoDrop(const char *client_charset, const char *client_lang, BYTE sender_node_id[6], BOOL is_admin, BYTE node_id[6]);
 
 
 	//
 	// Return Value:
 	// -1: Error
 	//  0: NG.
-	//  n: n>0  comments_id
+	//  1: OK.
 	//
-	static int DoFetchNode(const char *client_charset, const char *client_lang, const char *external_app_name, const char *external_app_key, const char *type, const char *region, char passwd_buff[], int buff_size, char desc_buff[], int desc_size);
-
+	static int DoEvaluate(const char *client_charset, const char *client_lang, BYTE sender_node_id[6], const char *record_array);
 };
 
 

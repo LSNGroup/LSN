@@ -26,6 +26,10 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter);
 DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter);
 DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter);
 
+static int lastDoReportTime = 0;
+void OnReportSettings(char *settings_str);
+void OnReportEvent(char *event_str);
+
 
 #define strProductName   ("Repeater")
 #define SetStatusInfo(hWnd, lpStatusInfo)   do {printf(lpStatusInfo);	printf("\n");} while(0)
@@ -35,12 +39,29 @@ static void HandleKeepLoop(void *eloop_ctx, void *timeout_ctx)
 {
 	g_pShiyong->CheckTopoRouteTable();
 
-	eloop_register_timeout(3, 0, HandleKeepLoop, NULL, NULL);
+	if (g_pShiyong->device_topo_level <= 1)
+	{
+		int now = time(NULL);
+		if (now - lastDoReportTime >= g1_register_period)
+		{
+			lastDoReportTime = now;
+			HttpOperate::DoReport2("gbk", "zh", g_pShiyong->joined_channel_id, g_pShiyong->joined_node_id, 
+				g0_device_uuid, g_pShiyong->get_public_ip(), g_pShiyong->device_node_id, 
+				g_pShiyong->get_route_item_num(), MAX_ROUTE_ITEM_NUM, 
+				g_pShiyong->get_level_max_connections(1), g_pShiyong->get_level_current_connections(1), g_pShiyong->get_level_max_streams(1), g_pShiyong->get_level_current_streams(1),
+				g_pShiyong->get_level_max_connections(2), g_pShiyong->get_level_current_connections(2), g_pShiyong->get_level_max_streams(2), g_pShiyong->get_level_current_streams(2),
+				g_pShiyong->get_level_max_connections(3), g_pShiyong->get_level_current_connections(3), g_pShiyong->get_level_max_streams(3), g_pShiyong->get_level_current_streams(3),
+				g_pShiyong->get_level_max_connections(4), g_pShiyong->get_level_current_connections(4), g_pShiyong->get_level_max_streams(4), g_pShiyong->get_level_current_streams(4),
+				g_pShiyong->get_node_array(), OnReportSettings, OnReportEvent);
+		}
+	}
+
+	eloop_register_timeout(1, 0, HandleKeepLoop, NULL, NULL);
 }
 
 static void HandleTopoReport(void *eloop_ctx, void *timeout_ctx)
 {
-	g_pShiyong->DeviceTopoReport();
+	g_pShiyong->DeviceTopoReport();//非Root节点
 }
 
 static void HandleDoUnregister(void *eloop_ctx, void *timeout_ctx)
@@ -53,7 +74,7 @@ static void HandleDoUnregister(void *eloop_ctx, void *timeout_ctx)
 
 	if (g_pShiyong->device_topo_level <= 1)//Root Node, DoDrop()
 	{
-
+		HttpOperate::DoDrop("gbk", "zh", g_pShiyong->device_node_id, (node_type == ROUTE_ITEM_TYPE_VIEWERNODE), object_node_id);
 	}
 	else
 	{//优先选择Primary通道，向上转发。。。
@@ -244,7 +265,7 @@ DWORD WINAPI WorkingThreadFn(LPVOID pvThreadParam)
 {
 	eloop_init(NULL);
 
-	eloop_register_timeout(3, 0, HandleKeepLoop, NULL, NULL);
+	eloop_register_timeout(1, 0, HandleKeepLoop, NULL, NULL);
 	for (int i = 0; i < MAX_VIEWER_NUM; i++)
 	{
 		eloop_register_timeout(1 + i * 2, 0, HandleRegister, &(g_pShiyong->viewerArray[i]), NULL);
@@ -255,6 +276,59 @@ DWORD WINAPI WorkingThreadFn(LPVOID pvThreadParam)
 
 	eloop_destroy();
 	return 0;
+}
+
+void OnReportSettings(char *settings_str)
+{
+	ParseTopoSettings((const char *)settings_str);
+
+	for (int i = 0; i < MAX_SERVER_NUM; i++)
+	{
+		int ret = CtrlCmd_TOPO_SETTINGS(SOCKET_TYPE_TCP, arrServerProcesses[i].m_fhandle, g_pShiyong->device_topo_level, (const char *)settings_str);
+		if (ret < 0) {
+			continue;
+		}
+	}
+}
+
+void OnReportEvent(char *event_str)
+{
+	char szDestNodeId[32];
+	BYTE dest_node_id[6];
+	char *pRecvData = event_str;
+
+	strncpy(szDestNodeId, event_str, 17);
+	szDestNodeId[17] = '\0';
+	mac_addr(szDestNodeId, dest_node_id, NULL);
+
+	int index = g_pShiyong->FindViewerNode(dest_node_id);
+	if (-1 != index)
+	{
+		g_pShiyong->viewerArray[index].httpOP.ParseEventValue((char *)pRecvData);
+		if (stricmp(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "Connect") == 0)
+		{
+			strcpy(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "");
+			g_pShiyong->ConnectNode(index, REPEATER_PASSWORD);
+		}
+		else if (stricmp(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "ConnectRev") == 0)
+		{
+			strcpy(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "");
+			g_pShiyong->ConnectRevNode(index, REPEATER_PASSWORD);
+		}
+		else if (stricmp(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "Disconnect") == 0)
+		{
+			strcpy(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "");
+			g_pShiyong->DisconnectNode(&(g_pShiyong->viewerArray[index]));
+		}
+	}
+	else {
+		index = g_pShiyong->FindTopoRouteItem(dest_node_id);
+		if (-1 != index)
+		{
+			int guaji_index = g_pShiyong->device_route_table[index].guaji_index;
+			CtrlCmd_TOPO_EVENT(SOCKET_TYPE_TCP, arrServerProcesses[guaji_index].m_fhandle, dest_node_id, (const char *)pRecvData);
+		}
+	}
 }
 
 //
@@ -628,7 +702,7 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 
 
 	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
-	//eloop_register_timeout(3, 0, HandleDoUnregister, pViewerNode, NULL);
+	eloop_register_timeout(3, 0, HandleDoUnregister, pViewerNode, NULL);
 
 
 	SetStatusInfo(pDlg->m_hWnd, "正在同对方建立连接，请稍候。。。");
@@ -752,6 +826,10 @@ DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter)
 	//	(pViewerNode->httpOP.m1_use_peer_ip & 0x00ff0000) >> 16,
 	//	(pViewerNode->httpOP.m1_use_peer_ip & 0xff000000) >> 24,
 	//	pViewerNode->httpOP.m1_use_peer_port);
+
+
+	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
+	eloop_register_timeout(3, 0, HandleDoUnregister, pViewerNode, NULL);
 
 
 	SetStatusInfo(pDlg->m_hWnd, _T("正在向对方发起连接，请稍候。。。"));
@@ -884,6 +962,10 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 		SetStatusInfo(pDlg->m_hWnd, szStatusStr);
 		Sleep(1000);
 	}
+
+
+	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
+	eloop_register_timeout(3, 0, HandleDoUnregister, pViewerNode, NULL);
 
 
 	SetStatusInfo(pDlg->m_hWnd, "正在等待对方发起反向连接，请稍候。。。");
@@ -1062,6 +1144,9 @@ CShiyong::CShiyong()
 	
 	currentSourceIndex = -1;
 
+	joined_channel_id = 0;
+	memset(joined_node_id, 0, 6);
+
 #if FIRST_LEVEL_REPEATER
 	device_topo_level = 0;
 #else
@@ -1096,6 +1181,11 @@ CShiyong::~CShiyong()
 
 BOOL CShiyong::OnInit()
 {
+	InitVar();
+
+	HttpOperate::DoReport1("gbk", "zh", OnReportSettings);
+
+
 	DWORD dwThreadID;
 	HANDLE hThread = ::CreateThread(NULL,0,WorkingThreadFn,(void *)this,0,&dwThreadID);
 	if (hThread != NULL) {
@@ -1104,9 +1194,6 @@ BOOL CShiyong::OnInit()
 	else {
 		printf("WorkingThreadFn子线程创建失败！\n");
 	}
-
-
-	InitVar();
 
 	return TRUE;  // return TRUE unless you set the focus to a control
 	// 异常: OCX 属性页应返回 FALSE
@@ -1237,6 +1324,29 @@ int CShiyong::FindTopoRouteItem(BYTE *dest_node_id)
 		}
 	}
 	::LeaveCriticalSection(&route_table_csec);////////
+	return -1;
+}
+
+int CShiyong::FindRouteNode(BYTE *node_id)
+{
+	int ret = -1;
+	::EnterCriticalSection(&route_table_csec);////////
+	ret = FindRouteNode_NoLock(node_id);
+	::LeaveCriticalSection(&route_table_csec);////////
+	return ret;
+}
+
+int CShiyong::FindRouteNode_NoLock(BYTE *node_id)
+{
+	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
+	{
+		if (FALSE == device_route_table[i].bUsing) {
+			continue;
+		}
+		if (memcmp(device_route_table[i].node_id, node_id, 6) == 0) {
+			return i;
+		}
+	}
 	return -1;
 }
 
@@ -1618,6 +1728,197 @@ int CShiyong::DeviceTopoReport()
 
 	free(report_string);
 	return 0;
+}
+
+const char * CShiyong::get_public_ip()
+{
+	static char s_public_ip[16];
+	struct in_addr inaddr;
+
+	strcpy(s_public_ip, "");
+
+	for (int i = 0; i < MAX_VIEWER_NUM; i++)
+	{
+		if (viewerArray[i].httpOP.m0_pub_ip != 0) {
+			inaddr.s_addr = viewerArray[i].httpOP.m0_pub_ip;
+			strcpy(s_public_ip, inet_ntoa(inaddr));
+			break;
+		}
+	}
+	return s_public_ip;
+}
+
+const char * CShiyong::get_node_array()
+{
+	static char s_node_array[1024*32];
+
+	strcpy(s_node_array, "");
+
+	::EnterCriticalSection(&route_table_csec);////////
+
+	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
+	{
+		if (FALSE == device_route_table[i].bUsing) {
+			continue;
+		}
+		if (ROUTE_ITEM_TYPE_VIEWERNODE != device_route_table[i].route_item_type && ROUTE_ITEM_TYPE_GUAJINODE != device_route_table[i].route_item_type) {
+			continue;
+		}
+		if (TRUE == device_route_table[i].is_busy || TRUE == device_route_table[i].is_streaming) {
+			continue;
+		}
+		int is_admin = (device_route_table[i].route_item_type == ROUTE_ITEM_TYPE_VIEWERNODE) ? 1 : 0;
+		int device_node_index = FindRouteNode_NoLock(device_route_table[i].owner_node_id);
+
+		char szTemp[1024*2];
+		snprintf(szTemp, sizeof(szTemp), 
+			"%d"//"&topo_level=%d"
+			"|%02X-%02X-%02X-%02X-%02X-%02X"//"      node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+			"|%d"//"&is_admin=%d"
+			"|%d"//"&is_busy=%d"
+			"|%d"//"&is_streaming=%d"
+			"|%s"//"&ip"
+			"|%s"//"&port"
+			"|%s"//"&pub_ip"
+			"|%s"//"&pub_port"
+			"|%d"//"&no_nat=%d"
+			"|%d"//"&nat_type=%d"
+			"|%s"//"&device_uuid|node_name|version|os_info"
+			,
+			device_route_table[i].topo_level,
+			device_route_table[i].node_id[0],device_route_table[i].node_id[1],device_route_table[i].node_id[2],device_route_table[i].node_id[3],device_route_table[i].node_id[4],device_route_table[i].node_id[5],
+			is_admin,
+			(device_route_table[i].is_busy ? 1 : 0),
+			(device_route_table[i].is_streaming ? 1 : 0),
+			device_route_table[i].u.node_nat_info.ip_str, device_route_table[i].u.node_nat_info.port_str, 
+			device_route_table[i].u.node_nat_info.pub_ip_str, device_route_table[i].u.node_nat_info.pub_port_str, 
+			(device_route_table[i].u.node_nat_info.no_nat ? 1 : 0),
+			device_route_table[i].u.node_nat_info.nat_type,
+			(device_node_index == -1 ? "" : device_route_table[device_node_index].u.device_node_str));
+
+		if (strlen(s_node_array) > 0) {
+			strcat(s_node_array, ";");
+		}
+		if (strlen(s_node_array) + strlen(szTemp) < sizeof(s_node_array)) {
+			strcat(s_node_array, szTemp);
+		}
+		else {
+			printf("s_node_array string buff overflow!!!\n");
+			break;
+		}
+	}
+
+	::LeaveCriticalSection(&route_table_csec);////////
+
+	return s_node_array;
+}
+
+int CShiyong::get_route_item_num()
+{
+	int count = 0;
+
+	::EnterCriticalSection(&route_table_csec);////////
+
+	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
+	{
+		if (FALSE == device_route_table[i].bUsing) {
+			continue;
+		}
+		count += 1;
+	}
+
+	::LeaveCriticalSection(&route_table_csec);////////
+
+	return count;
+}
+
+int CShiyong::get_level_max_connections(int topo_level)
+{
+	time_t now = time(NULL);
+	int count = 0;
+
+	::EnterCriticalSection(&route_table_csec);////////
+
+	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
+	{
+		if (FALSE == device_route_table[i].bUsing) {
+			continue;
+		}
+		if (ROUTE_ITEM_TYPE_GUAJINODE != device_route_table[i].route_item_type) {
+			continue;
+		}
+		if (topo_level != device_route_table[i].topo_level) {
+			continue;
+		}
+		if (now - device_route_table[i].last_refresh_time < g1_expire_period) {
+			count += 1;
+		}
+	}
+
+	::LeaveCriticalSection(&route_table_csec);////////
+
+	return count;
+}
+
+int CShiyong::get_level_current_connections(int topo_level)
+{
+	time_t now = time(NULL);
+	int count = 0;
+
+	::EnterCriticalSection(&route_table_csec);////////
+
+	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
+	{
+		if (FALSE == device_route_table[i].bUsing) {
+			continue;
+		}
+		if (ROUTE_ITEM_TYPE_GUAJINODE != device_route_table[i].route_item_type) {
+			continue;
+		}
+		if (topo_level != device_route_table[i].topo_level) {
+			continue;
+		}
+		if (device_route_table[i].is_busy && now - device_route_table[i].last_refresh_time < g1_expire_period) {
+			count += 1;
+		}
+	}
+
+	::LeaveCriticalSection(&route_table_csec);////////
+
+	return count;
+}
+
+int CShiyong::get_level_max_streams(int topo_level)
+{
+	return get_level_max_connections(topo_level);
+}
+
+int CShiyong::get_level_current_streams(int topo_level)
+{
+	time_t now = time(NULL);
+	int count = 0;
+
+	::EnterCriticalSection(&route_table_csec);////////
+
+	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
+	{
+		if (FALSE == device_route_table[i].bUsing) {
+			continue;
+		}
+		if (ROUTE_ITEM_TYPE_GUAJINODE != device_route_table[i].route_item_type) {
+			continue;
+		}
+		if (topo_level != device_route_table[i].topo_level) {
+			continue;
+		}
+		if (device_route_table[i].is_busy && device_route_table[i].is_streaming && now - device_route_table[i].last_refresh_time < g1_expire_period) {
+			count += 1;
+		}
+	}
+
+	::LeaveCriticalSection(&route_table_csec);////////
+
+	return count;
 }
 
 void CShiyong::DoExit()
