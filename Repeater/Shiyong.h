@@ -35,7 +35,10 @@ typedef struct _tag_topo_route_item {
 			BOOL no_nat;
 			int  nat_type;
 		}node_nat_info;
-		char device_node_str[256];  //device_uuid|node_name|version|os_info
+		struct {
+			int device_free_streams;
+			char device_node_str[200];  //device_uuid|node_name|version|os_info
+		}device_info;
 	}u;
 	int nID;
 	BOOL bUsing;
@@ -100,6 +103,7 @@ public:
 	BYTE joined_node_id[6];
 	BYTE device_topo_level;
 	BYTE device_node_id[6];
+	int device_max_streams;
 	TOPO_ROUTE_ITEM device_route_table[MAX_ROUTE_ITEM_NUM];
 	CRITICAL_SECTION route_table_csec;
 
@@ -110,12 +114,15 @@ public:
 	void DropRouteItem(BYTE node_type, BYTE *node_id);
 	void CheckTopoRouteTable();
 	int UpdateRouteTable(int guajiIndex, char *report_string);
+	int GetDeviceFreeStreams();
 	int DeviceTopoReport();
 
 	const char *get_public_ip();
 	const char *get_node_array();
 
 	int get_route_item_num();
+
+	int get_level_device_num(int topo_level);
 
 	int get_level_max_connections(int topo_level);
 	int get_level_current_connections(int topo_level);

@@ -1190,7 +1190,7 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 			level_2_max_connections, level_2_current_connections, level_2_max_streams, level_2_current_streams,
 			level_3_max_connections, level_3_current_connections, level_3_max_streams, level_3_current_streams,
 			level_4_max_connections, level_4_current_connections, level_4_max_streams, level_4_current_streams,
-			node_array,
+			UrlEncode(node_array).c_str(),
 			client_charset, client_lang);
 	
 	php_md5(szPostBody, szKey1, sizeof(szKey1));

@@ -1539,7 +1539,7 @@ static BOOL ParseReportNode(char *value, TOPO_ROUTE_ITEM *pRouteItem)
 			*p = '\0';  /* Last field */
 		}
 #if 0//不要把联合体u里面的node_nat_info覆盖了！！！
-		strncpy(pRouteItem->u.device_node_str, value, sizeof(pRouteItem->u.device_node_str));
+		strncpy(pRouteItem->u.device_info.device_node_str, value, sizeof(pRouteItem->u.device_info.device_node_str));
 #endif
 	}
 	else if (ROUTE_ITEM_TYPE_DEVICENODE == pRouteItem->route_item_type)
@@ -1552,6 +1552,15 @@ static BOOL ParseReportNode(char *value, TOPO_ROUTE_ITEM *pRouteItem)
 		}
 		*p = '\0';
 		pRouteItem->topo_level = (BYTE)atol(value);
+
+		/* device_free_streams */
+		value = p + 1;
+		p = strchr(value, '|');
+		if (p == NULL) {
+			return FALSE;
+		}
+		*p = '\0';
+		pRouteItem->u.device_info.device_free_streams = atol(value);
 
 		/* node_id */
 		value = p + 1;
@@ -1568,7 +1577,7 @@ static BOOL ParseReportNode(char *value, TOPO_ROUTE_ITEM *pRouteItem)
 		if (p != NULL) {
 			*p = '\0';  /* Last field */
 		}
-		strncpy(pRouteItem->u.device_node_str, value, sizeof(pRouteItem->u.device_node_str));
+		strncpy(pRouteItem->u.device_info.device_node_str, value, sizeof(pRouteItem->u.device_info.device_node_str));
 	}
 
 	return TRUE;
@@ -1630,6 +1639,20 @@ int CShiyong::UpdateRouteTable(int guajiIndex, char *report_string)
 	return ret;
 }
 
+int CShiyong::GetDeviceFreeStreams()
+{
+	int nCurrentStreams = 0;
+
+	for (int i = 0; i < MAX_SERVER_NUM; i++)
+	{
+		if (arrServerProcesses[i].m_bAVStarted) {
+			nCurrentStreams += 1;
+		}
+	}
+
+	return (device_max_streams - nCurrentStreams);
+}
+
 int CShiyong::DeviceTopoReport()
 {
 	int i;
@@ -1641,6 +1664,7 @@ int CShiyong::DeviceTopoReport()
 		snprintf(szTemp, sizeof(szTemp), 
 			"%d"//"node_type=%d"
 			"|%d"//"&topo_level=%d"
+			"|%d"//"&device_free_streams=%d"
 			"|%02X-%02X-%02X-%02X-%02X-%02X"//"      device_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
 			"|%s"//"&device_uuid=%s"
 			"|%s"//"&node_name=%s"
@@ -1649,6 +1673,7 @@ int CShiyong::DeviceTopoReport()
 			,
 			ROUTE_ITEM_TYPE_DEVICENODE,
 			device_topo_level,
+			GetDeviceFreeStreams(),
 			device_node_id[0],device_node_id[1],device_node_id[2],device_node_id[3],device_node_id[4],device_node_id[5],
 			g0_device_uuid, UrlEncode(g0_node_name).c_str(), g0_version, g0_os_info);
 
@@ -1767,12 +1792,15 @@ const char * CShiyong::get_node_array()
 		if (TRUE == device_route_table[i].is_busy || TRUE == device_route_table[i].is_streaming) {
 			continue;
 		}
+
 		int is_admin = (device_route_table[i].route_item_type == ROUTE_ITEM_TYPE_VIEWERNODE) ? 1 : 0;
 		int device_node_index = FindRouteNode_NoLock(device_route_table[i].owner_node_id);
+		int device_free_streams = device_node_index == -1 ? 0 : device_route_table[device_node_index].u.device_info.device_free_streams;
 
 		char szTemp[1024*2];
 		snprintf(szTemp, sizeof(szTemp), 
 			"%d"//"&topo_level=%d"
+			"|%d"//"&device_free_streams=%d"
 			"|%02X-%02X-%02X-%02X-%02X-%02X"//"      node_id=%02X-%02X-%02X-%02X-%02X-%02X"
 			"|%d"//"&is_admin=%d"
 			"|%d"//"&is_busy=%d"
@@ -1786,6 +1814,7 @@ const char * CShiyong::get_node_array()
 			"|%s"//"&device_uuid|node_name|version|os_info"
 			,
 			device_route_table[i].topo_level,
+			device_free_streams,
 			device_route_table[i].node_id[0],device_route_table[i].node_id[1],device_route_table[i].node_id[2],device_route_table[i].node_id[3],device_route_table[i].node_id[4],device_route_table[i].node_id[5],
 			is_admin,
 			(device_route_table[i].is_busy ? 1 : 0),
@@ -1794,7 +1823,7 @@ const char * CShiyong::get_node_array()
 			device_route_table[i].u.node_nat_info.pub_ip_str, device_route_table[i].u.node_nat_info.pub_port_str, 
 			(device_route_table[i].u.node_nat_info.no_nat ? 1 : 0),
 			device_route_table[i].u.node_nat_info.nat_type,
-			(device_node_index == -1 ? "" : device_route_table[device_node_index].u.device_node_str));
+			(device_node_index == -1 ? "" : device_route_table[device_node_index].u.device_info.device_node_str));
 
 		if (strlen(s_node_array) > 0) {
 			strcat(s_node_array, ";");
@@ -1813,6 +1842,7 @@ const char * CShiyong::get_node_array()
 	return s_node_array;
 }
 
+//获取当前device的路由表条目数量
 int CShiyong::get_route_item_num()
 {
 	int count = 0;
@@ -1825,6 +1855,35 @@ int CShiyong::get_route_item_num()
 			continue;
 		}
 		count += 1;
+	}
+
+	::LeaveCriticalSection(&route_table_csec);////////
+
+	return count;
+}
+
+//获取树中指定topo级别的设备总数
+int CShiyong::get_level_device_num(int topo_level)
+{
+	time_t now = time(NULL);
+	int count = 0;
+
+	::EnterCriticalSection(&route_table_csec);////////
+
+	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
+	{
+		if (FALSE == device_route_table[i].bUsing) {
+			continue;
+		}
+		if (ROUTE_ITEM_TYPE_DEVICENODE != device_route_table[i].route_item_type) {
+			continue;
+		}
+		if (topo_level != device_route_table[i].topo_level) {
+			continue;
+		}
+		if (now - device_route_table[i].last_refresh_time < g1_expire_period) {
+			count += 1;
+		}
 	}
 
 	::LeaveCriticalSection(&route_table_csec);////////
@@ -1890,7 +1949,8 @@ int CShiyong::get_level_current_connections(int topo_level)
 
 int CShiyong::get_level_max_streams(int topo_level)
 {
-	return get_level_max_connections(topo_level);
+	//每个device上，max_connections比max_streams多1
+	return get_level_max_connections(topo_level) - get_level_device_num(topo_level);
 }
 
 int CShiyong::get_level_current_streams(int topo_level)
