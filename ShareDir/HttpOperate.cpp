@@ -212,6 +212,7 @@ DWORD WINAPI UpgradeThreadFn(LPVOID pvThreadParam)
 //
 int ParseTopoSettings(const char *settings_string)
 {
+	//To do...
 	return 0;
 }
 
@@ -1108,7 +1109,7 @@ int HttpOperate::DoReport1(const char *client_charset, const char *client_lang, 
 //  2: settings
 //  3: settings,event
 int HttpOperate::DoReport2(const char *client_charset, const char *client_lang, 
-	DWORD joined_channel_id, BYTE joined_node_id[6],
+	DWORD joined_channel_id, BYTE joined_node_id[6], int viewer_grow_rate,
 	const char *root_device_uuid, const char *root_public_ip, BYTE device_node_id[6],
 	int route_item_num, int route_item_max,
 	int level_1_max_connections, int level_1_current_connections, int level_1_max_streams, int level_1_current_streams,
@@ -1157,6 +1158,7 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 			 "settings_only=0"
 			 "&joined_channel_id=%ld"
 			 "&joined_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+			 "&viewer_grow_rate=%d"
 			 "&root_device_uuid=%s"
 			 "&root_public_ip=%s"
 			 "&device_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
@@ -1183,6 +1185,7 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 			 "&client_lang=%s",
 			joined_channel_id, 
 			joined_node_id[0],joined_node_id[1],joined_node_id[2],joined_node_id[3],joined_node_id[4],joined_node_id[5],
+			viewer_grow_rate,
 			root_device_uuid, root_public_ip, 
 			device_node_id[0],device_node_id[1],device_node_id[2],device_node_id[3],device_node_id[4],device_node_id[5],
 			route_item_num, route_item_max,

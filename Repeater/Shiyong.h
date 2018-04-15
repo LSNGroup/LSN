@@ -22,7 +22,7 @@ typedef struct _tag_topo_route_item {
 	BYTE topo_level;
 	BYTE node_id[6];
 	BYTE owner_node_id[6];
-	BOOL is_busy;
+	BOOL is_connected;
 	BOOL is_streaming;
 	BYTE peer_node_id[6];
 	DWORD last_refresh_time;
@@ -52,6 +52,7 @@ typedef struct _tag_viewer_node {
 	BOOL bFirstCheckStun;
 	CRITICAL_SECTION localbind_csec;
 	HttpOperate httpOP;
+	BOOL bConnecting;
 	BOOL bConnected;
 	BOOL bTopoPrimary;
 	//FAKERTPRECV *m_pFRR;
@@ -107,6 +108,8 @@ public:
 	TOPO_ROUTE_ITEM device_route_table[MAX_ROUTE_ITEM_NUM];
 	CRITICAL_SECTION route_table_csec;
 
+	BOOL ShouldDoHttpOP();
+
 	int FindViewerNode(BYTE *viewer_node_id);
 	int FindTopoRouteItem(BYTE *dest_node_id);
 	int FindRouteNode(BYTE *node_id);
@@ -121,6 +124,8 @@ public:
 	const char *get_node_array();
 
 	int get_route_item_num();
+
+	int get_viewer_grow_rate();
 
 	int get_level_device_num(int topo_level);
 

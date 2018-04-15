@@ -205,7 +205,7 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 
 				g_pShiyong->UpdateRouteTable(pServerPorcess->m_nIndex, temp_ptr);
 
-				if (g_pShiyong->device_topo_level <= 1)//Root Node, DoReport()
+				if (g_pShiyong->ShouldDoHttpOP())//Root Node, DoReport()
 				{
 
 				}
@@ -244,7 +244,7 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 
 				g_pShiyong->DropRouteItem(node_type, object_node_id);
 
-				if (g_pShiyong->device_topo_level <= 1)//Root Node, DoDrop()
+				if (g_pShiyong->ShouldDoHttpOP())//Root Node, DoDrop()
 				{
 					HttpOperate::DoDrop("gbk", "zh", g_pShiyong->device_node_id, (node_type == ROUTE_ITEM_TYPE_VIEWERNODE), object_node_id);
 				}
@@ -298,7 +298,7 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				stream_flow = ntohl(pf_get_dword(buff));
 
 
-				if (g_pShiyong->device_topo_level <= 1)//Root Node, DoEvaluate()
+				if (g_pShiyong->ShouldDoHttpOP())//Root Node, DoEvaluate()
 				{
 
 				}

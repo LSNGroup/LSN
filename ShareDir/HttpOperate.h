@@ -126,7 +126,7 @@ public:
 	//  2: settings
 	//  3: settings,event
 	static int DoReport2(const char *client_charset, const char *client_lang, 
-		DWORD joined_channel_id, BYTE joined_node_id[6],
+		DWORD joined_channel_id, BYTE joined_node_id[6], int viewer_grow_rate,
 		const char *root_device_uuid, const char *root_public_ip, BYTE device_node_id[6],
 		int route_item_num, int route_item_max,
 		int level_1_max_connections, int level_1_current_connections, int level_1_max_streams, int level_1_current_streams,

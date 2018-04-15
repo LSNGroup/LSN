@@ -194,7 +194,7 @@ static void UiLoop(void)
 				strncpy(CONNECT_PASSWORD, pass, sizeof(CONNECT_PASSWORD));
 
 				g_pShiyong->device_max_streams = 5;//²âËÙ¡£¡£¡£
-				MAX_SERVER_NUM = g_pShiyong->device_max_streams + 1;
+				MAX_SERVER_NUM = g_pShiyong->device_max_streams * 2;
 				
 				StartServerProcesses();
 			}

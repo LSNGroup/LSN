@@ -109,7 +109,7 @@ static int DoIpcReportInConnection()
 	snprintf(szIpcReport, sizeof(szIpcReport), 
 		"%02X-%02X-%02X-%02X-%02X-%02X"//"node_id=%02X-%02X-%02X-%02X-%02X-%02X"
 		"|%02X-%02X-%02X-%02X-%02X-%02X"//"&peer_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
-		"|%d"//"&is_busy=%d"
+		"|%d"//"&is_connected=%d"
 		"|%d"//"&is_streaming=%d"
 		"|%s"//"&ip=%s"
 		"|%d"//"&port=%d"
