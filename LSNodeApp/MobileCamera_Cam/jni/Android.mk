@@ -149,7 +149,7 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/up2p/udt
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/avrtp
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/g72x
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/g729a
-LOCAL_SRC_FILES := shdir/platform.cpp  shdir/CommonLib.cpp  shdir/UPnP.cpp  shdir/udp.cpp  shdir/stun.cpp  shdir/phpMd5.cpp  shdir/ProxyClient.cpp  shdir/ProxyServer.cpp  \
+LOCAL_SRC_FILES := shdir/platform.cpp  shdir/CommonLib.cpp  shdir/UPnP.cpp  shdir/udp.cpp  shdir/stun.cpp  shdir/phpMd5.cpp \
 			shdir/Discovery.cpp  shdir/ControlCmd.cpp  shdir/TWSocket.cpp  shdir/HttpOperate.cpp  shdir/AudioCodec.cpp  viewer_if.cpp  viewer_jni.cpp
 LOCAL_STATIC_LIBRARIES := g72x g729a
 LOCAL_SHARED_LIBRARIES := up2p

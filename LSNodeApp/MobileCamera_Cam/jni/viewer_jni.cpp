@@ -9,61 +9,56 @@
 #include "HttpOperate.h"
 #include "Discovery.h"
 #include "ControlCmd.h"
-#include "ProxyClient.h"
 #include "phpMd5.h"
+#include "UPnP.h"
 #include "g729a.h"
 #include "avrtp_def.h"
 #include "R_string_def.h"
 #include "viewer_if.h"
+#include "viewer_node.h"
 
 #include <android/log.h>
 
 
-#include "UPnP.h"
-MyUPnP  myUPnP;
-UPNPNAT_MAPPING mapping;
-
-
-typedef struct _tag_conn_param
-{
-	char szNodeIdStr[MAX_LOADSTRING];
-	char szPubIpStr[16];
-	char szPubPortStr[8];
-	BOOL bLanNode;
-	BOOL no_nat;
-	int nat_type;
-} CONN_PARAM;
-
+static MyUPnP  myUPnP;
 
 static char g_client_charset[16];
 static char g_client_lang[16];
 
 static BOOL g_bFirstCheckStun = TRUE;
-static BOOL m_bNeedRegister = TRUE;
-static pthread_mutex_t m_secBind;
 
-static NOTIFICATION_ITEM g_notifications[MAX_NOTIFICATION_NUM];
-static int g_notifi_count;
-static int g_notifi_index = 0;
+VIEWER_NODE viewerArray[MAX_VIEWER_NUM];
+int current_use_viewer = -1;
+BOOL is_app_recv_av = FALSE;
 
-static pthread_t hRegisterThread = 0;
-static pthread_t hConnectThread = 0;
-static pthread_t hConnectThread_Proxy = 0;
-static pthread_t hConnectThread2 = 0;
-static pthread_t hConnectThreadTcp = 0;
-static pthread_t hConnectThreadTcp_Proxy = 0;
-static pthread_t hConnectThreadRev = 0;
 
+static char ipc_socket_name[] = "multi_rudp.ipc_socket";
+static int ipc_server_sock = INVALID_SOCKET;
+static int ipc_data_sock = INVALID_SOCKET;
+static int ipc_client_sock = INVALID_SOCKET;
+static pthread_t hIpcServerThread;
+void *IpcServerThreadFn(void *pvThreadParam);
+
+static pthread_t hRegisterThread;
 void *RegisterThreadFn(void *pvThreadParam);
+
 void *ConnectThreadFn(void *pvThreadParam);
-void *ConnectThreadFn_Proxy(void *pvThreadParam);
 void *ConnectThreadFn2(void *pvThreadParam);
-void *ConnectThreadFnTcp(void *pvThreadParam);
-void *ConnectThreadFnTcp_Proxy(void *pvThreadParam);
 void *ConnectThreadFnRev(void *pvThreadParam);
 
 static void InitVar();
-static void HandleRegister();
+static void HandleRegister(VIEWER_NODE *pViewerNode);
+
+
+UDTSOCKET get_use_udt_sock()
+{
+	return ipc_client_sock;
+}
+
+SOCKET_TYPE get_use_sock_type()
+{
+	return SOCKET_TYPE_TCP;
+}
 
 
 extern "C"
@@ -84,9 +79,6 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StartNative)
 	g_client_lang[len] = '\0';
 	
 	g_bFirstCheckStun = TRUE;
-	m_bNeedRegister = TRUE;
-	
-	pthread_mutex_init(&m_secBind, NULL);
 	
 	CtrlCmd_Init();
 	
@@ -95,22 +87,46 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StartNative)
 	
 	InitVar();
 	
+	bool hasUPnP = myUPnP.Search();
 	
-	BOOL bMappingExists = FALSE;
-	mapping.description = "";
-	mapping.protocol = UNAT_UDP;
-	mapping.externalPort = ((myUPnP.GetLocalIP() & 0xff000000) >> 24) | ((2049 + (65535 - 2049) * (WORD)rand() / (65536)) & 0xffffff00);
-	while (UNAT_OK == myUPnP.GetNATSpecificEntry(&mapping, &bMappingExists) && bMappingExists)
+	for (int i = 0; i < MAX_VIEWER_NUM; i++ )
 	{
-		__android_log_print(ANDROID_LOG_INFO, "StartNative", "Find NATPortMapping(%s), retry...\n", mapping.description.c_str());
-		bMappingExists = FALSE;
-		mapping.description = "";
-		mapping.protocol = UNAT_UDP;
-		mapping.externalPort = ((myUPnP.GetLocalIP() & 0xff000000) >> 24) | ((2049 + (65535 - 2049) * (WORD)rand() / (65536)) & 0xffffff00);
-	}//找到一个未被占用的外部端口映射，或者路由器UPnP功能不可用
+		viewerArray[i].bUsing = FALSE;
+		viewerArray[i].nID = -1;
+		viewerArray[i].m_bNeedRegister = TRUE;
+		pthread_mutex_init(&(viewerArray[i].m_secBind), NULL);
+		
+		viewerArray[i].bConnecting = FALSE;
+		viewerArray[i].bConnected = FALSE;
+		viewerArray[i].httpOP.m0_is_admin = TRUE;
+		viewerArray[i].httpOP.m0_is_busy = FALSE;
+		viewerArray[i].httpOP.m0_p2p_port = FIRST_CONNECT_PORT - (i+1)*4;
+		
+		//每次有不一样的node_id
+		usleep(200*1000);
+		generate_nodeid(viewerArray[i].httpOP.m0_node_id, sizeof(viewerArray[i].httpOP.m0_node_id));
+		
+		viewerArray[i].bQuitRecvSocketLoop = TRUE;
+		
+		
+		BOOL bMappingExists = FALSE;
+		viewerArray[i].mapping.description = "";
+		viewerArray[i].mapping.protocol = UNAT_UDP;
+		viewerArray[i].mapping.externalPort = ((myUPnP.GetLocalIP() & 0xff000000) >> 24) | ((2049 + (65535 - 2049) * (WORD)rand() / (65536)) & 0xffffff00);
+		while (hasUPnP && UNAT_OK == myUPnP.GetNATSpecificEntry(&(viewerArray[i].mapping), &bMappingExists) && bMappingExists)
+		{
+			__android_log_print(ANDROID_LOG_INFO, "StartNative", "Find NATPortMapping(%s), retry...\n", viewerArray[i].mapping.description.c_str());
+			bMappingExists = FALSE;
+			viewerArray[i].mapping.description = "";
+			viewerArray[i].mapping.protocol = UNAT_UDP;
+			viewerArray[i].mapping.externalPort = ((myUPnP.GetLocalIP() & 0xff000000) >> 24) | ((2049 + (65535 - 2049) * (WORD)rand() / (65536)) & 0xffffff00);
+		}//找到一个未被占用的外部端口映射，或者路由器UPnP功能不可用
 	
+	}
 	
 	pthread_create(&hRegisterThread, NULL, RegisterThreadFn, NULL);
+	
+	pthread_create(&hIpcServerThread, NULL, IpcServerThreadFn, NULL);
 	
 	return 0;
 }
@@ -126,9 +142,21 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StopNative)
 	
 	CtrlCmd_Uninit();
 	
-	myUPnP.RemoveNATPortMapping(mapping);
+	for (int i = 0; i < MAX_VIEWER_NUM; i++ )
+	{
+		pthread_mutex_destroy(&(viewerArray[i].m_secBind));
+		
+		myUPnP.RemoveNATPortMapping(viewerArray[i].mapping);
+	}
 	
-	pthread_mutex_destroy(&m_secBind);
+	closesocket(ipc_client_sock);
+	ipc_client_sock = INVALID_SOCKET;
+	
+	closesocket(ipc_data_sock);
+	ipc_data_sock = INVALID_SOCKET;
+	
+	closesocket(ipc_server_sock);
+	ipc_server_sock = INVALID_SOCKET;
 }
 
 
@@ -138,24 +166,6 @@ MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(getAppVersion)
 	(JNIEnv* env, jobject thiz)
 {
 	return MYSELF_VERSION;
-}
-
-
-extern "C"
-jint
-MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(getLowestLevelForAv)
-	(JNIEnv* env, jobject thiz)
-{
-	return (jint)g1_lowest_level_for_av;
-}
-
-
-extern "C"
-jint
-MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(getLowestLevelForVnc)
-	(JNIEnv* env, jobject thiz)
-{
-	return (jint)g1_lowest_level_for_vnc;
 }
 
 
@@ -190,15 +200,16 @@ MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(CtrlCmdHELLO)
 	jint results[3];
 	DWORD dwServerVersion;
 	BYTE bFuncFlags;
+	BYTE topo_level;
 	WORD result_code;
-	
+	BYTE bZeroID[6] = {0, 0, 0, 0, 0, 0};
 	
 	len = (env)->GetStringUTFLength(strPass);
 	pass = (char *)malloc(len+1);
 	(env)->GetStringUTFRegion(strPass, 0, (env)->GetStringLength(strPass), pass);
 	pass[len] = '\0';
 	
-	ret = CtrlCmd_HELLO((SOCKET_TYPE)type, (SOCKET)fhandle, g0_node_id, g0_version, pass, g1_peer_node_id, &dwServerVersion, &bFuncFlags, &result_code);
+	ret = CtrlCmd_HELLO((SOCKET_TYPE)type, (SOCKET)fhandle, bZeroID, g0_version, 0, pass, bZeroID, &dwServerVersion, &bFuncFlags, &topo_level, &result_code);
 	results[0] = (jint)result_code;
 	results[1] = (jint)dwServerVersion;
 	results[2] = (jint)bFuncFlags;
@@ -228,36 +239,6 @@ MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(CtrlCmdRUN)
 	
 	free(cmd);
     return ret;
-}
-
-
-extern "C"
-jbyteArray
-MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(CtrlCmdMAVTLV)
-	(JNIEnv* env, jobject thiz, jint type, jint fhandle, jintArray arrBreak)
-{
-	int ret;
-	jint arr[1];
-	unsigned char *buff;
-	int buff_len;
-	
-	buff = (unsigned char *)malloc(TLV_TYPE_COUNT * 8);
-	buff_len = TLV_TYPE_COUNT * 8;
-	ret = CtrlCmd_MAV_TLV((SOCKET_TYPE)type, (SOCKET)fhandle, buff, &buff_len);
-	if (ret != 0) {
-		arr[0] = ret;
-		(env)->SetIntArrayRegion(arrBreak, 0, 1, arr);
-		free(buff);
-		return 0;
-	}
-	else {
-		arr[0] = ret;
-		(env)->SetIntArrayRegion(arrBreak, 0, 1, arr);
-		jbyteArray dataArray = (env)->NewByteArray(buff_len);
-		(env)->SetByteArrayRegion(dataArray, 0, buff_len, (const jbyte *)(&buff[0]));
-		free(buff);
-		return dataArray;
-	}
 }
 
 
@@ -384,60 +365,6 @@ MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(CtrlCmdSendNULL)
 }
 
 
-extern "C"
-jint
-MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(CtrlCmdMAVSTART)
-	(JNIEnv* env, jobject thiz, jint type, jint fhandle)
-{
-	return CtrlCmd_MAV_START((SOCKET_TYPE)type, (SOCKET)fhandle);
-}
-
-
-extern "C"
-jint
-MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(CtrlCmdMAVSTOP)
-	(JNIEnv* env, jobject thiz, jint type, jint fhandle)
-{
-    return CtrlCmd_MAV_STOP((SOCKET_TYPE)type, (SOCKET)fhandle);
-}
-
-
-extern "C"
-void
-MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(ProxyClientStartSlave)
-	(JNIEnv* env, jobject thiz, jint wLocalTcpPort)
-{
-    ProxyClientStartSlave((WORD)wLocalTcpPort);
-}
-
-
-extern "C"
-void
-MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(ProxyClientStartProxy)
-	(JNIEnv* env, jobject thiz, jint ftype, jint fhandle, jboolean bAutoClose, jint wLocalTcpPort)
-{
-    ProxyClientStartProxy((SOCKET_TYPE)ftype, (SOCKET)fhandle, (BOOL)bAutoClose, (WORD)wLocalTcpPort);
-}
-
-
-extern "C"
-void
-MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(ProxyClientAllQuit)
-	(JNIEnv* env, jobject thiz)
-{
-    ProxyClientAllQuit();
-}
-
-
-extern "C"
-void
-MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(ProxyClientClearQuitFlag)
-	(JNIEnv* env, jobject thiz)
-{
-    ProxyClientClearQuitFlag();
-}
-
-
 ///////////////////////////////////////////////////////////////////////////////////////////////
 //
 //  0: OK
@@ -485,210 +412,100 @@ void MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(SendVoice)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
-static int IsNodeExist(ANYPC_NODE *nodesArray, int nCount, char *node_id_str)
-{
-	int i;
-
-	for (i = 0; i < nCount; i++) {
-		if (strcmp(nodesArray[i].node_id_str, node_id_str) == 0) {
-			return i;
-		}
-	}
-
-	return -1;
-}
-
-extern "C"
-jint
-MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoSearchServers)
-	(JNIEnv* env, jobject thiz, jstring strRequestNodes)
-{
-	jint ret;
-	char *request_nodes;
-	int len;
-	DWORD broadcastDsts[MAX_BROADCAST_DST_NUM];
-	int nDstsCnt = MAX_BROADCAST_DST_NUM;
-	ANYPC_NODE *servers;//[NODES_PER_PAGE];
-	DWORD cntServer = NODES_PER_PAGE;
-	ANYPC_NODE *servers2;//[NODES_PER_PAGE];
-	int cntServer2 = NODES_PER_PAGE;
-	int nNum;
-	int i;
-	
-	
-	servers  = (ANYPC_NODE *)malloc( sizeof(ANYPC_NODE)*NODES_PER_PAGE );
-	servers2 = (ANYPC_NODE *)malloc( sizeof(ANYPC_NODE)*NODES_PER_PAGE );
-	
-	len = (env)->GetStringLength(strRequestNodes);
-	request_nodes = (char *)malloc(len+1);
-	if (len > 0) {
-		(env)->GetStringUTFRegion(strRequestNodes, 0, len, request_nodes);
-		request_nodes[len] = '\0';
-	}
-	
-	PrepareBroadcastDests(broadcastDsts, &nDstsCnt);
-	__android_log_print(ANDROID_LOG_INFO, "DoSearchServers", "Broadcast address number = %ld", nDstsCnt);////Debug
-	
-	if (NO_ERROR != DMsg_SearchServers(g0_node_id, g0_node_name, g0_version, 
-							broadcastDsts, nDstsCnt, servers, &cntServer))
-	{
-		if_messagetip(R_string::msg_communication_error);
-		free(servers);
-		free(servers2);
-		free(request_nodes);
-	    return -1;
-	}
-	
-	if (len > 0)
-	{
-		ret = DoQueryList(g_client_charset, g_client_lang, request_nodes, servers2, &cntServer2, &nNum);
-		if (ret < 0)
-		{
-			if_messagetip(R_string::msg_internet_error);
-		}
-		else if (ret == 0 && cntServer2 > 0)
-		{
-			for (i = 0; i < cntServer2; i++) {
-				int ret_index = IsNodeExist(servers, cntServer, servers2[i].node_id_str);
-				if (-1 == ret_index) {
-					if (cntServer < NODES_PER_PAGE) {
-						servers2[i].bLanNode = FALSE;
-						servers[cntServer] = servers2[i];
-						cntServer += 1;
-					}
-				}
-				else {
-					servers[ret_index].comments_id = servers2[i].comments_id;
-				}
-			}
-		}
-	}
-	
-	if (cntServer > 0)
-	{
-		//__android_log_print(ANDROID_LOG_INFO, "DoSearchServers", "jobject = %ld", (unsigned long)thiz);////Debug
-		
-		jclass cls = (env)->GetObjectClass(thiz);
-		//__android_log_print(ANDROID_LOG_INFO, "DoSearchServers", "jclass1 = %ld", (unsigned long)cls);////Debug
-		
-		if (0 == cls) {
-			cls = (env)->FindClass("com/wangling/mobilecamera/MainListActivity");
-			//__android_log_print(ANDROID_LOG_INFO, "DoSearchServers", "jclass2 = %ld", (unsigned long)cls);////Debug
-		}
-		
-		jmethodID mid = (env)->GetMethodID(cls, "FillAnyPCNode", "(IZLjava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZIZZIILjava/lang/String;Ljava/lang/String;ILjava/lang/String;)V");
-		//__android_log_print(ANDROID_LOG_INFO, "DoSearchServers", "jmethodID = %ld", (unsigned long)mid);////Debug
-		
-		for (i = 0; i < (int)cntServer; i++)
-		{
-			ANYPC_NODE *pNode = &servers[i];
-			(env)->CallVoidMethod(thiz, mid, 
-									i, (jboolean)pNode->bLanNode, (env)->NewStringUTF(pNode->node_id_str), (env)->NewStringUTF(pNode->node_name), 
-									(jint)pNode->version, (env)->NewStringUTF(pNode->ip_str), (env)->NewStringUTF(pNode->port_str), 
-									(env)->NewStringUTF(pNode->pub_ip_str), (env)->NewStringUTF(pNode->pub_port_str), (jboolean)pNode->no_nat, 
-									pNode->nat_type, (jboolean)pNode->is_admin, (jboolean)pNode->is_busy, pNode->audio_channels, pNode->video_channels, 
-									(env)->NewStringUTF(pNode->os_info), (env)->NewStringUTF(pNode->device_uuid), pNode->comments_id, (env)->NewStringUTF(pNode->location) );
-		
-			__android_log_print(ANDROID_LOG_INFO, "DoSearchServers", "FillAnyPCNode(index = %d)!", i);////Debug
-		}
-	}
-
-	free(servers);
-	free(servers2);
-	free(request_nodes);
-    return cntServer;
-}
-
 extern "C"
 void
 MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoConnect)
-	(JNIEnv* env, jobject thiz, jstring strNodeId, jstring strPubIp, jstring strPubPort, jboolean bLanNode, jboolean no_nat, jint nat_type)
+	(JNIEnv* env, jobject thiz, jstring strPassword, jint channel_id)
 {
+	int ret;
 	int len;
-	char *node_id_str;
-	char *pub_ip_str;
-	char *pub_port_str;
+	char *password_str;
 	
-	len = (env)->GetStringLength(strNodeId);
-	node_id_str = (char *)malloc(len+1);
-	(env)->GetStringUTFRegion(strNodeId, 0, len, node_id_str);
-	node_id_str[len] = '\0';
+	current_use_viewer = -1;
+	is_app_recv_av = FALSE;
 	
-	len = (env)->GetStringLength(strPubIp);
-	pub_ip_str = (char *)malloc(len+1);
-	(env)->GetStringUTFRegion(strPubIp, 0, len, pub_ip_str);
-	pub_ip_str[len] = '\0';
+	len = (env)->GetStringLength(strPassword);
+	password_str = (char *)malloc(len+1);
+	(env)->GetStringUTFRegion(strPassword, 0, len, password_str);
+	password_str[len] = '\0';
 	
-	len = (env)->GetStringLength(strPubPort);
-	pub_port_str = (char *)malloc(len+1);
-	(env)->GetStringUTFRegion(strPubPort, 0, len, pub_port_str);
-	pub_port_str[len] = '\0';
-	
-	
-	CONN_PARAM *pThreadParam = (CONN_PARAM *)malloc(sizeof(CONN_PARAM));
-	strncpy(pThreadParam->szNodeIdStr, node_id_str, sizeof(pThreadParam->szNodeIdStr));
-	strncpy(pThreadParam->szPubIpStr, pub_ip_str, sizeof(pThreadParam->szPubIpStr));
-	strncpy(pThreadParam->szPubPortStr, pub_port_str, sizeof(pThreadParam->szPubPortStr));
-	pThreadParam->bLanNode = bLanNode;
-	pThreadParam->no_nat = no_nat;
-	pThreadParam->nat_type = nat_type;
-	
-	mac_addr(node_id_str, g1_peer_node_id, NULL);
+	for (int n = 0; n < 2; n++)
+	{
+		int i;
+		//{{{{--------------------------------------->
+		for (i = 0; i < MAX_VIEWER_NUM; i++ ) {
+			if (viewerArray[i].bUsing == FALSE) {
+				break;
+			}
+		}
 
-	if ((FALSE == bLanNode) && (FALSE == no_nat)) {
-		pthread_create(&hConnectThread, NULL, ConnectThreadFn, pThreadParam);
+		if (i == MAX_VIEWER_NUM) { // no free node
+			//MessageBox("对不起，当前并发连接数已达到上限!", (LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
+			break;
+		}
+
+		viewerArray[i].bUsing = TRUE;
+		viewerArray[i].nID = i;
+		//<---------------------------------------}}}}
+		
+		
+		//{{{{--------------------------------------->
+		viewerArray[i].hConnectThread = NULL;
+		viewerArray[i].hConnectThread2 = NULL;
+		viewerArray[i].hConnectThreadRev = NULL;
+		viewerArray[i].bQuitRecvSocketLoop = TRUE;
+		viewerArray[i].bConnecting = TRUE;
+		viewerArray[i].bConnected = FALSE;
+
+		strncpy(viewerArray[i].password, password_str, sizeof(viewerArray[i].password));
+		//<---------------------------------------}}}}
+		
+		//mac_addr(node_id_str, g1_peer_node_id, NULL);
+		
+		HandleRegister(&(viewerArray[i]));
+		
+		ret = viewerArray[i].httpOP.DoPull(g_client_charset, g_client_lang, channel_id, (n == 0 ? TRUE : FALSE));
+		if (ret != 1) {
+			continue;
+		}
+		
+		if (TRUE == viewerArray[i].httpOP.m1_peer_nonat) {
+			pthread_create(&(viewerArray[i].hConnectThread2), NULL, ConnectThreadFn2, &(viewerArray[i]));
+		}
+		else if (TRUE == viewerArray[i].httpOP.m0_no_nat) {
+			pthread_create(&(viewerArray[i].hConnectThreadRev), NULL, ConnectThreadFnRev, &(viewerArray[i]));
+		}
+		else {
+			pthread_create(&(viewerArray[i].hConnectThread), NULL, ConnectThreadFn, &(viewerArray[i]));
+		}
+		
+	}//for n 2
+
+	free(password_str);
+	
+	
+	int data_sock;
+	struct sockaddr_un addr;
+	
+	data_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    addr.sun_path[0] = '\0';
+    strncpy(addr.sun_path + 1, ipc_socket_name, sizeof(addr.sun_path) - 1);
+    len = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(ipc_socket_name);
+    
+    if (connect(data_sock, (struct sockaddr *)&addr, len) < 0) {
+    	__android_log_print(ANDROID_LOG_ERROR, "DoConnect", "connect(%s) failed, wait 50 ms...\n", ipc_socket_name);
+    	usleep(50000);
+	    if (connect(data_sock, (struct sockaddr *)&addr, len) < 0) {
+			__android_log_print(ANDROID_LOG_ERROR, "DoConnect", "connect(%s) failed!\n", ipc_socket_name);
+			close(data_sock);
+			return;
+		}
 	}
-	else {
-		pthread_create(&hConnectThread2, NULL, ConnectThreadFn2, pThreadParam);
-	}
-
-	free(node_id_str);
-	free(pub_ip_str);
-	free(pub_port_str);
-}
-
-extern "C"
-void
-MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoConnectTcp)
-	(JNIEnv* env, jobject thiz, jstring strNodeId, jstring strPubIp, jstring strPubPort, jboolean bLanNode, jboolean no_nat, jint nat_type)
-{
-	int len;
-	char *node_id_str;
-	char *pub_ip_str;
-	char *pub_port_str;
 	
-	len = (env)->GetStringLength(strNodeId);
-	node_id_str = (char *)malloc(len+1);
-	(env)->GetStringUTFRegion(strNodeId, 0, len, node_id_str);
-	node_id_str[len] = '\0';
-	
-	len = (env)->GetStringLength(strPubIp);
-	pub_ip_str = (char *)malloc(len+1);
-	(env)->GetStringUTFRegion(strPubIp, 0, len, pub_ip_str);
-	pub_ip_str[len] = '\0';
-	
-	len = (env)->GetStringLength(strPubPort);
-	pub_port_str = (char *)malloc(len+1);
-	(env)->GetStringUTFRegion(strPubPort, 0, len, pub_port_str);
-	pub_port_str[len] = '\0';
-	
-	
-	CONN_PARAM *pThreadParam = (CONN_PARAM *)malloc(sizeof(CONN_PARAM));
-	strncpy(pThreadParam->szNodeIdStr, node_id_str, sizeof(pThreadParam->szNodeIdStr));
-	strncpy(pThreadParam->szPubIpStr, pub_ip_str, sizeof(pThreadParam->szPubIpStr));
-	strncpy(pThreadParam->szPubPortStr, pub_port_str, sizeof(pThreadParam->szPubPortStr));
-	pThreadParam->bLanNode = bLanNode;
-	pThreadParam->no_nat = no_nat;
-	pThreadParam->nat_type = nat_type;
-	
-	mac_addr(node_id_str, g1_peer_node_id, NULL);
-	
-	pthread_create(&hConnectThreadTcp, NULL, ConnectThreadFnTcp, pThreadParam);
-	
-	
-	free(node_id_str);
-	free(pub_ip_str);
-	free(pub_port_str);
+	ipc_client_sock = data_sock;
 }
 
 extern "C"
@@ -698,24 +515,14 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoDisconnect)
 {
 	__android_log_print(ANDROID_LOG_INFO, "DoDisconnect", "DoDisconnect()...\n");
 	
-	usleep(3000000);
+	//if (sock_type == SOCKET_TYPE_TCP)
+	{
+		closesocket(ipc_client_sock);
+		ipc_client_sock = INVALID_SOCKET;
+	}
 	
-	if (g1_use_sock_type == SOCKET_TYPE_UDT)
-	{
-		UDT::unregister_learn_remote_addr(g1_use_udt_sock);
-		
-		UdtClose(g1_use_udt_sock);
-		g1_use_udt_sock = INVALID_SOCKET;
-		g1_use_sock_type = SOCKET_TYPE_UNKNOWN;
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-	}
-	else if (g1_use_sock_type == SOCKET_TYPE_TCP)
-	{
-		closesocket(g1_use_udt_sock);
-		g1_use_udt_sock = INVALID_SOCKET;
-		g1_use_sock_type = SOCKET_TYPE_UNKNOWN;
-	}
+	current_use_viewer = -1;
+	is_app_recv_av = FALSE;
 }
 
 
@@ -723,19 +530,15 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoDisconnect)
 
 static void learn_remote_addr(void *ctx, sockaddr* his_addr, int addr_len)
 {
+	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)ctx;
 	sockaddr_in *sin = (sockaddr_in *)his_addr;
-	g1_use_peer_port = ntohs(sin->sin_port);
-	g1_use_peer_ip = sin->sin_addr.s_addr;
-	__android_log_print(ANDROID_LOG_INFO, "NativeMainFunc", "learn_remote_addr() called, %s[%d]\n", inet_ntoa(sin->sin_addr), g1_use_peer_port);
+	pViewerNode->httpOP.m1_use_peer_port = ntohs(sin->sin_port);
+	pViewerNode->httpOP.m1_use_peer_ip = sin->sin_addr.s_addr;
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "learn_remote_addr() called, %s[%d]\n", inet_ntoa(sin->sin_addr), pViewerNode->httpOP.m1_use_peer_port);
 }
 
 static void InitVar()
 {
-	char szNodeId[20];
-	if_get_viewer_nodeid(szNodeId, sizeof(szNodeId));
-	__android_log_print(ANDROID_LOG_INFO, "InitVar", "if_get_viewer_nodeid() = %s", szNodeId);
-	mac_addr(szNodeId, g0_node_id, NULL);
-	
 	strncpy(g0_device_uuid, "Viewer Device UUID", sizeof(g0_device_uuid));
 	strncpy(g0_node_name, "Viewer Node Name", sizeof(g0_node_name));
 	strncpy(g0_os_info, "Viewer OS Info", sizeof(g0_os_info));
@@ -744,32 +547,12 @@ static void InitVar()
 	
 	strncpy(g1_http_server, DEFAULT_HTTP_SERVER, sizeof(g1_http_server));
 	strncpy(g1_stun_server, DEFAULT_STUN_SERVER, sizeof(g1_stun_server));
-	g1_http_client_ip = 0;
 	
-	g0_nat_type = StunTypeUnknown;
-	g0_pub_ip = 0;
-	g0_pub_port = 0;
-	
-	g0_is_admin = 1;
-	g0_is_busy = 0;
-	g0_audio_channels = 0;
-	g0_video_channels = 0;
 	g1_register_period = DEFAULT_REGISTER_PERIOD;  /* Seconds */
 	g1_expire_period = DEFAULT_EXPIRE_PERIOD;  /* Seconds */
-
-	g1_lowest_level_for_av = 0;
-	g1_lowest_level_for_vnc = 0;
-	g1_lowest_level_for_ft = 0;
-	g1_lowest_level_for_adb = 0;
-	g1_lowest_level_for_webmoni = 0;
-	g1_lowest_level_allow_hide = 0;
-
-	g1_use_udp_sock = INVALID_SOCKET;
-	g1_use_udt_sock = INVALID_SOCKET;
-	g1_use_sock_type = SOCKET_TYPE_UNKNOWN;
 }
 
-static void HandleRegister()
+static void HandleRegister(VIEWER_NODE *pViewerNode)
 {
 	int ret;
 	StunAddress4 mapped;
@@ -779,37 +562,37 @@ static void HandleRegister()
 	int ipCountTemp;
 	
 	
-	ret = DoRegister1(g_client_charset, g_client_lang);
+	ret = pViewerNode->httpOP.DoRegister1(g_client_charset, g_client_lang);
 	__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "DoRegister1...ret=%d\n", ret);
 	
 	if (ret == -1) {
-		m_bNeedRegister = TRUE;
+		pViewerNode->m_bNeedRegister = TRUE;
 		return;
 	}
 	else if (ret == 0) {
 		/* Exit this applicantion. */
 		//::PostMessage(pDlgWnd, WM_REGISTER_EXIT, 0, 0);
-		m_bNeedRegister = TRUE;
+		pViewerNode->m_bNeedRegister = TRUE;
 		return;
 	}
 	else if (ret == 1) {
-		m_bNeedRegister = TRUE;
+		pViewerNode->m_bNeedRegister = TRUE;
 		return;
 	}
 
 
 	//::EnterCriticalSection(&(m_localbind_csec));
-	pthread_mutex_lock(&m_secBind);
+	pthread_mutex_lock(&(pViewerNode->m_secBind));
 
 	/* STUN Information */
 	if (strcmp(g1_stun_server, "NONE") == 0)
 	{
-		ret = CheckStunMyself(g1_http_server, FIRST_CONNECT_PORT, &mapped, &bNoNAT, &nNatType);
+		ret = CheckStunMyself(g1_http_server, pViewerNode->httpOP.m0_p2p_port, &mapped, &bNoNAT, &nNatType);
 		if (ret == -1) {
 			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStunMyself() failed!\n");
 			
-		   mapped.addr = ntohl(g1_http_client_ip);
-		   mapped.port = FIRST_CONNECT_PORT;
+		   mapped.addr = ntohl(pViewerNode->httpOP.m1_http_client_ip);
+		   mapped.port = pViewerNode->httpOP.m0_p2p_port;
 		   
 		   Socket s = openPort( 0/*use ephemeral*/, mapped.addr, false);
 		   if (s != INVALID_SOCKET)
@@ -826,39 +609,39 @@ static void HandleRegister()
 		   
 		   if_messagetip(R_string::msg_nat_detect_success);
 		   
-			g0_pub_ip = htonl(mapped.addr);
-			g0_pub_port = mapped.port;
-			g0_no_nat = bNoNAT;
-			g0_nat_type = nNatType;
+			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
+			pViewerNode->httpOP.m0_pub_port = mapped.port;
+			pViewerNode->httpOP.m0_no_nat = bNoNAT;
+			pViewerNode->httpOP.m0_nat_type = nNatType;
 			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
-				(g0_pub_ip & 0x000000ff) >> 0,
-				(g0_pub_ip & 0x0000ff00) >> 8,
-				(g0_pub_ip & 0x00ff0000) >> 16,
-				(g0_pub_ip & 0xff000000) >> 24,
-				g0_pub_port,  g0_no_nat ? 1 : 0);
+				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
+				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
+				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
+				(pViewerNode->httpOP.m0_pub_ip & 0xff000000) >> 24,
+				pViewerNode->httpOP.m0_pub_port,  pViewerNode->httpOP.m0_no_nat ? 1 : 0);
 		}
 		else {
 			if_messagetip(R_string::msg_nat_detect_success);
 			
-			g0_pub_ip = htonl(mapped.addr);
-			g0_pub_port = mapped.port;
-			g0_no_nat = bNoNAT;
-			g0_nat_type = nNatType;
+			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
+			pViewerNode->httpOP.m0_pub_port = mapped.port;
+			pViewerNode->httpOP.m0_no_nat = bNoNAT;
+			pViewerNode->httpOP.m0_nat_type = nNatType;
 			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStunMyself: %d.%d.%d.%d[%d]\n", 
-				(g0_pub_ip & 0x000000ff) >> 0,
-				(g0_pub_ip & 0x0000ff00) >> 8,
-				(g0_pub_ip & 0x00ff0000) >> 16,
-				(g0_pub_ip & 0xff000000) >> 24,
-				g0_pub_port);
+				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
+				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
+				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
+				(pViewerNode->httpOP.m0_pub_ip & 0xff000000) >> 24,
+				pViewerNode->httpOP.m0_pub_port);
 		}
 	}
 	else if (g_bFirstCheckStun) {
-		ret = CheckStun(g1_stun_server, FIRST_CONNECT_PORT, &mapped, &bNoNAT, &nNatType);
+		ret = CheckStun(g1_stun_server, pViewerNode->httpOP.m0_p2p_port, &mapped, &bNoNAT, &nNatType);
 		if (ret == -1) {
 			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStun() failed!\n");
 			
-		   mapped.addr = ntohl(g1_http_client_ip);
-		   mapped.port = FIRST_CONNECT_PORT;
+		   mapped.addr = ntohl(pViewerNode->httpOP.m1_http_client_ip);
+		   mapped.port = pViewerNode->httpOP.m0_p2p_port;
 		   
 		   Socket s = openPort( 0/*use ephemeral*/, mapped.addr, false);
 		   if (s != INVALID_SOCKET)
@@ -875,64 +658,64 @@ static void HandleRegister()
 		   
 		   if_messagetip(R_string::msg_nat_detect_success);
 		   
-			g0_pub_ip = htonl(mapped.addr);
-			g0_pub_port = mapped.port;
-			g0_no_nat = bNoNAT;
-			g0_nat_type = nNatType;
+			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
+			pViewerNode->httpOP.m0_pub_port = mapped.port;
+			pViewerNode->httpOP.m0_no_nat = bNoNAT;
+			pViewerNode->httpOP.m0_nat_type = nNatType;
 			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
-				(g0_pub_ip & 0x000000ff) >> 0,
-				(g0_pub_ip & 0x0000ff00) >> 8,
-				(g0_pub_ip & 0x00ff0000) >> 16,
-				(g0_pub_ip & 0xff000000) >> 24,
-				g0_pub_port,  g0_no_nat ? 1 : 0);
+				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
+				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
+				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
+				(pViewerNode->httpOP.m0_pub_ip & 0xff000000) >> 24,
+				pViewerNode->httpOP.m0_pub_port,  pViewerNode->httpOP.m0_no_nat ? 1 : 0);
 		}
 		else if (ret == 0) {
 			//SetStatusInfo(pDlgWnd, _T("本端NAT防火墙无法穿透!!!您的网络环境可能封锁了UDP通信。"));
 			if_messagetip(R_string::msg_nat_blocked);
-			g0_pub_ip = 0;
-			g0_pub_port = 0;
-			g0_no_nat = FALSE;
-			g0_nat_type = nNatType;
+			pViewerNode->httpOP.m0_pub_ip = 0;
+			pViewerNode->httpOP.m0_pub_port = 0;
+			pViewerNode->httpOP.m0_no_nat = FALSE;
+			pViewerNode->httpOP.m0_nat_type = nNatType;
 		}
 		else {
 			//SetStatusInfo(pDlgWnd, _T("本端NAT探测成功。"));
 			if_messagetip(R_string::msg_nat_detect_success);
 			g_bFirstCheckStun = FALSE;
-			g0_pub_ip = htonl(mapped.addr);
-			g0_pub_port = mapped.port;
-			g0_no_nat = bNoNAT;
-			g0_nat_type = nNatType;
+			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
+			pViewerNode->httpOP.m0_pub_port = mapped.port;
+			pViewerNode->httpOP.m0_no_nat = bNoNAT;
+			pViewerNode->httpOP.m0_nat_type = nNatType;
 #if 1 ////Debug
 			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStun: %s %d.%d.%d.%d[%d]", 
-				g0_no_nat ? "NoNAT" : "NAT",
-				(g0_pub_ip & 0x000000ff) >> 0,
-				(g0_pub_ip & 0x0000ff00) >> 8,
-				(g0_pub_ip & 0x00ff0000) >> 16,
-				(g0_pub_ip & 0xff000000) >> 24,
-				g0_pub_port);
+				pViewerNode->httpOP.m0_no_nat ? "NoNAT" : "NAT",
+				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
+				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
+				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
+				(pViewerNode->httpOP.m0_pub_ip & 0xff000000) >> 24,
+				pViewerNode->httpOP.m0_pub_port);
 #endif
 		}
 	}
 	else {
-		ret = CheckStunSimple(g1_stun_server, FIRST_CONNECT_PORT, &mapped);
+		ret = CheckStunSimple(g1_stun_server, pViewerNode->httpOP.m0_p2p_port, &mapped);
 		if (ret == -1) {
 			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStunSimple() failed!\n");
-			mapped.addr = ntohl(g1_http_client_ip);
-			mapped.port = FIRST_CONNECT_PORT;
-			g0_pub_ip = htonl(mapped.addr);
-			g0_pub_port = mapped.port;
+			mapped.addr = ntohl(pViewerNode->httpOP.m1_http_client_ip);
+			mapped.port = pViewerNode->httpOP.m0_p2p_port;;
+			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
+			pViewerNode->httpOP.m0_pub_port = mapped.port;
 		}
 		else {
-			g0_pub_ip = htonl(mapped.addr);
-			g0_pub_port = mapped.port;
+			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
+			pViewerNode->httpOP.m0_pub_port = mapped.port;
 #if 1 ////Debug
 			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStunSimple: %s %d.%d.%d.%d[%d]", 
-				g0_no_nat ? "NoNAT" : "NAT",
-				(g0_pub_ip & 0x000000ff) >> 0,
-				(g0_pub_ip & 0x0000ff00) >> 8,
-				(g0_pub_ip & 0x00ff0000) >> 16,
-				(g0_pub_ip & 0xff000000) >> 24,
-				g0_pub_port);
+				pViewerNode->httpOP.m0_no_nat ? "NoNAT" : "NAT",
+				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
+				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
+				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
+				(pViewerNode->httpOP.m0_pub_ip & 0xff000000) >> 24,
+				pViewerNode->httpOP.m0_pub_port);
 #endif
 		}
 	}
@@ -944,58 +727,58 @@ static void HandleRegister()
 		char extIp[16];
 		strcpy(extIp, "");
 		myUPnP.GetNATExternalIp(extIp);
-		if (strlen(extIp) > 0 && 0 != g0_pub_ip && inet_addr(extIp) == g0_pub_ip)
+		if (strlen(extIp) > 0 && 0 != pViewerNode->httpOP.m0_pub_ip && inet_addr(extIp) == pViewerNode->httpOP.m0_pub_ip)
 		{
-			mapping.description = "UP2P";
-			//mapping.protocol = ;
-			//mapping.externalPort = ;
-			mapping.internalPort = SECOND_CONNECT_PORT;
-			if (UNAT_OK == myUPnP.AddNATPortMapping(&mapping, false))
+			pViewerNode->mapping.description = "UP2P";
+			//pViewerNode->mapping.protocol = ;
+			//pViewerNode->mapping.externalPort = ;
+			pViewerNode->mapping.internalPort = pViewerNode->httpOP.m0_p2p_port - 2;//SECOND_CONNECT_PORT
+			if (UNAT_OK == myUPnP.AddNATPortMapping(&(pViewerNode->mapping), false))
 			{
 				g_bFirstCheckStun = FALSE;
 
-				g0_pub_ip = inet_addr(extIp);
-				g0_pub_port = mapping.externalPort;
-				g0_no_nat = TRUE;
-				g0_nat_type = StunTypeOpen;
+				pViewerNode->httpOP.m0_pub_ip = inet_addr(extIp);
+				pViewerNode->httpOP.m0_pub_port = pViewerNode->mapping.externalPort;
+				pViewerNode->httpOP.m0_no_nat = TRUE;
+				pViewerNode->httpOP.m0_nat_type = StunTypeOpen;
 
-				__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "UPnP AddPortMapping OK: %s[%d] --> %s[%d]", extIp, mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), mapping.internalPort);
+				__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "UPnP AddPortMapping OK: %s[%d] --> %s[%d]", extIp, pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
 			}
 			else
 			{
 				BOOL bTempExists = FALSE;
-				myUPnP.GetNATSpecificEntry(&mapping, &bTempExists);
+				myUPnP.GetNATSpecificEntry(&(pViewerNode->mapping), &bTempExists);
 				if (bTempExists)
 				{
 					g_bFirstCheckStun = FALSE;
 
-					g0_pub_ip = inet_addr(extIp);
-					g0_pub_port = mapping.externalPort;
-					g0_no_nat = TRUE;
-					g0_nat_type = StunTypeOpen;
+					pViewerNode->httpOP.m0_pub_ip = inet_addr(extIp);
+					pViewerNode->httpOP.m0_pub_port = pViewerNode->mapping.externalPort;
+					pViewerNode->httpOP.m0_no_nat = TRUE;
+					pViewerNode->httpOP.m0_nat_type = StunTypeOpen;
 
-					__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "UPnP PortMapping Exists: %s[%d] --> %s[%d]", extIp, mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), mapping.internalPort);
+					__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "UPnP PortMapping Exists: %s[%d] --> %s[%d]", extIp, pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
 				}
 				else {
-					g0_pub_ip = htonl(mapped.addr);
-					g0_pub_port = mapped.port;
-					g0_no_nat = bNoNAT;
-					g0_nat_type = nNatType;
+					pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
+					pViewerNode->httpOP.m0_pub_port = mapped.port;
+					pViewerNode->httpOP.m0_no_nat = bNoNAT;
+					pViewerNode->httpOP.m0_nat_type = nNatType;
 				}
 			}
 		}
 		else {
 			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "UPnP PortMapping Skipped: %s --> %s", extIp, myUPnP.GetLocalIPStr().c_str());
-			g0_pub_ip = htonl(mapped.addr);
-			g0_pub_port = mapped.port;
-			g0_no_nat = bNoNAT;
-			g0_nat_type = nNatType;
+			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
+			pViewerNode->httpOP.m0_pub_port = mapped.port;
+			pViewerNode->httpOP.m0_no_nat = bNoNAT;
+			pViewerNode->httpOP.m0_nat_type = nNatType;
 		}
 	}
 	
 	//修正公网IP受控端的连接端口问题,2014-6-15
 	if (bNoNAT) {
-		g0_pub_port = SECOND_CONNECT_PORT;
+		pViewerNode->httpOP.m0_pub_port = pViewerNode->httpOP.m0_p2p_port - 2;//SECOND_CONNECT_PORT
 	}
 	
 	
@@ -1005,380 +788,413 @@ static void HandleRegister()
 		//TRACE("GetLocalAddress: fialed!\n");
 	}
 	else {
-		g0_ipCount = ipCountTemp;
-		memcpy(g0_ipArray, ipArrayTemp, sizeof(DWORD)*ipCountTemp);
-		g0_port = FIRST_CONNECT_PORT;
+		pViewerNode->httpOP.m0_ipCount = ipCountTemp;
+		memcpy(pViewerNode->httpOP.m0_ipArray, ipArrayTemp, sizeof(DWORD)*ipCountTemp);
+		pViewerNode->httpOP.m0_port = pViewerNode->httpOP.m0_p2p_port;//FIRST_CONNECT_PORT;
 #if 1 ////Debug
 		__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "GetLocalAddress: (count=%d) %d.%d.%d.%d[%d]", 
-			g0_ipCount,
-			(g0_ipArray[0] & 0x000000ff) >> 0,
-			(g0_ipArray[0] & 0x0000ff00) >> 8,
-			(g0_ipArray[0] & 0x00ff0000) >> 16,
-			(g0_ipArray[0] & 0xff000000) >> 24,
-			g0_port);
+			pViewerNode->httpOP.m0_ipCount,
+			(pViewerNode->httpOP.m0_ipArray[0] & 0x000000ff) >> 0,
+			(pViewerNode->httpOP.m0_ipArray[0] & 0x0000ff00) >> 8,
+			(pViewerNode->httpOP.m0_ipArray[0] & 0x00ff0000) >> 16,
+			(pViewerNode->httpOP.m0_ipArray[0] & 0xff000000) >> 24,
+			pViewerNode->httpOP.m0_port);
 #endif
 	}
 	
-	if (g0_no_nat) {
-		g0_port = SECOND_CONNECT_PORT;
+	if (pViewerNode->httpOP.m0_no_nat) {
+		pViewerNode->httpOP.m0_port = SECOND_CONNECT_PORT;
 	}
 
-	m_bNeedRegister = FALSE;
+	pViewerNode->m_bNeedRegister = FALSE;
 
 _OUT:
 	//::LeaveCriticalSection(&(m_localbind_csec));
-	pthread_mutex_unlock(&m_secBind);
+	pthread_mutex_unlock(&(pViewerNode->m_secBind));
 	return;
 }
 
 void *RegisterThreadFn(void *pvThreadParam)
 {
-	HandleRegister();
-	
-	g_notifi_index = 0;
-	g_notifi_count = MAX_NOTIFICATION_NUM;
-	if (DoQueryNotificationList(g_client_charset, g_client_lang, g_notifications, &g_notifi_count) == 0 && g_notifi_count > 0) {
-		while (g_notifi_index < g_notifi_count)
-		{
-			srand((unsigned int)time(NULL));
-			int r = rand();
-			usleep((30 + (r % 90)) * 1000000);
-			
-			if_show_text(g_notifications[g_notifi_index].text);
-			
-			g_notifi_index += 1;
+	for (int i = 0; i < MAX_VIEWER_NUM; i++ )
+	{
+		HandleRegister(&(viewerArray[i]));
+	}
+	return 0;
+}
+
+
+//
+// Return values:
+// -1: Network error
+//  0: NG
+//  1: OK
+//
+static int CheckPassword(VIEWER_NODE *pViewerNode, SOCKET_TYPE sock_type, SOCKET fhandle)
+{
+	BYTE bTopoPrimary;
+	DWORD dwServerVersion;
+	BYTE bFuncFlags;
+	BYTE bTopoLevel;
+	WORD wResult;
+	char szPassEnc[MAX_PATH];
+
+
+	//检查看是否第一个rudp连接，第一个rudp连接应该是TopoPrimary
+	BOOL hasConnection = FALSE;
+	for (int i = 0; i < MAX_VIEWER_NUM; i++)
+	{
+		if (viewerArray[i].bUsing == FALSE) {
+			continue;
+		}
+		if (viewerArray[i].bConnected) {
+			hasConnection = TRUE;
+			break;
 		}
 	}
+	if (hasConnection) {
+		bTopoPrimary = 0;
+	}
+	else {
+		bTopoPrimary = 1;
+	}
+
+	php_md5(pViewerNode->password, szPassEnc, sizeof(szPassEnc));
+
+	if (CtrlCmd_HELLO(sock_type, fhandle, pViewerNode->httpOP.m0_node_id, g0_version, bTopoPrimary, szPassEnc, pViewerNode->httpOP.m1_peer_node_id, &dwServerVersion, &bFuncFlags, &bTopoLevel, &wResult) == 0) {
+		if (wResult == CTRLCMD_RESULT_OK) {
+			//set_encdec_key((unsigned char *)szPassEnc, strlen(szPassEnc));
+			//dwServerVersion
+			//bFuncFlags;
+			//bTopoLevel;
+			return 1;
+		}
+		else {
+			return 0;
+		}
+	}
+	else {
+		return -1;
+	}
+}
+
+static void OnFakeRtpRecv(void *ctx, int payload_type, unsigned long rtptimestamp, unsigned char *data, int len)
+{
+	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)ctx;
+	if (NULL == pViewerNode) {
+		return;
+	}
 	
-	return 0;
+	if (is_app_recv_av && current_use_viewer == pViewerNode->nID)
+	{
+		int ret = CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE_TCP, ipc_data_sock, data, len);
+		if (ret < 0) {
+			__android_log_print(ANDROID_LOG_ERROR, "OnFakeRtpRecv", "CtrlCmd_Send_FAKERTP_RESP() failed!\n");
+		}
+	}
+}
+
+static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCKET fhandle)
+{
+	BOOL bRecvEnd = FALSE;
+
+	if (fhandle == INVALID_SOCKET) {
+		return;
+	}
+
+	while (FALSE == pViewerNode->bQuitRecvSocketLoop)
+	{
+		char buf[32];
+		WORD wCmd;
+		DWORD copy_len;
+		BYTE topo_level;
+		BYTE dest_node_id[6];
+		int index;
+		unsigned char *pRecvData;
+		int ret;
+
+
+		if (RecvStream(ftype, fhandle, buf, 6) < 0)
+		{
+			break;
+		}
+
+		wCmd = ntohs(pf_get_word(buf + 0));
+		copy_len = ntohl(pf_get_dword(buf + 2));
+		//assert(wCmd == CMD_CODE_FAKERTP_RESP && copy_len > 0);
+
+		switch (wCmd)
+		{
+		case CMD_CODE_FAKERTP_RESP:
+
+			pRecvData = (unsigned char *)malloc(copy_len);
+			if (NULL == pRecvData) {
+#if LOG_MSG
+				log_msg("RecvSocketDataLoop: No memory!\n", LOG_LEVEL_DEBUG);
+#endif
+				return;
+			}
+
+
+			ret = RecvStream(ftype, fhandle, (char *)pRecvData, copy_len);
+			if (ret == 0) {
+				OnFakeRtpRecv(pViewerNode, pRecvData[0], ntohl(pf_get_dword(pRecvData + 4)), pRecvData, copy_len);
+				free(pRecvData);
+			}
+			else {
+				free(pRecvData);
+				return;
+			}
+
+			break;
+
+		case CMD_CODE_END:
+			bRecvEnd = TRUE;
+#if LOG_MSG
+			log_msg("RecvSocketDataLoop: CMD_CODE_END?????????\n", LOG_LEVEL_DEBUG);
+#endif
+			break;
+
+		default:
+#if LOG_MSG
+			log_msg("RecvSocketDataLoop: CMD_CODE_???????...\n", LOG_LEVEL_DEBUG);
+#endif
+			for (int i = 0; i < copy_len; i++) {
+				ret = RecvStream(ftype, fhandle, buf, 1);
+				if (ret != 0) {
+					return;
+				}
+			}
+			break;
+		}
+
+	}//while
+
+
+	if (bRecvEnd == FALSE) {
+#if LOG_MSG
+		log_msg("RecvSocketDataLoop: CtrlCmd_Recv_AV_END()...\n", LOG_LEVEL_DEBUG);
+#endif
+		CtrlCmd_Recv_AV_END(ftype, fhandle);
+	}
+}
+
+void DoInConnection(VIEWER_NODE *pViewerNode, BOOL bProxy = FALSE);
+void DoInConnection(VIEWER_NODE *pViewerNode, BOOL bProxy)
+{
+	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
+	//eloop_register_timeout(1, 0, HandleDoUnregister, pViewerNode, NULL);
+	
+	pViewerNode->bConnected = TRUE;
+	
+	//连接是为了视频监控。。。
+	if (current_use_viewer == pViewerNode->nID)
+	{
+		//必须视频可靠传输，音频非冗余传输！！！
+		BYTE bFlags = AV_FLAGS_VIDEO_ENABLE | AV_FLAGS_AUDIO_ENABLE | AV_FLAGS_VIDEO_RELIABLE | AV_FLAGS_VIDEO_H264 | AV_FLAGS_AUDIO_G729A;
+		BYTE bVideoSize = AV_VIDEO_SIZE_VGA;
+		BYTE bVideoFrameRate = 25;
+		DWORD audioChannel = 0;
+		DWORD videoChannel = 0;
+		CtrlCmd_AV_START(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
+	}
+	
+	//Loop...,需要CShiyong::DisconnectNode()才能退出Loop！！！
+	pViewerNode->bQuitRecvSocketLoop = FALSE;
+	RecvSocketDataLoop(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+
+	{
+		//CtrlCmd_AV_STOP()将在CShiyong::DisconnectNode()中调用
+		//CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+	}
+	
+	pViewerNode->bConnected = FALSE;
 }
 
 void *ConnectThreadFn(void *pvThreadParam)
 {
-	CONN_PARAM *pParam = (CONN_PARAM *)pvThreadParam;
-	CONN_PARAM conn_param = *pParam;
+	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)pvThreadParam;
 	DWORD use_ip;
 	WORD use_port;
 	int ret;
 	int i, nRetry;
 
 
-	free(pvThreadParam);
 	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFn", "ConnectThreadFn()...\n");
-
 
 	if_progress_show(R_string::msg_please_wait);
 
-	if (	StunTypeUnknown == conn_param.nat_type ||
-			StunTypeFailure == conn_param.nat_type ||
-			StunTypeBlocked == conn_param.nat_type         )
+	if (	StunTypeUnknown == pViewerNode->httpOP.m1_peer_nattype ||
+			StunTypeFailure == pViewerNode->httpOP.m1_peer_nattype ||
+			StunTypeBlocked == pViewerNode->httpOP.m1_peer_nattype         )
 	{
-		ret = DoProxy(g_client_charset, g_client_lang, conn_param.szNodeIdStr, FALSE, 0);
-		if (ret == 1) {
-			//if_progress_cancel();
-			pthread_create(&hConnectThread_Proxy, NULL, ConnectThreadFn_Proxy, NULL);
-			return 0;
-		}
-		else {
 			if_progress_cancel();
 			//MessageBox(NULL, _T("无法建立连接，网络状况异常，或者您的ID级别不够。"), (LPCTSTR)strProductName, MB_OK|MB_ICONINFORMATION);
 			if_messagebox(R_string::msg_connect_proxy_failed);
+			ReturnViewerNode(pViewerNode);
 			return 0;
-		}
 	}
 
 
-	//SetStatusInfo(pDlg->m_hWnd, _T("正在提交本机连接信息，请稍候。。。"), 20);
-	if_progress_show(R_string::msg_connect_register_local);
-	nRetry = 5;
-	do {
-		HandleRegister();
-	} while (nRetry-- > 0 && m_bNeedRegister);
-	if (m_bNeedRegister) {
-		if_progress_cancel();
-		//MessageBox(NULL, _T("提交连接信息失败，请重试。"), (LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
-		if_messagebox(R_string::msg_connect_register_local_failed);
-		return 0;
-	}
-
-
-	pthread_mutex_lock(&m_secBind);
-
-	//SetStatusInfo(pDlg->m_hWnd, _T("正在获取对方连接信息。。。"));
-	if_progress_show(R_string::msg_connect_get_peer);
-	nRetry = 5;
-	ret = -1;
-	while (nRetry-- > 0 && ret == -1) {
-		ret = DoConnect(g_client_charset, g_client_lang, conn_param.szNodeIdStr);
-	}
-	if (ret < 1) {
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-		//MessageBox(NULL, _T("获取对方连接信息失败，请刷新列表后重试。"), (LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
-		if_messagebox(R_string::msg_connect_get_peer_failed);
-		return 0;
-	}
-
-	if (ret == 2) {
-		g1_wait_time -= 5;
-		if (g1_wait_time < 0) {
-			g1_wait_time = 0;
-		}
-	}
-
-	//if (g1_wait_time > 30) {
-	//	pDlg->ShowNotificationBox(_T("提示：升级ID后可以快速获得服务响应，避免长时间排队等待。"));
-	//}
-
-	for (i = g1_wait_time; i > 0; i--) {
+	for (i = pViewerNode->httpOP.m1_wait_time; i > 0; i--) {
 		//wsprintf(szStatusStr, _T("正在排队等待服务响应，%d秒。。。"), i);
 		//SetStatusInfo(pDlg->m_hWnd, szStatusStr);
 		if_progress_show_format1(R_string::msg_connect_wait_queue_format, i);
-		usleep(1000000);
+		usleep(1000*1000);
 	}
-
-	if (ret == 2) {
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-		pthread_create(&hConnectThreadRev, NULL, ConnectThreadFnRev, NULL);
-		return 0;
-	}
-
 
 	//SetStatusInfo(pDlg->m_hWnd, _T("正在打通连接信道。。。"), 20);
 	if_progress_show(R_string::msg_connect_nat_hole);
 
-	g1_use_udp_sock = UdpOpen(INADDR_ANY, FIRST_CONNECT_PORT);
-	if (g1_use_udp_sock == INVALID_SOCKET) {
-		pthread_mutex_unlock(&m_secBind);
+	pthread_mutex_lock(&(pViewerNode->m_secBind));
+
+	pViewerNode->httpOP.m1_use_udp_sock = UdpOpen(INADDR_ANY, pViewerNode->httpOP.m0_p2p_port);
+	if (pViewerNode->httpOP.m1_use_udp_sock == INVALID_SOCKET) {
+		pthread_mutex_unlock(&(pViewerNode->m_secBind));
 		if_progress_cancel();
 		//MessageBox(NULL, _T("连接失败！(udpopen failed)"),(LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
 		if_messagebox(R_string::msg_connect_connecting_failed1);
+		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 
-	if (FindOutConnection(g1_use_udp_sock, g0_node_id, g1_peer_node_id,
-							g1_peer_pri_ipArray, g1_peer_pri_ipCount, g1_peer_pri_port,
-							g1_peer_ip, g1_peer_port,
+	if (FindOutConnection(pViewerNode->httpOP.m1_use_udp_sock, pViewerNode->httpOP.m0_node_id, pViewerNode->httpOP.m1_peer_node_id,
+							pViewerNode->httpOP.m1_peer_pri_ipArray, pViewerNode->httpOP.m1_peer_pri_ipCount, pViewerNode->httpOP.m1_peer_pri_port,
+							pViewerNode->httpOP.m1_peer_ip, pViewerNode->httpOP.m1_peer_port,
 							&use_ip, &use_port) != 0) {
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_show(R_string::msg_please_wait);
-		ret = DoProxy(g_client_charset, g_client_lang, conn_param.szNodeIdStr, FALSE, 0);
-		if (ret == 1) {
-			//if_progress_cancel();
-			pthread_create(&hConnectThread_Proxy, NULL, ConnectThreadFn_Proxy, NULL);
-			return 0;
-		}
-		else {
-			if_progress_cancel();
-			//MessageBox(NULL, _T("无法建立连接，网络状况异常，或者您的ID级别不够。"), (LPCTSTR)strProductName, MB_OK|MB_ICONINFORMATION);
-			if_messagebox(R_string::msg_connect_proxy_failed);
-			return 0;
-		}
+		UdpClose(pViewerNode->httpOP.m1_use_udp_sock);
+		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
+		pthread_mutex_unlock(&(pViewerNode->m_secBind));
+		if_progress_cancel();
+		//MessageBox(NULL, _T("无法建立连接，网络状况异常，或者您的ID级别不够。"), (LPCTSTR)strProductName, MB_OK|MB_ICONINFORMATION);
+		if_messagebox(R_string::msg_connect_proxy_failed);
+		ReturnViewerNode(pViewerNode);
+		return 0;
 	}
-	g1_use_peer_ip = use_ip;
-	g1_use_peer_port = use_port;
+	pViewerNode->httpOP.m1_use_peer_ip = use_ip;
+	pViewerNode->httpOP.m1_use_peer_port = use_port;
 #if 1 ////Debug
 	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFn", "@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
-		(g1_use_peer_ip & 0x000000ff) >> 0,
-		(g1_use_peer_ip & 0x0000ff00) >> 8,
-		(g1_use_peer_ip & 0x00ff0000) >> 16,
-		(g1_use_peer_ip & 0xff000000) >> 24,
-		g1_use_peer_port);
+		(pViewerNode->httpOP.m1_use_peer_ip & 0x000000ff) >> 0,
+		(pViewerNode->httpOP.m1_use_peer_ip & 0x0000ff00) >> 8,
+		(pViewerNode->httpOP.m1_use_peer_ip & 0x00ff0000) >> 16,
+		(pViewerNode->httpOP.m1_use_peer_ip & 0xff000000) >> 24,
+		pViewerNode->httpOP.m1_use_peer_port);
 #endif
 
-	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
-	//eloop_register_timeout(3, 0, HandleDoUnregister, NULL, NULL);
-
 
 	//SetStatusInfo(pDlg->m_hWnd, _T("正在同对方建立连接，请稍候。。。"), 30);
 	if_progress_show(R_string::msg_connect_connecting);
 
-	g1_use_udt_sock = UdtOpenEx(g1_use_udp_sock);
-	if (g1_use_udt_sock == INVALID_SOCKET) {
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-		pthread_mutex_unlock(&m_secBind);
+	pViewerNode->httpOP.m1_use_udt_sock = UdtOpenEx(pViewerNode->httpOP.m1_use_udp_sock);
+	if (pViewerNode->httpOP.m1_use_udt_sock == INVALID_SOCKET) {
+		UdpClose(pViewerNode->httpOP.m1_use_udp_sock);
+		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
+		pthread_mutex_unlock(&(pViewerNode->m_secBind));
 		if_progress_cancel();
 		//MessageBox(NULL, _T("连接失败！(udtopen failed)"),(LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
 		if_messagebox(R_string::msg_connect_connecting_failed2);
+		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 
 
-	UDTSOCKET fhandle2 = UdtWaitConnect(g1_use_udt_sock, &g1_use_peer_ip, &g1_use_peer_port);
+	UDTSOCKET fhandle2 = UdtWaitConnect(pViewerNode->httpOP.m1_use_udt_sock, &(pViewerNode->httpOP.m1_use_peer_ip), &(pViewerNode->httpOP.m1_use_peer_port));
 	if (INVALID_SOCKET == fhandle2) {
-		UdtClose(g1_use_udt_sock);
-		g1_use_udt_sock = INVALID_SOCKET;
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-		pthread_mutex_unlock(&m_secBind);
+		UdtClose(pViewerNode->httpOP.m1_use_udt_sock);
+		pViewerNode->httpOP.m1_use_udt_sock = INVALID_SOCKET;
+		UdpClose(pViewerNode->httpOP.m1_use_udp_sock);
+		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
+		pthread_mutex_unlock(&(pViewerNode->m_secBind));
 		if_progress_cancel();
 		if_messagebox(R_string::msg_connect_connecting_failed8);
+		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 	else {
-		UdtClose(g1_use_udt_sock);
-		g1_use_udt_sock = fhandle2;
+		UdtClose(pViewerNode->httpOP.m1_use_udt_sock);
+		pViewerNode->httpOP.m1_use_udt_sock = fhandle2;
 	}
 	
 	
-	g1_use_sock_type = SOCKET_TYPE_UDT;
-	if_on_connected(g1_use_sock_type, g1_use_udt_sock);
-	if (SOCKET_TYPE_UDT == g1_use_sock_type) {
-		UDT::register_learn_remote_addr(g1_use_udt_sock, learn_remote_addr, NULL);
+	pViewerNode->httpOP.m1_use_sock_type = SOCKET_TYPE_UDT;
+	if_on_connected(get_use_sock_type(), get_use_udt_sock());
+	if (SOCKET_TYPE_UDT == pViewerNode->httpOP.m1_use_sock_type) {
+		UDT::register_learn_remote_addr(pViewerNode->httpOP.m1_use_udt_sock, learn_remote_addr, pViewerNode);
 	}
 
+	//SetStatusInfo(pDlg->m_hWnd, _T("成功建立连接，正在验证访问密码。。。"));
+	ret = CheckPassword(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+	if (-1 == ret) {
+		//SetStatusInfo(pDlg->m_hWnd, "验证密码时通信出错，无法连接！");
+	}
+	else if (0 == ret)
+	{
+		//SetStatusInfo(pDlg->m_hWnd, "认证密码错误，无法连接！");
+	}
+	else
+	{
 
-	/*
-		UdtClose(g1_use_udt_sock);
-		g1_use_udt_sock = INVALID_SOCKET;
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-	*/
+		DoInConnection(pViewerNode);
+
+	}
+
+	CtrlCmd_BYE(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+
+	usleep(3000*1000);
+
+
+	UdtClose(pViewerNode->httpOP.m1_use_udt_sock);
+	pViewerNode->httpOP.m1_use_udt_sock = INVALID_SOCKET;
+	UdpClose(pViewerNode->httpOP.m1_use_udp_sock);
+	pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
+	if_progress_cancel();
 	
-	pthread_mutex_unlock(&m_secBind);
-	return 0;
-}
-
-void *ConnectThreadFn_Proxy(void *pvThreadParam)
-{
-	int ret;
-	int nRetry;
-
-
-	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFn_Proxy", "ConnectThreadFn_Proxy()...\n");
-
-	pthread_mutex_lock(&m_secBind);
-
-
-	g1_use_peer_ip = g1_peer_ip;
-	g1_use_peer_port = g1_peer_port;
-
-
-	//SetStatusInfo(pDlg->m_hWnd, _T("正在同对方建立连接，请稍候。。。"), 30);
-	if_progress_show(R_string::msg_connect_connecting);
-
-	g1_use_udp_sock = UdpOpen(INADDR_ANY, FIRST_CONNECT_PORT);
-	if (g1_use_udp_sock == INVALID_SOCKET) {
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-		//MessageBox(NULL, _T("连接失败！(udpopen failed)"),(LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
-		if_messagebox(R_string::msg_connect_connecting_failed1);
-		return 0;
-	}
-
-
-	if (WaitForProxyReady(g1_use_udp_sock, g0_node_id, g1_peer_ip, g1_peer_port) < 0) {
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-		//MessageBox(NULL, _T("连接失败(WaitForProxyReady failed)，请重试。"), (LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
-		if_messagebox(R_string::msg_connect_connecting_failed4);
-		return 0;
-	}
-
-
-	g1_use_udt_sock = UdtOpenEx(g1_use_udp_sock);
-	if (g1_use_udt_sock == INVALID_SOCKET) {
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-		//MessageBox(NULL, _T("连接失败！(udtopen failed)"),(LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
-		if_messagebox(R_string::msg_connect_connecting_failed2);
-		return 0;
-	}
-
-
-	UDTSOCKET fhandle2 = UdtWaitConnect(g1_use_udt_sock, &g1_use_peer_ip, &g1_use_peer_port);
-	if (INVALID_SOCKET == fhandle2) {
-		UdtClose(g1_use_udt_sock);
-		g1_use_udt_sock = INVALID_SOCKET;
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-		if_messagebox(R_string::msg_connect_connecting_failed8);
-		return 0;
-	}
-	else {
-		UdtClose(g1_use_udt_sock);
-		g1_use_udt_sock = fhandle2;
-	}
-
-
-	g1_use_sock_type = SOCKET_TYPE_UDT;
-	if_on_connected(g1_use_sock_type, g1_use_udt_sock);
-	if (SOCKET_TYPE_UDT == g1_use_sock_type) {
-		UDT::register_learn_remote_addr(g1_use_udt_sock, learn_remote_addr, NULL);
-	}
-
-
-	//EndProxy(g1_use_udp_sock, g1_peer_ip, g1_peer_port);
-	/*
-		UdtClose(g1_use_udt_sock);
-		g1_use_udt_sock = INVALID_SOCKET;
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-	*/
-
-	pthread_mutex_unlock(&m_secBind);
+	pthread_mutex_unlock(&(pViewerNode->m_secBind));
+	ReturnViewerNode(pViewerNode);
 	return 0;
 }
 
 void *ConnectThreadFn2(void *pvThreadParam)
 {
-	CONN_PARAM *pParam = (CONN_PARAM *)pvThreadParam;
-	CONN_PARAM conn_param = *pParam;
+	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)pvThreadParam;
 	int ret;
 	int nRetry;
 
 
-	free(pvThreadParam);
 	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFn2", "ConnectThreadFn2()...\n");
 
-
-	g1_use_peer_ip = inet_addr(conn_param.szPubIpStr);
-	g1_use_peer_port = atol(conn_param.szPubPortStr);
-	//修正公网IP受控端的连接端口问题,2014-6-15
-	//if (FALSE == conn_param.bLanNode) {
-	//	g1_use_peer_port = SECOND_CONNECT_PORT;
-	//}
+	pViewerNode->httpOP.m1_use_peer_ip = pViewerNode->httpOP.m1_peer_ip;
+	pViewerNode->httpOP.m1_use_peer_port = pViewerNode->httpOP.m1_peer_port;
 #if 1 ////Debug
 	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFn2", "@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
-		(g1_use_peer_ip & 0x000000ff) >> 0,
-		(g1_use_peer_ip & 0x0000ff00) >> 8,
-		(g1_use_peer_ip & 0x00ff0000) >> 16,
-		(g1_use_peer_ip & 0xff000000) >> 24,
-		g1_use_peer_port);
+		(pViewerNode->httpOP.m1_use_peer_ip & 0x000000ff) >> 0,
+		(pViewerNode->httpOP.m1_use_peer_ip & 0x0000ff00) >> 8,
+		(pViewerNode->httpOP.m1_use_peer_ip & 0x00ff0000) >> 16,
+		(pViewerNode->httpOP.m1_use_peer_ip & 0xff000000) >> 24,
+		pViewerNode->httpOP.m1_use_peer_port);
 #endif
 
 	//SetStatusInfo(pDlg->m_hWnd, _T("正在同对方建立连接，请稍候。。。"), 30);
 	if_progress_show(R_string::msg_connect_connecting);
 
-	g1_use_udp_sock = UdpOpen(INADDR_ANY, 0);
-	if (g1_use_udp_sock == INVALID_SOCKET) {
+	pViewerNode->httpOP.m1_use_udp_sock = UdpOpen(INADDR_ANY, 0);
+	if (pViewerNode->httpOP.m1_use_udp_sock == INVALID_SOCKET) {
 		if_progress_cancel();
 		//MessageBox(NULL, _T("连接失败！(udpopen failed)"),(LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
 		if_messagebox(R_string::msg_connect_connecting_failed1);
+		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 
-	g1_use_udt_sock = UdtOpenEx(g1_use_udp_sock);
-	if (g1_use_udt_sock == INVALID_SOCKET) {
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
+	pViewerNode->httpOP.m1_use_udt_sock = UdtOpenEx(pViewerNode->httpOP.m1_use_udp_sock);
+	if (pViewerNode->httpOP.m1_use_udt_sock == INVALID_SOCKET) {
+		UdpClose(pViewerNode->httpOP.m1_use_udp_sock);
+		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
 		if_progress_cancel();
 		//MessageBox(NULL, _T("连接失败！(udtopen failed)"),(LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
 		if_messagebox(R_string::msg_connect_connecting_failed2);
+		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 
@@ -1386,307 +1202,63 @@ void *ConnectThreadFn2(void *pvThreadParam)
 	ret = UDT::ERROR;
 	while (nRetry-- > 0 && ret == UDT::ERROR) {
 		//TRACE("@@@ UDT::connect()...\n");
-		ret = UdtConnect(g1_use_udt_sock, g1_use_peer_ip, g1_use_peer_port);
+		ret = UdtConnect(pViewerNode->httpOP.m1_use_udt_sock, pViewerNode->httpOP.m1_use_peer_ip, pViewerNode->httpOP.m1_use_peer_port);
 	}
 	if (UDT::ERROR == ret)
 	{
-		UdtClose(g1_use_udt_sock);
-		g1_use_udt_sock = INVALID_SOCKET;
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
+		UdtClose(pViewerNode->httpOP.m1_use_udt_sock);
+		pViewerNode->httpOP.m1_use_udt_sock = INVALID_SOCKET;
+		UdpClose(pViewerNode->httpOP.m1_use_udp_sock);
+		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
 		if_progress_cancel();
 		//MessageBox(NULL, _T("连接失败(connect failed)，请重试。如果重试多次失败，建议采用中转方式连接。"), (LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
 		if_messagebox(R_string::msg_connect_connecting_failed3);
+		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 
-	
-	g1_use_sock_type = SOCKET_TYPE_UDT;
-	if_on_connected(g1_use_sock_type, g1_use_udt_sock);
-	if (SOCKET_TYPE_UDT == g1_use_sock_type) {
-		UDT::register_learn_remote_addr(g1_use_udt_sock, learn_remote_addr, NULL);
+
+	pViewerNode->httpOP.m1_use_sock_type = SOCKET_TYPE_UDT;
+	if_on_connected(get_use_sock_type(), get_use_udt_sock());
+	if (SOCKET_TYPE_UDT == pViewerNode->httpOP.m1_use_sock_type) {
+		UDT::register_learn_remote_addr(pViewerNode->httpOP.m1_use_udt_sock, learn_remote_addr, pViewerNode);
 	}
 	
 	
-	return 0;
-}
-
-void *ConnectThreadFnTcp(void *pvThreadParam)
-{
-	CONN_PARAM *pParam = (CONN_PARAM *)pvThreadParam;
-	CONN_PARAM conn_param = *pParam;
-	DWORD use_ip;
-	WORD use_port;
-	int ret;
-	int i, nRetry;
-
-
-	free(pvThreadParam);
-	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnTcp", "ConnectThreadFnTcp()...\n");
-
-
-	if_progress_show(R_string::msg_please_wait);
-
-	if (	StunTypeUnknown == conn_param.nat_type ||
-			StunTypeFailure == conn_param.nat_type ||
-			StunTypeBlocked == conn_param.nat_type         )
+	//SetStatusInfo(pDlg->m_hWnd, _T("成功建立连接，正在验证访问密码。。。"));
+	ret = CheckPassword(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+	if (-1 == ret) {
+		//SetStatusInfo(pDlg->m_hWnd, "验证密码时通信出错，无法连接！");
+	}
+	else if (0 == ret)
 	{
-		{
-			if_progress_cancel();
-			CONN_PARAM *pThreadParamTemp = (CONN_PARAM *)malloc(sizeof(CONN_PARAM));
-			strncpy(pThreadParamTemp->szNodeIdStr, conn_param.szNodeIdStr, sizeof(pThreadParamTemp->szNodeIdStr));
-			pthread_create(&hConnectThreadTcp_Proxy, NULL, ConnectThreadFnTcp_Proxy, pThreadParamTemp);
-			return 0;
-		}
+		//SetStatusInfo(pDlg->m_hWnd, "认证密码错误，无法连接！");
 	}
-
-
-	//SetStatusInfo(pDlg->m_hWnd, _T("正在提交本机连接信息，请稍候。。。"), 20);
-	if_progress_show(R_string::msg_connect_register_local);
-	nRetry = 5;
-	do {
-		HandleRegister();
-	} while (nRetry-- > 0 && m_bNeedRegister);
-	if (m_bNeedRegister) {
-		if_progress_cancel();
-		//MessageBox(NULL, _T("提交连接信息失败，请重试。"), (LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
-		if_messagebox(R_string::msg_connect_register_local_failed);
-		return 0;
-	}
-
-
-	pthread_mutex_lock(&m_secBind);
-
-	//SetStatusInfo(pDlg->m_hWnd, _T("正在获取对方连接信息。。。"));
-	if_progress_show(R_string::msg_connect_get_peer);
-	nRetry = 5;
-	ret = -1;
-	while (nRetry-- > 0 && ret == -1) {
-		ret = DoConnect(g_client_charset, g_client_lang, conn_param.szNodeIdStr);
-	}
-	if (ret < 1) {
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-		//MessageBox(NULL, _T("获取对方连接信息失败，请刷新列表后重试。"), (LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
-		if_messagebox(R_string::msg_connect_get_peer_failed);
-		return 0;
-	}
-
-	if (ret == 2) {
-		g1_wait_time -= 5;
-		if (g1_wait_time < 0) {
-			g1_wait_time = 0;
-		}
-	}
-
-	//if (g1_wait_time > 30) {
-	//	pDlg->ShowNotificationBox(_T("提示：升级ID后可以快速获得服务响应，避免长时间排队等待。"));
-	//}
-
-	for (i = g1_wait_time; i > 0; i--) {
-		//wsprintf(szStatusStr, _T("正在排队等待服务响应，%d秒。。。"), i);
-		//SetStatusInfo(pDlg->m_hWnd, szStatusStr);
-		if_progress_show_format1(R_string::msg_connect_wait_queue_format, i);
-		usleep(1000000);
-	}
-
-	if (ret == 2) {
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-		pthread_create(&hConnectThreadRev, NULL, ConnectThreadFnRev, NULL);
-		return 0;
-	}
-
-
-	//SetStatusInfo(pDlg->m_hWnd, _T("正在打通连接信道。。。"), 20);
-	if_progress_show(R_string::msg_connect_nat_hole);
-
-	g1_use_udp_sock = UdpOpen(INADDR_ANY, FIRST_CONNECT_PORT);
-	if (g1_use_udp_sock == INVALID_SOCKET) {
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-		//MessageBox(NULL, _T("连接失败！(udpopen failed)"),(LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
-		if_messagebox(R_string::msg_connect_connecting_failed1);
-		return 0;
-	}
-
-	if (FindOutConnection(g1_use_udp_sock, g0_node_id, g1_peer_node_id,
-							g1_peer_pri_ipArray, g1_peer_pri_ipCount, g1_peer_pri_port,
-							g1_peer_ip, g1_peer_port,
-							&use_ip, &use_port) != 0) {
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_show(R_string::msg_please_wait);
-		{
-			if_progress_cancel();
-			CONN_PARAM *pThreadParamTemp = (CONN_PARAM *)malloc(sizeof(CONN_PARAM));
-			strncpy(pThreadParamTemp->szNodeIdStr, conn_param.szNodeIdStr, sizeof(pThreadParamTemp->szNodeIdStr));
-			pthread_create(&hConnectThreadTcp_Proxy, NULL, ConnectThreadFnTcp_Proxy, pThreadParamTemp);
-			return 0;
-		}
-	}
-	g1_use_peer_ip = use_ip;
-	g1_use_peer_port = use_port;
-#if 1 ////Debug
-	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFn", "@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
-		(g1_use_peer_ip & 0x000000ff) >> 0,
-		(g1_use_peer_ip & 0x0000ff00) >> 8,
-		(g1_use_peer_ip & 0x00ff0000) >> 16,
-		(g1_use_peer_ip & 0xff000000) >> 24,
-		g1_use_peer_port);
-#endif
-
-	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
-	//eloop_register_timeout(3, 0, HandleDoUnregister, NULL, NULL);
-
-
-	//SetStatusInfo(pDlg->m_hWnd, _T("正在同对方建立连接，请稍候。。。"), 30);
-	if_progress_show(R_string::msg_connect_connecting);
-
-	g1_use_udt_sock = UdtOpenEx(g1_use_udp_sock);
-	if (g1_use_udt_sock == INVALID_SOCKET) {
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-		//MessageBox(NULL, _T("连接失败！(udtopen failed)"),(LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
-		if_messagebox(R_string::msg_connect_connecting_failed2);
-		return 0;
-	}
-
-
-	UDTSOCKET fhandle2 = UdtWaitConnect(g1_use_udt_sock, &g1_use_peer_ip, &g1_use_peer_port);
-	if (INVALID_SOCKET == fhandle2) {
-		UdtClose(g1_use_udt_sock);
-		g1_use_udt_sock = INVALID_SOCKET;
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-		if_messagebox(R_string::msg_connect_connecting_failed8);
-		return 0;
-	}
-	else {
-		UdtClose(g1_use_udt_sock);
-		g1_use_udt_sock = fhandle2;
-	}
-	
-	
-	g1_use_sock_type = SOCKET_TYPE_UDT;
-	if_on_connected(g1_use_sock_type, g1_use_udt_sock);
-	if (SOCKET_TYPE_UDT == g1_use_sock_type) {
-		UDT::register_learn_remote_addr(g1_use_udt_sock, learn_remote_addr, NULL);
-	}
-
-
-	/*
-		UdtClose(g1_use_udt_sock);
-		g1_use_udt_sock = INVALID_SOCKET;
-		UdpClose(g1_use_udp_sock);
-		g1_use_udp_sock = INVALID_SOCKET;
-		pthread_mutex_unlock(&m_secBind);
-		if_progress_cancel();
-	*/
-	
-	pthread_mutex_unlock(&m_secBind);
-	return 0;
-}
-
-void *ConnectThreadFnTcp_Proxy(void *pvThreadParam)
-{
-	CONN_PARAM *pParam = (CONN_PARAM *)pvThreadParam;
-	CONN_PARAM conn_param = *pParam;
-	sockaddr_in my_addr;
-	sockaddr_in their_addr;
-	int namelen = sizeof(their_addr);
-	int ret;
-	int nRetry;
-
-
-	free(pvThreadParam);
-	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnTcp_Proxy", "ConnectThreadFnTcp_Proxy()...\n");
-
-
-	if_progress_show(R_string::msg_please_wait);
-
-	ret = DoProxy(g_client_charset, g_client_lang, conn_param.szNodeIdStr, TRUE, FIRST_CONNECT_PORT);
-	if (ret != 1) {
-		if_progress_cancel();
-		//MessageBox(NULL, _T("无法建立连接，网络状况异常，或者您的ID级别不够。"), (LPCTSTR)strProductName, MB_OK|MB_ICONINFORMATION);
-		if_messagebox(R_string::msg_connect_proxy_failed);
-		return 0;
-	}
-
-
-	g1_use_peer_ip = g1_peer_ip;
-	g1_use_peer_port = g1_peer_port;
-
-
-	//SetStatusInfo(pDlg->m_hWnd, _T("正在同对方建立连接，请稍候。。。"), 30);
-	if_progress_show(R_string::msg_connect_connecting);
-
-	g1_use_udt_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (g1_use_udt_sock == INVALID_SOCKET) {
-		if_progress_cancel();
-		if_messagebox(R_string::msg_connect_connecting_failed5);
-		return 0;
-	}
-
-	struct timeval timeo = {5, 0};
-	setsockopt(g1_use_udt_sock, SOL_SOCKET, SO_SNDTIMEO, &timeo, sizeof(timeo));
-
-	my_addr.sin_family = AF_INET;
-	my_addr.sin_port = htons(0);
-	my_addr.sin_addr.s_addr = INADDR_ANY;
-	memset(&(my_addr.sin_zero), '\0', 8);
-	if (bind(g1_use_udt_sock, (sockaddr *)&my_addr, sizeof(my_addr)) < 0) {
-		if_progress_cancel();
-		if_messagebox(R_string::msg_connect_connecting_failed6);
-		closesocket(g1_use_udt_sock);
-		g1_use_udt_sock = INVALID_SOCKET;
-		return 0;
-	}
-
-
-	their_addr.sin_family = AF_INET;
-	their_addr.sin_port = htons(g1_use_peer_port);
-	their_addr.sin_addr.s_addr = g1_use_peer_ip;
-	memset(&(their_addr.sin_zero), '\0', 8);
-	nRetry = 2;
-	ret = -1;
-	while (nRetry-- > 0 && ret < 0) {
-		//TRACE("@@@ TCP::connect()...\n");
-		ret = connect(g1_use_udt_sock, (sockaddr*)&their_addr, sizeof(their_addr));
-	}
-	if (ret < 0)
+	else
 	{
-		if_progress_cancel();
-		if_messagebox(R_string::msg_connect_connecting_failed7);
-		closesocket(g1_use_udt_sock);
-		g1_use_udt_sock = INVALID_SOCKET;
-		return 0;
+
+		DoInConnection(pViewerNode);
+
 	}
 
+	CtrlCmd_BYE(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
 
-	g1_use_sock_type = SOCKET_TYPE_TCP;
-	if_on_connected(g1_use_sock_type, g1_use_udt_sock);
-	if (SOCKET_TYPE_UDT == g1_use_sock_type) {
-		UDT::register_learn_remote_addr(g1_use_udt_sock, learn_remote_addr, NULL);
-	}
+	usleep(3000*1000);
 
 
-	/*
-		closesocket(g1_use_udt_sock);
-		g1_use_udt_sock = INVALID_SOCKET;
-		if_progress_cancel();
-	*/
-
+	UdtClose(pViewerNode->httpOP.m1_use_udt_sock);
+	pViewerNode->httpOP.m1_use_udt_sock = INVALID_SOCKET;
+	UdpClose(pViewerNode->httpOP.m1_use_udp_sock);
+	pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
+	if_progress_cancel();
+	
+	ReturnViewerNode(pViewerNode);
 	return 0;
 }
 
 void *ConnectThreadFnRev(void *pvThreadParam)
 {
+	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)pvThreadParam;
 	SOCKET udp_sock;
 	UDTSOCKET serv;
 	sockaddr_in my_addr;
@@ -1694,7 +1266,22 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 	int namelen = sizeof(their_addr);
 	UDTSOCKET fhandle;
 	int ret;
+	int i;
 
+
+	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "ConnectThreadFnRev()...\n");
+
+	pViewerNode->httpOP.m1_wait_time -= 5;
+	if (pViewerNode->httpOP.m1_wait_time < 0) {
+		pViewerNode->httpOP.m1_wait_time = 0;
+	}
+
+	for (i = pViewerNode->httpOP.m1_wait_time; i > 0; i--) {
+		//wsprintf(szStatusStr, _T("正在排队等待服务响应，%d秒。。。"), i);
+		//SetStatusInfo(pDlg->m_hWnd, szStatusStr);
+		if_progress_show_format1(R_string::msg_connect_wait_queue_format, i);
+		usleep(1000000);
+	}
 
 	if_progress_show(R_string::msg_connect_reverse_connecting);
 
@@ -1703,6 +1290,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 		if_progress_cancel();
 		if_messagebox(R_string::msg_connect_connecting_failed1);
 		__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDP socket() failed!\n");
+		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 
@@ -1710,7 +1298,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
     setsockopt(udp_sock, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
 
 	my_addr.sin_family = AF_INET;
-	my_addr.sin_port = htons(SECOND_CONNECT_PORT);
+	my_addr.sin_port = htons(pViewerNode->httpOP.m0_p2p_port - 2);
 	my_addr.sin_addr.s_addr = INADDR_ANY;
 	memset(&(my_addr.sin_zero), '\0', 8);
 	if (bind(udp_sock, (sockaddr *)&my_addr, sizeof(my_addr)) < 0) {
@@ -1718,6 +1306,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 		if_messagebox(R_string::msg_connect_connecting_failed1);
 		__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDP bind() failed!\n");
 		closesocket(udp_sock);
+		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 
@@ -1733,6 +1322,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 		__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDT::bind() failed!\n");
 		UDT::close(serv);
 		closesocket(udp_sock);
+		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 
@@ -1743,6 +1333,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 		__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDT::listen() failed!\n");
 		UDT::close(serv);
 		closesocket(udp_sock);
+		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 
@@ -1758,6 +1349,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 		__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDT::select() failed/timeout!\n");
 		UDT::close(serv);
 		closesocket(udp_sock);
+		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 //////////////////
@@ -1769,6 +1361,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 		__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDT::accept() failed!\n");
 		UDT::close(serv);
 		closesocket(udp_sock);
+		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 
@@ -1776,16 +1369,214 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 
 	UDT::close(serv);
 
-	g1_use_udp_sock = udp_sock;
-	g1_use_peer_ip = their_addr.sin_addr.s_addr;
-	g1_use_peer_port = ntohs(their_addr.sin_port);
-	g1_use_udt_sock = fhandle;
-	g1_use_sock_type = SOCKET_TYPE_UDT;
+	pViewerNode->httpOP.m1_use_udp_sock = udp_sock;
+	pViewerNode->httpOP.m1_use_peer_ip = their_addr.sin_addr.s_addr;
+	pViewerNode->httpOP.m1_use_peer_port = ntohs(their_addr.sin_port);
+	pViewerNode->httpOP.m1_use_udt_sock = fhandle;
+	pViewerNode->httpOP.m1_use_sock_type = SOCKET_TYPE_UDT;
 	
-	if_on_connected(g1_use_sock_type, g1_use_udt_sock);
-	if (SOCKET_TYPE_UDT == g1_use_sock_type) {
-		UDT::register_learn_remote_addr(g1_use_udt_sock, learn_remote_addr, NULL);
+	if_on_connected(get_use_sock_type(), get_use_udt_sock());
+	if (SOCKET_TYPE_UDT == pViewerNode->httpOP.m1_use_sock_type) {
+		UDT::register_learn_remote_addr(pViewerNode->httpOP.m1_use_udt_sock, learn_remote_addr, pViewerNode);
 	}
 
+
+	//SetStatusInfo(pDlg->m_hWnd, _T("成功建立连接，正在验证访问密码。。。"));
+	ret = CheckPassword(pViewerNode, pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+	if (-1 == ret) {
+		//SetStatusInfo(pDlg->m_hWnd, "验证密码时通信出错，无法连接！");
+	}
+	else if (0 == ret)
+	{
+		//SetStatusInfo(pDlg->m_hWnd, "认证密码错误，无法连接！");
+	}
+	else
+	{
+
+		DoInConnection(pViewerNode);
+
+	}
+
+	CtrlCmd_BYE(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+
+	usleep(3000*1000);
+
+
+	UDT::close(pViewerNode->httpOP.m1_use_udt_sock);
+	pViewerNode->httpOP.m1_use_udt_sock = INVALID_SOCKET;
+	closesocket(pViewerNode->httpOP.m1_use_udp_sock);
+	pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
+	if_progress_cancel();
+
+	ReturnViewerNode(pViewerNode);
 	return 0;
+}
+
+void ReturnViewerNode(VIEWER_NODE *pViewerNode)
+{
+	if (NULL != pViewerNode)
+	{
+		pViewerNode->bConnecting = FALSE;
+		pViewerNode->bUsing = FALSE;
+		pViewerNode->nID = -1;
+	}
+}
+
+static BYTE getFakeServerFuncFlags()
+{
+	BYTE ret = 0;
+	ret |= FUNC_FLAGS_AV;
+	ret |= FUNC_FLAGS_SHELL;
+	ret |= FUNC_FLAGS_HASROOT;
+	ret |= FUNC_FLAGS_ACTIVATED;
+	return ret;
+}
+
+void *IpcServerThreadFn(void *pvThreadParam)
+{
+	struct sockaddr_un addr;
+	int len;
+	sockaddr_in their_addr;
+	int namelen = sizeof(their_addr);
+	
+	ipc_server_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    addr.sun_path[0] = '\0';
+    strncpy(addr.sun_path + 1, ipc_socket_name, sizeof(addr.sun_path) - 1);
+    len = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(ipc_socket_name);
+    
+	if (bind(ipc_server_sock, (sockaddr *)&addr, len) < 0) {
+		printf("IpcServerThreadFn: TCP bind() failed!\n");
+		closesocket(ipc_server_sock);
+		ipc_server_sock = INVALID_SOCKET;
+		return 0;
+	}
+	
+	listen(ipc_server_sock, 1);
+	
+	while (1)
+	{
+		//Blocking...
+		SOCKET fhandle = accept(ipc_server_sock, (sockaddr*)&their_addr, &namelen);
+		if (INVALID_SOCKET == fhandle) {
+			printf("IpcServerThreadFn: TCP accept() failed!\n");
+			break;
+		}
+		ipc_data_sock = fhandle;
+		
+		while (1)
+		{
+			BOOL bQuitLoop = FALSE;
+			SOCKET_TYPE type = SOCKET_TYPE_TCP;
+			int ret;
+			char buff[16*1024];
+			WORD wCommand;
+			DWORD dwDataLength;
+			char *temp_ptr;
+			BYTE bZeroID[6] = {0, 0, 0, 0, 0, 0};
+			
+			ret = RecvStream(type, fhandle, buff, 6);
+			if (ret != 0) {
+				printf("IpcServerThreadFn: RecvStream(6) failed!\n");
+				break;
+			}
+			
+			wCommand = ntohs(pf_get_word(buff+0));
+			dwDataLength = ntohl(pf_get_dword(buff+2));
+			
+			switch (wCommand)
+			{
+				case CMD_CODE_HELLO_REQ:
+					ret = RecvStream(type, fhandle, buff, 6);
+					if (ret != 0) {
+						bQuitLoop = TRUE;
+						break;
+					}
+					//if (memcmp(g1_peer_node_id, buff, 6) != 0) {
+					//	break;
+					//}
+
+					ret = RecvStream(type, fhandle, buff, 4);
+					if (ret != 0) {
+						bQuitLoop = TRUE;
+						break;
+					}
+
+					ret = RecvStream(type, fhandle, buff, 1);
+					if (ret != 0) {
+						bQuitLoop = TRUE;
+						break;
+					}
+					//(*(BYTE *)buff == 1
+
+					ret = RecvStream(type, fhandle, buff, 256);
+					if (ret != 0) {
+						bQuitLoop = TRUE;
+						break;
+					}
+
+					CtrlCmd_Send_HELLO_RESP(type, fhandle, bZeroID, g0_version, getFakeServerFuncFlags(), 0, CTRLCMD_RESULT_OK);
+
+					break;
+
+				case CMD_CODE_AV_START_REQ:
+					ret = RecvStream(type, fhandle, buff, 1+1+1+4+4);
+					if (ret != 0) {
+						bQuitLoop = TRUE;
+						break;
+					}
+					
+					is_app_recv_av = TRUE;
+					
+					break;
+
+
+				case CMD_CODE_AV_STOP_REQ:
+					
+					is_app_recv_av = FALSE;
+					
+					break;
+					
+				case CMD_CODE_BYE_REQ:
+					
+					break;
+					
+				case CMD_CODE_AV_SWITCH_REQ:
+				case CMD_CODE_AV_CONTRL_REQ:
+				case CMD_CODE_VOICE_REQ:
+				case CMD_CODE_TEXT_REQ:
+				case CMD_CODE_ARM_REQ:
+				case CMD_CODE_DISARM_REQ:
+				case CMD_CODE_NULL:
+				default:
+					temp_ptr = (char *)malloc(6+dwDataLength);
+					pf_set_word(temp_ptr + 0, htons(wCommand));
+					pf_set_dword(temp_ptr + 2, htonl(dwDataLength));
+					ret = RecvStream(type, fhandle, temp_ptr+6, dwDataLength);
+					if (ret != 0) {
+						free(temp_ptr);
+						bQuitLoop = TRUE;
+						break;
+					}
+					if (current_use_viewer != -1)
+					{
+						CtrlCmd_Send_Raw(viewerArray[current_use_viewer].httpOP.m1_use_sock_type, viewerArray[current_use_viewer].httpOP.m1_use_udt_sock, (BYTE *)temp_ptr, 6+dwDataLength);
+					}
+					free(temp_ptr);
+					break;
+			}
+			
+			if (bQuitLoop) {
+				break;
+			}
+		}//while(1)
+		
+		closesocket(ipc_data_sock);
+		ipc_data_sock = INVALID_SOCKET;
+	}//while(1)
+	
+	closesocket(ipc_server_sock);
+	ipc_server_sock = INVALID_SOCKET;
 }

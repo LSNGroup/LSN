@@ -3634,8 +3634,8 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
     public native void StartDoConnection();
     public native void StopDoConnection();
     
-	public native int NativeSendEmail(String toEmail, String subject, String content);
-	public native int NativePutLocation(int put_time, int num, String strItems);
+	//public native int NativeSendEmail(String toEmail, String subject, String content);
+	//public native int NativePutLocation(int put_time, int num, String strItems);
     
     public native void TLVSendUpdateValue(int tlv_type, double val, boolean send_now);
     public native int PutAudioData(byte[] data, int len);

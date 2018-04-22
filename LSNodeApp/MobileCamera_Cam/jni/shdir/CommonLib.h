@@ -8,7 +8,7 @@
 
 #define MAX_PATH				512
 #define MAX_LOADSTRING			256
-#define MAX_ADAPTER_NUM			6
+#define MAX_ADAPTER_NUM			2
 
 #if defined(FOR_WL_YKZ)
 #define MYSELF_VERSION			0x04060200  /* x.x.x.0 */
@@ -84,6 +84,9 @@ typedef struct _tag_wp_item_ {
 } WP_ITEM;
 
 #define WP_ITEM_FLAG_INVALID	0x00000001
+
+
+void trim(char *str);
 
 
 //

@@ -68,7 +68,7 @@ void JNI_OnUnload(JavaVM* vm, void* reserved)
 }
 
 
-void if_on_register_result(int comments_id, bool approved, bool allow_hide)
+void if_on_push_result(int ret, int joined_channel_id)
 {
 	int status;
 	bool isAttached = false;
@@ -87,9 +87,9 @@ void if_on_register_result(int comments_id, bool approved, bool allow_hide)
 	
 	
 	jclass cls = (env)->GetObjectClass(g_objCam);
-	jmethodID mid = (env)->GetStaticMethodID(cls, "j_on_register_result", "(IZZ)V");
+	jmethodID mid = (env)->GetStaticMethodID(cls, "j_on_push_result", "(II)V");
 
-	(env)->CallStaticVoidMethod(cls, mid, comments_id, approved, allow_hide);
+	(env)->CallStaticVoidMethod(cls, mid, ret, joined_channel_id);
 	if (isAttached) {// From native thread
 		g_vm->DetachCurrentThread();
 	}

@@ -63,8 +63,13 @@ N Bytes, Data.
 #define AV_CONTRL_LEFT_SERVO		0x000c  /* contrl_param */
 #define AV_CONTRL_RIGHT_SERVO		0x000d  /* contrl_param */
 #define AV_CONTRL_SEARCH_POWER		0x000e
-#define AV_CONTRL_TAKE_PICTURE		0x000f
-
+#define AV_CONTRL_MOVE_ADVANCE			0x0011  /* contrl_param */
+#define AV_CONTRL_MOVE_BACK				0x0012  /* contrl_param */
+#define AV_CONTRL_MOVE_ADVANCE_LEFT		0x0013  /* contrl_param */
+#define AV_CONTRL_MOVE_ADVANCE_RIGHT	0x0014  /* contrl_param */
+#define AV_CONTRL_MOVE_BACK_LEFT		0x0015  /* contrl_param */
+#define AV_CONTRL_MOVE_BACK_RIGHT		0x0016  /* contrl_param */
+#define AV_CONTRL_MOVE_STOP				0x0017
 #define AV_CONTRL_SYSTEM_SHUTDOWN		0x0021
 #define AV_CONTRL_SYSTEM_REBOOT			0x0022
 
@@ -95,6 +100,12 @@ N Bytes, Data.
 #define FUNC_FLAGS_ACTIVATED	0x80
 
 
+/* Definition of multi-hop route item type */
+#define ROUTE_ITEM_TYPE_DEVICENODE		0x01
+#define ROUTE_ITEM_TYPE_VIEWERNODE		0x02
+#define ROUTE_ITEM_TYPE_GUAJINODE		0x03
+
+
 /* Command Code Definiton */
 
 #define CMD_CODE_FAKERTP_RESP	0x0000  /* CMD_CODE_FAKERTP_RESP | n | FakeRtp Packet */
@@ -103,8 +114,22 @@ N Bytes, Data.
 
 #define CMD_CODE_NULL			0x00EE  /* CMD_CODE_NULL  | 0 */
 
-#define CMD_CODE_HELLO_REQ		0x0001  /* CMD_CODE_HELLO_REQ | 6+4+256 | client_node_id | client_version | password */
-#define CMD_CODE_HELLO_RESP		0x8001  /* CMD_CODE_HELLO_RESP | 6+4+1+2 | server_node_id | server_version | func_flags | result_code */
+#define CMD_CODE_IPC_REPORT		0x00D0  /* CMD_CODE_IPC_REPORT  | 12 + n |   (guaji)source_node_id  | 00:00:00:00:00:00 | report_string */
+
+#define CMD_CODE_TOPO_REPORT	0x00D1  /* CMD_CODE_TOPO_REPORT | 12 + n |  (device)source_node_id  | 00:00:00:00:00:00 | report_string */
+
+#define CMD_CODE_TOPO_DROP		0x00D2  /* CMD_CODE_TOPO_DROP | 1 + 6 |  node_type | node_id */
+
+#define CMD_CODE_TOPO_EVALUATE	0x00D3  /* CMD_CODE_TOPO_EVALUATE | 12 + 4 + 4 + 4 | (device)source_node_id | (guaji)object_node_id | begin_time | end_time | stream_flow */
+
+#define CMD_CODE_TOPO_EVENT		0x00D4  /* CMD_CODE_TOPO_EVENT  | 12 + n | 00:00:00:00:00:00 |  dest_node_id  | event_string */
+
+#define CMD_CODE_TOPO_SETTINGS	0x00D5  /* CMD_CODE_TOPO_SETTINGS | 12 + 1 + n | 00:00:00:00:00:00 | FF:FF:FF:FF:FF:FF | topo_level | settings_string */
+
+#define CMD_CODE_TOPO_PACKET	0x00D6  /* CMD_CODE_TOPO_PACKET | 1 + 20 + 6 + 6 + n | hop_count | packet_uuid | source_node_id  |  dest_node_id  | n bytes data */
+
+#define CMD_CODE_HELLO_REQ		0x0001  /* CMD_CODE_HELLO_REQ | 6+4+1+256 | client_node_id | client_version | topo_primary | password */
+#define CMD_CODE_HELLO_RESP		0x8001  /* CMD_CODE_HELLO_RESP | 6+4+1+1+2 | server_node_id | server_version | func_flags | topo_level | result_code */
 
 #define CMD_CODE_RUN_REQ		0x0002  /* CMD_CODE_RUN_REQ | n | run_exe */
 #define CMD_CODE_RUN_RESP		0x8002  /* CMD_CODE_RUN_RESP | n | result string */
@@ -146,16 +171,17 @@ N Bytes, Data.
 #define CMD_CODE_MAV_GUID_REQ	0x0014  /* CMD_CODE_MAV_GUID_REQ | 4+4+4 | lati*100000 | longi*100000 | alti*100000 */
 
 
+
 int  CtrlCmd_Init();
 void CtrlCmd_Uninit();
 
+int CtrlCmd_Send_Raw(SOCKET_TYPE type, SOCKET fhandle, BYTE *raw_data, int data_len);
 
 //#ifdef JNI_FOR_MOBILECAMERA
 int CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *packet, int len);
-int CtrlCmd_Send_HELLO_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *server_node_id, DWORD server_version, BYTE func_flags, WORD result_code);
+int CtrlCmd_Send_FAKERTP_RESP_NOMUTEX(SOCKET_TYPE type, SOCKET fhandle, BYTE *packet, int len);
+int CtrlCmd_Send_HELLO_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *server_node_id, DWORD server_version, BYTE func_flags, BYTE topo_level, WORD result_code);
 int CtrlCmd_Send_RUN_RESP(SOCKET_TYPE type, SOCKET fhandle, const char *result_str);
-int CtrlCmd_Send_MAV_WP_RESP(SOCKET_TYPE type, SOCKET fhandle, WP_ITEM *wp_data, int wp_num);
-int CtrlCmd_Send_MAV_TLV_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *tlv_data, int len);
 
 int CtrlCmd_Send_NULL(SOCKET_TYPE type, SOCKET fhandle);
 
@@ -166,10 +192,15 @@ void CtrlCmd_Recv_AV_END(SOCKET_TYPE type, SOCKET fhandle);
 
 
 //#else
-int CtrlCmd_HELLO(SOCKET_TYPE type, SOCKET fhandle, BYTE *client_node_id, DWORD client_version, const char *password, BYTE *server_node_id, DWORD *server_version, BYTE *func_flags, WORD *result_code);////Send/Recv
+int CtrlCmd_HELLO(SOCKET_TYPE type, SOCKET fhandle, BYTE *client_node_id, DWORD client_version, BYTE topo_primary, const char *password, BYTE *server_node_id, DWORD *server_version, BYTE *func_flags, BYTE *topo_level, WORD *result_code);////Send/Recv
 int CtrlCmd_RUN(SOCKET_TYPE type, SOCKET fhandle, const char *exe_cmd, char *result_buf, int buf_size);////Send/Recv
-int CtrlCmd_MAV_WP(SOCKET_TYPE type, SOCKET fhandle, WP_ITEM *wp_array, int *lpNumWP);////Send/Recv
-int CtrlCmd_MAV_TLV(SOCKET_TYPE type, SOCKET fhandle, BYTE *tlv_buf, int *lpLen);////Send/Recv
+
+int CtrlCmd_IPC_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string);
+int CtrlCmd_TOPO_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string);
+int CtrlCmd_TOPO_DROP(SOCKET_TYPE type, SOCKET fhandle, BYTE node_type, BYTE *node_id);
+int CtrlCmd_TOPO_EVALUATE(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, BYTE *object_node_id, DWORD begin_time, DWORD end_time, DWORD stream_flow);
+int CtrlCmd_TOPO_EVENT(SOCKET_TYPE type, SOCKET fhandle, BYTE *dest_node_id, const char *event_string);
+int CtrlCmd_TOPO_SETTINGS(SOCKET_TYPE type, SOCKET fhandle, BYTE topo_level, const char *settings_string);
 
 int CtrlCmd_PROXY(SOCKET_TYPE type, SOCKET fhandle, WORD wTcpPort);
 int CtrlCmd_PROXY_DATA(SOCKET_TYPE type, SOCKET fhandle, BYTE *data, int len);
@@ -184,9 +215,6 @@ int CtrlCmd_AV_CONTRL(SOCKET_TYPE type, SOCKET fhandle, WORD contrl, DWORD contr
 int CtrlCmd_VOICE(SOCKET_TYPE type, SOCKET fhandle, BYTE *data, int len);
 int CtrlCmd_TEXT(SOCKET_TYPE type, SOCKET fhandle, BYTE *data, int len);
 int CtrlCmd_BYE(SOCKET_TYPE type, SOCKET fhandle);
-int CtrlCmd_MAV_START(SOCKET_TYPE type, SOCKET fhandle);
-int CtrlCmd_MAV_STOP(SOCKET_TYPE type, SOCKET fhandle);
-int CtrlCmd_MAV_GUID(SOCKET_TYPE type, SOCKET fhandle, float lati, float longi, float alti);
 //#endif
 
 

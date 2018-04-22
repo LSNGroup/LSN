@@ -1010,8 +1010,7 @@ public class MainListActivity extends ListActivity {
     public native int StartNative(String str_client_charset, String str_client_lang);
     public native void StopNative();
     public native int DoSearchServers(String strRequestNodes);
-    public native void DoConnect(String node_id_str, String pub_ip_str, String pub_port_str, boolean bLanNode, boolean no_nat, int nat_type);
-    public native void DoConnectTcp(String node_id_str, String pub_ip_str, String pub_port_str, boolean bLanNode, boolean no_nat, int nat_type);
+    public native void DoConnect(String password_str, int channel_id);
     public native void DoDisconnect();
     
     ///////////////////////////////////////////////////////////////////////////////////////

@@ -186,8 +186,6 @@ public class SharedFuncLib {
     
 	/////////////////////////////////////////////////////////////////////
 	public static native int getAppVersion();
-	public static native int getLowestLevelForAv();
-	public static native int getLowestLevelForVnc();
 	public static native String phpMd5(String strSrc);
 	public static native int CtrlCmdHELLO(int type, int fhandle, String strPass/* EncPass */, int[] arrResults/* [0]:result_code [1]:dwServerVersion [2]:bFuncFlags */);
 	public static native int CtrlCmdRUN(int type, int fhandle, String strCmd);

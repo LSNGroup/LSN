@@ -29,6 +29,8 @@
 #endif
 
 
+extern HttpOperate myHttpOperate;
+
 static BOOL m_bAVStarted = FALSE;
 static BOOL m_bAudioCome = FALSE;
 
@@ -179,7 +181,7 @@ void DShowAV_Start(BYTE flags, BYTE video_size, BYTE video_framerate, DWORD audi
 	
 	if (m_bVideoEnable)
 	{
-		VideoSendStart(g_InConnection1 ? FIRST_CONNECT_PORT : SECOND_CONNECT_PORT, g1_use_peer_ip, g1_use_peer_port, g1_use_udp_sock, g1_use_udt_sock, g1_use_sock_type);
+		VideoSendStart(g_InConnection1 ? FIRST_CONNECT_PORT : SECOND_CONNECT_PORT, myHttpOperate.m1_use_peer_ip, myHttpOperate.m1_use_peer_port, myHttpOperate.m1_use_udp_sock, myHttpOperate.m1_use_udt_sock, myHttpOperate.m1_use_sock_type);
 		VideoSendSetReliable(m_bVideoReliable);
 		if (FALSE == m_bVideoHWAcce && TRUE == m_bVideoH264) {
 			if_video_capture_start(cx, cy, (int)video_framerate, (int)video_channel);
@@ -201,7 +203,7 @@ void DShowAV_Start(BYTE flags, BYTE video_size, BYTE video_framerate, DWORD audi
 	}
 	if (m_bAudioEnable)
 	{
-		AudioSendStart(g_InConnection1 ? FIRST_CONNECT_PORT : SECOND_CONNECT_PORT, g1_use_peer_ip, g1_use_peer_port, g1_use_udp_sock, g1_use_udt_sock, g1_use_sock_type);
+		AudioSendStart(g_InConnection1 ? FIRST_CONNECT_PORT : SECOND_CONNECT_PORT, myHttpOperate.m1_use_peer_ip, myHttpOperate.m1_use_peer_port, myHttpOperate.m1_use_udp_sock, myHttpOperate.m1_use_udt_sock, myHttpOperate.m1_use_sock_type);
 		AudioSendSetCodec(m_bAudioG729a ? AUDIO_CODEC_G729A : AUDIO_CODEC_G721);
 		AudioSendSetRedundance(m_bAudioRedundance);
 		if (FALSE == m_bAudioHWAcce) if_audio_record_start((int)audio_channel);
@@ -209,7 +211,7 @@ void DShowAV_Start(BYTE flags, BYTE video_size, BYTE video_framerate, DWORD audi
 	
 	//if (m_bTLVEnable)
 	{
-		TLVSendStart(g_InConnection1 ? FIRST_CONNECT_PORT : SECOND_CONNECT_PORT, g1_use_peer_ip, g1_use_peer_port, g1_use_udp_sock, g1_use_udt_sock, g1_use_sock_type);
+		TLVSendStart(g_InConnection1 ? FIRST_CONNECT_PORT : SECOND_CONNECT_PORT, myHttpOperate.m1_use_peer_ip, myHttpOperate.m1_use_peer_port, myHttpOperate.m1_use_udp_sock, myHttpOperate.m1_use_udt_sock, myHttpOperate.m1_use_sock_type);
 		TLVSendSetRedundance(FALSE);
 		if_sensor_capture_start();
 	}
@@ -303,10 +305,6 @@ void DShowAV_Contrl(WORD contrl, DWORD contrl_param)
 		break;
 		case AV_CONTRL_RIGHT_SERVO:
 			if_contrl_right_servo(contrl_param);
-		break;
-		
-		case AV_CONTRL_TAKE_PICTURE:
-			if_contrl_take_picture();
 		break;
 		
 		case AV_CONTRL_TURN_UP:

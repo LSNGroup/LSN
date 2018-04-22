@@ -11,13 +11,16 @@
 #include "FF264Recv.h"
 #include "FF263Recv.h"
 
+extern UDTSOCKET get_use_udt_sock();
+extern SOCKET_TYPE get_use_sock_type();
+
 
 extern "C"
 void
 MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(TLVRecvStart)
 	(JNIEnv* env, jobject thiz)
 {
-	TLVRecvStart(FIRST_CONNECT_PORT, g1_use_peer_ip/* Network byte order */, g1_use_peer_port, g1_use_udp_sock, g1_use_udt_sock, g1_use_sock_type);
+	TLVRecvStart(FIRST_CONNECT_PORT, 0/* Network byte order */, 0, INVALID_SOCKET, get_use_udt_sock(), get_use_sock_type());
 }
 
 
@@ -53,7 +56,7 @@ void
 MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(AudioRecvStart)
 	(JNIEnv* env, jobject thiz)
 {
-	AudioRecvStart(FIRST_CONNECT_PORT, g1_use_peer_ip/* Network byte order */, g1_use_peer_port, g1_use_udp_sock, g1_use_udt_sock, g1_use_sock_type);
+	AudioRecvStart(FIRST_CONNECT_PORT, 0/* Network byte order */, 0, INVALID_SOCKET, get_use_udt_sock(), get_use_sock_type());
 }
 
 
@@ -110,7 +113,7 @@ void
 MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(FF264RecvStart)
 	(JNIEnv* env, jobject thiz)
 {
-	FF264RecvStart(FIRST_CONNECT_PORT, g1_use_peer_ip/* Network byte order */, g1_use_peer_port, g1_use_udp_sock, g1_use_udt_sock, g1_use_sock_type);
+	FF264RecvStart(FIRST_CONNECT_PORT, 0/* Network byte order */, 0, INVALID_SOCKET, get_use_udt_sock(), get_use_sock_type());
 }
 
 
@@ -193,7 +196,7 @@ void
 MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(FF263RecvStart)
 	(JNIEnv* env, jobject thiz)
 {
-	FF263RecvStart(FIRST_CONNECT_PORT, g1_use_peer_ip/* Network byte order */, g1_use_peer_port, g1_use_udp_sock, g1_use_udt_sock, g1_use_sock_type);
+	FF263RecvStart(FIRST_CONNECT_PORT, 0/* Network byte order */, 0, INVALID_SOCKET, get_use_udt_sock(), get_use_sock_type());
 }
 
 

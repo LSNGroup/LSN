@@ -17,6 +17,45 @@
 #endif
 
 
+// trim ' ' and '\t' and '\r' and '\n'
+static void trim_left(char *str)
+{
+	int i;
+
+	if( str==NULL )
+		return;
+	for(i=0; i<(int)strlen(str); i++)
+	{
+		if( str[i]!=' ' && str[i]!='\t' && str[i]!='\r' && str[i]!='\n' )
+			break;
+	}
+	if( i!=0 )
+	{
+		strcpy(str,str+i);
+	}
+}
+
+// trim ' ' and '\t' and '\r' and '\n'
+static void trim_right(char *str)
+{
+    int i;
+
+	if( str==NULL )
+		return;
+	for(i=strlen(str)-1; i>-1; i--)
+	{
+		if( str[i]!=' ' && str[i]!='\t' && str[i]!='\r' && str[i]!='\n')
+			break;
+		str[i] = '\0';
+	}
+}
+
+void trim(char *str)
+{
+     trim_left(str);
+	 trim_right(str);
+}
+
 int mac_addr(const char *lpMacStr, BYTE *lpMacAddr, int *lpAddrLen)
 {
 	int nMacBytes[6];

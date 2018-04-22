@@ -3,7 +3,7 @@
 
 
 
-void if_on_register_result(int comments_id, bool approved, bool allow_hide);
+void if_on_push_result(int ret, int joined_channel_id);
 void if_on_register_network_error();
 
 int if_get_audio_channels();
