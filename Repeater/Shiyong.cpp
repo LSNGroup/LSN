@@ -570,6 +570,9 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy = FALSE);
 void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 {
+	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
+	eloop_register_timeout(1, 0, HandleDoUnregister, pViewerNode, NULL);
+
 	SetStatusInfo(pDlg->m_hWnd, _T("成功建立连接。。。"));
 	pViewerNode->bConnected = TRUE;
 
@@ -622,10 +625,6 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 	int ret;
 	int i, nRetry;
 
-
-	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
-	eloop_register_timeout(3, 0, HandleDoUnregister, pViewerNode, NULL);
-	
 	
 	if (	StunTypeUnknown == pViewerNode->httpOP.m1_peer_nattype ||
 			StunTypeFailure == pViewerNode->httpOP.m1_peer_nattype ||
@@ -831,10 +830,6 @@ DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter)
 	//	pViewerNode->httpOP.m1_use_peer_port);
 
 
-	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
-	eloop_register_timeout(3, 0, HandleDoUnregister, pViewerNode, NULL);
-
-
 	SetStatusInfo(pDlg->m_hWnd, _T("正在向对方发起连接，请稍候。。。"));
 
 	pViewerNode->httpOP.m1_use_udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -965,10 +960,6 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 		SetStatusInfo(pDlg->m_hWnd, szStatusStr);
 		Sleep(1000);
 	}
-
-
-	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
-	eloop_register_timeout(3, 0, HandleDoUnregister, pViewerNode, NULL);
 
 
 	SetStatusInfo(pDlg->m_hWnd, "正在等待对方发起反向连接，请稍候。。。");

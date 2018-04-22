@@ -67,6 +67,15 @@ void CtrlCmd_Uninit()
 	pthread_mutex_destroy(&(m_mutexSendArray[1]));
 }
 
+int CtrlCmd_Send_Raw(SOCKET_TYPE type, SOCKET fhandle, BYTE *raw_data, int data_len)
+{
+	int ret;
+
+	pthread_mutex_lock(getMutexSend(type));
+	ret = SendStream(type, fhandle, (char *)raw_data, data_len);
+	pthread_mutex_unlock(getMutexSend(type));
+	return ret;
+}
 
 //#ifdef JNI_FOR_MOBILECAMERA
 

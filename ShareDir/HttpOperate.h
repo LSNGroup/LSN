@@ -66,6 +66,7 @@ public:
 	DWORD m1_http_client_ip;  /* Network byte order */  ////<------------------------
 	
 	BYTE m1_peer_node_id[6];
+	BYTE m1_peer_topo_level;
 	DWORD m1_peer_ip;  /* Network byte order */
 	WORD m1_peer_port;
 	BOOL m1_peer_nonat;
@@ -88,24 +89,24 @@ public:
 	BOOL ParseIpValue(char *value);
 	BOOL ParseEventValue(char *value);
 	BOOL ParseHisInfoValue(char *value);
-	
-
-	//
-	// Return Value:
-	// -1: Error
-	//  0: Success
-	//
-	int DoQueryList(const char *client_charset, const char *client_lang, const char *request_nodes, ANYPC_NODE *nodesArray, int *lpCount, int *lpNum);
 
 
 	//
 	// Return Value:
 	// -1: Error
 	//  0: NG.
-	//  1: OK1.
-	//  2: OK2.
+	//  1: OK.event
 	//
-	int DoConnect(const char *client_charset, const char *client_lang, char *his_node_id_str);
+	int DoPush(const char *client_charset, const char *client_lang, int *joined_channel_id);
+
+
+	//
+	// Return Value:
+	// -1: Error
+	//  0: NG.
+	//  1: OK.his_info
+	//
+	int DoPull(const char *client_charset, const char *client_lang, int channel_id, BOOL isFromStar);
 
 
 	//

@@ -175,6 +175,7 @@ N Bytes, Data.
 int  CtrlCmd_Init();
 void CtrlCmd_Uninit();
 
+int CtrlCmd_Send_Raw(SOCKET_TYPE type, SOCKET fhandle, BYTE *raw_data, int data_len);
 
 //#ifdef JNI_FOR_MOBILECAMERA
 int CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *packet, int len);

@@ -19,10 +19,10 @@
 #define HTTP_REGISTER_REFERER	"/lsnctrl/Register.html"
 #define HTTP_UNREGISTER_URL		"/lsnctrl/Unregister.php"
 #define HTTP_UNREGISTER_REFERER	"/lsnctrl/Unregister.html"
-#define HTTP_QUERYLIST_URL		"/lsnctrl/QueryNodeList.php"
-#define HTTP_QUERYLIST_REFERER	"/lsnctrl/QueryNodeList.html"
-#define HTTP_CONNECT_URL			"/lsnctrl/Connect.php"
-#define HTTP_CONNECT_REFERER		"/lsnctrl/Connect.html"
+#define HTTP_PUSH_URL				"/lsnctrl/Push.php"
+#define HTTP_PUSH_REFERER			"/lsnctrl/Push.html"
+#define HTTP_PULL_URL				"/lsnctrl/Pull.php"
+#define HTTP_PULL_REFERER			"/lsnctrl/Pull.html"
 #define HTTP_REPORT_URL				"/lsnctrl/Report.php"
 #define HTTP_REPORT_REFERER			"/lsnctrl/Report.html"
 #define HTTP_DROP_URL				"/lsnctrl/Drop.php"
@@ -552,147 +552,11 @@ BOOL HttpOperate::ParseEventValue(char *value)
 }
 
 
-//
-// Return Value:
-// -1: Error
-//  0: Success
-//
-int HttpOperate::DoQueryList(const char *client_charset, const char *client_lang, const char *request_nodes, ANYPC_NODE *nodesArray, int *lpCount, int *lpNum)
-{
-#define POST_BUFF_SIZE	(1024*NODES_PER_PAGE)
-
-	TWSocket sockClient;
-	char szKey1[PHP_MD5_OUTPUT_CHARS+1];
-	char szKey2[PHP_MD5_OUTPUT_CHARS+1];
-	char szPostBody[1024*2];//for request_nodes
-	char *szPost;
-	char *start, *end;
-	int result = -1;
-	char name[32];
-	char value[1024];
-	char *next_start = NULL;
-	int num;
-	int nCount = 0;
-
-
-	if (nodesArray == NULL || lpCount == NULL || *lpCount < 0) {
-		return -1;
-	}
-
-	if (dwHttpServerIp == 0) {
-		if (TWSocket::GetIPAddr(g1_http_server, szIpAddr, sizeof(szIpAddr)) == 0) {
-			return -1;
-		}
-		dwHttpServerIp = inet_addr(szIpAddr);
-	}
-
-	if (sockClient.Create() < 0) {
-		return -1;
-	}
-
-	if (sockClient.Connect(szIpAddr, HTTP_SERVER_PORT) != 0) {
-		dwHttpServerIp = 0;
-		sockClient.CloseSocket();
-		return -1;
-	}
-
-	sockClient.SetSockSendBufferSize(POST_BUFF_SIZE);
-	sockClient.SetSockRecvBufferSize(POST_BUFF_SIZE);
-
-	szPost = (char *)malloc(POST_BUFF_SIZE);
-
-
-	snprintf(szPostBody, sizeof(szPostBody), 
-			"sender_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
-			"&request_nodes=%s"
-			"&client_charset=%s"
-			"&client_lang=%s",
-			m0_node_id[0], m0_node_id[1], m0_node_id[2], m0_node_id[3], m0_node_id[4], m0_node_id[5],
-			request_nodes,
-			client_charset, client_lang);
-
-	php_md5(szPostBody, szKey1, sizeof(szKey1));
-	php_md5(szKey1, szKey2, sizeof(szKey2));
-	strcat(szPostBody, "&session_key=");
-	strcat(szPostBody, szKey2);
-
-	snprintf(szPost, POST_BUFF_SIZE, szPostFormat, 
-										HTTP_QUERYLIST_URL,
-										g1_http_server, HTTP_QUERYLIST_REFERER,
-										g1_http_server,
-										strlen(szPostBody),
-										szPostBody);
-
-	if (sockClient.Send_Stream(szPost, strlen(szPost)) < 0) {
-		sockClient.CloseSocket();
-		free(szPost);
-		return -1;
-	}
-
-
-	if (RecvHttpResponse(&sockClient, szPost, POST_BUFF_SIZE, &start, &end) < 0) {
-		sockClient.CloseSocket();
-		free(szPost);
-		return -1;
-	}
-
-
-	while(1) {
-
-		if (ParseLine(start, name, sizeof(name), value, sizeof(value), &next_start) == FALSE) {
-			sockClient.CloseSocket();
-			free(szPost);
-			return -1;
-		}
-
-
-		if (strcmp(value, "") != 0)
-		{
-			if (strcmp(name, "num") == 0) {
-				num = atol(value);
-				if (lpNum) {
-					*lpNum = num;
-				}
-				if (num == 0) {
-					break;
-				}
-			}
-			else if (strcmp(name, "row") == 0) {
-				if (nCount < *lpCount) {
-					if (ParseRowValue(value, &(nodesArray[nCount])) == FALSE) {
-						sockClient.CloseSocket();
-						free(szPost);
-						return -1;
-					}
-					nCount += 1;
-				}
-			}
-		}
-
-
-		if (next_start == NULL) {
-			break;
-		}
-		start = next_start;
-	}
-
-
-	sockClient.ShutDown();
-	sockClient.CloseSocket();
-
-	*lpCount = nCount;
-	free(szPost);
-	return 0;
-
-#undef POST_BUFF_SIZE
-}
-
-
-/* his_info=3F-1A-CD-90-4B-67|68.123.62.234|32168|0|5|192.168.111.102-192.168.110.1|3478|5 */
+/* his_info=3F-1A-CD-90-4B-67|4|68.123.62.234|32168|0|5|192.168.111.102-192.168.110.1|3478|5 */
 BOOL HttpOperate::ParseHisInfoValue(char *value)
 {
 	char *p;
-	char *node_id_str, *ip_str, *port_str, *no_nat_str, *nat_type_str, *priv_ip_str, *priv_port_str, *wait_time_str;
+	char *node_id_str, *topo_level_str, *ip_str, *port_str, *no_nat_str, *nat_type_str, *priv_ip_str, *priv_port_str, *wait_time_str;
 
 	if (!value) {
 		return FALSE;
@@ -707,6 +571,17 @@ BOOL HttpOperate::ParseHisInfoValue(char *value)
 	*p = '\0';
 	node_id_str = value;
 	mac_addr(node_id_str, m1_peer_node_id, NULL);
+
+
+	/* TOPO LEVEL */
+	value = p + 1;
+	p = strchr(value, '|');
+	if (p == NULL) {
+		return FALSE;
+	}
+	*p = '\0';
+	topo_level_str = value;
+	m1_peer_topo_level = atol(topo_level_str);
 
 
 	/* IP */
@@ -797,10 +672,9 @@ BOOL HttpOperate::ParseHisInfoValue(char *value)
 // Return Value:
 // -1: Error
 //  0: NG.
-//  1: OK1.
-//  2: OK2.
+//  1: OK.event
 //
-int HttpOperate::DoConnect(const char *client_charset, const char *client_lang, char *his_node_id_str)
+int HttpOperate::DoPush(const char *client_charset, const char *client_lang, int *joined_channel_id)
 {
 #define POST_BUFF_SIZE	(2*1024)
 
@@ -845,16 +719,12 @@ int HttpOperate::DoConnect(const char *client_charset, const char *client_lang, 
 												"&pub_port=%d"
 												"&no_nat=%d"
 												"&nat_type=%d"
-												"&my_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
-												"&his_node_id=%s"
 												"&client_charset=%s"
 												"&client_lang=%s",
 					m0_node_id[0], m0_node_id[1], m0_node_id[2], m0_node_id[3], m0_node_id[4], m0_node_id[5],
 					UrlEncode(g0_node_name).c_str(), g0_version, MakeIpStr(), m0_port, MakePubIpStr(), m0_pub_port, 
 					(m0_no_nat ? 1 : 0),
 					m0_nat_type,
-					m0_node_id[0], m0_node_id[1], m0_node_id[2], m0_node_id[3], m0_node_id[4], m0_node_id[5],
-					his_node_id_str, 
 					client_charset, client_lang);
 	
 	php_md5(szPostBody, szKey1, sizeof(szKey1));
@@ -863,8 +733,138 @@ int HttpOperate::DoConnect(const char *client_charset, const char *client_lang, 
 	strcat(szPostBody, szKey2);
 	
 	snprintf(szPost, POST_BUFF_SIZE, szPostFormat, 
-										HTTP_CONNECT_URL,
-										g1_http_server, HTTP_CONNECT_REFERER,
+										HTTP_PUSH_URL,
+										g1_http_server, HTTP_PUSH_REFERER,
+										g1_http_server,
+										strlen(szPostBody),
+										szPostBody);
+
+	if (sockClient.Send_Stream(szPost, strlen(szPost)) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+
+	if (RecvHttpResponse(&sockClient, szPost, POST_BUFF_SIZE, &start, &end) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+
+	while(1) {
+
+		if (ParseLine(start, name, sizeof(name), value, sizeof(value), &next_start) == FALSE) {
+			sockClient.CloseSocket();
+			free(szPost);
+			return -1;
+		}
+
+		if (strcmp(name, "event") == 0) {
+			if (ParseEventValue(value) == FALSE) {
+				sockClient.CloseSocket();
+				free(szPost);
+				return -1;
+			}
+			else {
+				result = 1;
+			}
+		}
+		else if (strcmp(name, "joined_channel_id") == 0) {
+			if (joined_channel_id != NULL) {
+				*joined_channel_id = atol(value);
+			}
+		}
+
+		if (next_start == NULL) {
+			break;
+		}
+		start = next_start;
+	}
+
+
+	sockClient.ShutDown();
+	sockClient.CloseSocket();
+
+	free(szPost);
+	return result;
+
+#undef POST_BUFF_SIZE
+}
+
+
+//
+// Return Value:
+// -1: Error
+//  0: NG.
+//  1: OK.his_info
+//
+int HttpOperate::DoPull(const char *client_charset, const char *client_lang, int channel_id, BOOL isFromStar)
+{
+#define POST_BUFF_SIZE	(2*1024)
+
+	TWSocket sockClient;
+	char szKey1[PHP_MD5_OUTPUT_CHARS+1];
+	char szKey2[PHP_MD5_OUTPUT_CHARS+1];
+	char szPostBody[1024];
+	char *szPost;
+	char *start, *end;
+	int result = 0;
+	char name[32];
+	char value[1024];
+	char *next_start = NULL;
+
+
+	if (dwHttpServerIp == 0) {
+		if (TWSocket::GetIPAddr(g1_http_server, szIpAddr, sizeof(szIpAddr)) == 0) {
+			return -1;
+		}
+		dwHttpServerIp = inet_addr(szIpAddr);
+	}
+
+	if (sockClient.Create() < 0) {
+		return -1;
+	}
+
+	if (sockClient.Connect(szIpAddr, HTTP_SERVER_PORT) != 0) {
+		dwHttpServerIp = 0;
+		sockClient.CloseSocket();
+		return -1;
+	}
+
+	szPost = (char *)malloc(POST_BUFF_SIZE);
+
+
+	snprintf(szPostBody, sizeof(szPostBody), "sender_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+												"&node_name=%s"
+												"&version=%ld"
+												"&ip=%s"
+												"&port=%d"
+												"&pub_ip=%s"
+												"&pub_port=%d"
+												"&no_nat=%d"
+												"&nat_type=%d"
+												"&channel_id=%d"
+												"&from_star=%d"
+												"&client_charset=%s"
+												"&client_lang=%s",
+					m0_node_id[0], m0_node_id[1], m0_node_id[2], m0_node_id[3], m0_node_id[4], m0_node_id[5],
+					UrlEncode(g0_node_name).c_str(), g0_version, MakeIpStr(), m0_port, MakePubIpStr(), m0_pub_port, 
+					(m0_no_nat ? 1 : 0),
+					m0_nat_type,
+					channel_id,
+					(isFromStar ? 1 : 0),
+					client_charset, client_lang);
+	
+	php_md5(szPostBody, szKey1, sizeof(szKey1));
+	php_md5(szKey1, szKey2, sizeof(szKey2));
+	strcat(szPostBody, "&session_key=");
+	strcat(szPostBody, szKey2);
+	
+	snprintf(szPost, POST_BUFF_SIZE, szPostFormat, 
+										HTTP_PULL_URL,
+										g1_http_server, HTTP_PULL_REFERER,
 										g1_http_server,
 										strlen(szPostBody),
 										szPostBody);
@@ -897,16 +897,8 @@ int HttpOperate::DoConnect(const char *client_charset, const char *client_lang, 
 				free(szPost);
 				return -1;
 			}
-		}
-		else if (strcmp(name, "result_code") == 0) {
-			if (strcmp(value, "OK1") == 0) {
-				result = 1;
-			}
-			else if (strcmp(value, "OK2") == 0) {
-				result = 2;
-			}
 			else {
-				break;
+				result = 1;
 			}
 		}
 
