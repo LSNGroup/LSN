@@ -412,6 +412,77 @@ void MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(SendVoice)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
+static int IsNodeExist(CHANNEL_NODE *nodesArray, int nCount, char *node_id_str)
+{
+	int i;
+
+	for (i = 0; i < nCount; i++) {
+		if (strcmp(nodesArray[i].node_id_str, node_id_str) == 0) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+extern "C"
+jint
+MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoSearchChannels)
+	(JNIEnv* env, jobject thiz, jint page_offset, jint page_rows)
+{
+	jint ret;
+	CHANNEL_NODE *servers;//[NODES_PER_PAGE];
+	int cntServer = NODES_PER_PAGE;
+	int nNum;
+	int i;
+	
+	
+	servers  = (CHANNEL_NODE *)malloc( sizeof(CHANNEL_NODE)*NODES_PER_PAGE );
+	
+	//if (len > 0)
+	{
+		ret = HttpOperate::DoQueryChannels(g_client_charset, g_client_lang, page_offset, page_rows, servers, &cntServer, &nNum);
+		if (ret < 0)
+		{
+			if_messagetip(R_string::msg_internet_error);
+		}
+		else if (ret == 0 && cntServer > 0)
+		{
+			;
+		}
+	}
+	
+	if (cntServer > 0)
+	{
+		//__android_log_print(ANDROID_LOG_INFO, "DoSearchChannels", "jobject = %ld", (unsigned long)thiz);////Debug
+		
+		jclass cls = (env)->GetObjectClass(thiz);
+		//__android_log_print(ANDROID_LOG_INFO, "DoSearchChannels", "jclass1 = %ld", (unsigned long)cls);////Debug
+		
+		if (0 == cls) {
+			cls = (env)->FindClass("com/wangling/mobilecamera/MainListActivity");
+			//__android_log_print(ANDROID_LOG_INFO, "DoSearchChannels", "jclass2 = %ld", (unsigned long)cls);////Debug
+		}
+		
+		jmethodID mid = (env)->GetMethodID(cls, "FillChannelNode", "(IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+		//__android_log_print(ANDROID_LOG_INFO, "DoSearchChannels", "jmethodID = %ld", (unsigned long)mid);////Debug
+		
+		for (i = 0; i < (int)cntServer; i++)
+		{
+			CHANNEL_NODE *pNode = &servers[i];
+			(env)->CallVoidMethod(thiz, mid, 
+									i, pNode->channel_id, (env)->NewStringUTF(pNode->channel_comments), 
+									(env)->NewStringUTF(pNode->device_uuid), (env)->NewStringUTF(pNode->node_id_str), 
+									(env)->NewStringUTF(pNode->pub_ip_str), (env)->NewStringUTF(pNode->location) );
+		
+			__android_log_print(ANDROID_LOG_INFO, "DoSearchChannels", "FillChannelNode(index = %d)!", i);////Debug
+		}
+	}
+
+	free(servers);
+    return cntServer;
+}
+
 extern "C"
 void
 MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoConnect)

@@ -27,9 +27,7 @@
         </activity>
         
         <activity android:name="com.wangling.remotephone.AddCamActivity" android:launchMode="singleTop" android:screenOrientation="portrait" />
-        <activity android:name="com.wangling.remotephone.AvParamActivity" android:launchMode="singleTop" android:screenOrientation="portrait" />
         <activity android:name="com.wangling.remotephone.AvPlayActivity" android:launchMode="singleTop" android:configChanges="keyboardHidden|orientation" android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
-		<activity android:name="com.wangling.remotephone.AvCtrlActivity" android:launchMode="singleTop" android:screenOrientation="landscape" android:theme="@style/Theme.DoNotDim" />
 		
     </application>
 

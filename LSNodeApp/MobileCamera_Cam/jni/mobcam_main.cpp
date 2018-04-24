@@ -87,28 +87,6 @@ static void InitVar()
 	
 	ret = if_get_device_uuid(g0_device_uuid, sizeof(g0_device_uuid));
 	__android_log_print(ANDROID_LOG_INFO, "InitVar", "if_get_device_uuid() = %s\n", g0_device_uuid);
-	if (strncmp(g0_device_uuid, "ANDROID@YKZ@", 12) == 0) {
-		if (strcmp(g0_device_uuid + 12 + 17, "@0") != 0) {
-			__android_log_print(ANDROID_LOG_INFO, "InitVar", "if_get_device_uuid() invalid!!!\n");
-			strcpy(g0_device_uuid, "");
-		}
-	}
-	else if (strncmp(g0_device_uuid, "ANDROID@ROB@", 12) == 0) {
-		if (strcmp(g0_device_uuid + 12 + 17, "@1") != 0) {
-			__android_log_print(ANDROID_LOG_INFO, "InitVar", "if_get_device_uuid() invalid!!!\n");
-			strcpy(g0_device_uuid, "");
-		}
-	}
-	else if (strncmp(g0_device_uuid, "ANDROID@UAV@", 12) == 0) {
-		if (strcmp(g0_device_uuid + 12 + 17, "@1") != 0) {
-			__android_log_print(ANDROID_LOG_INFO, "InitVar", "if_get_device_uuid() invalid!!!\n");
-			strcpy(g0_device_uuid, "");
-		}
-	}
-	else {
-		__android_log_print(ANDROID_LOG_INFO, "InitVar", "if_get_device_uuid() invalid!!!\n");
-		strcpy(g0_device_uuid, "");
-	}
 	
 	
 	char szNodeId[20];
@@ -371,7 +349,7 @@ void *NativeMainFunc(void *lpParameter)
 				}
 
 				int joined_channel_id = 0;
-				ret = myHttpOperate.DoPush(g_client_charset, g_client_lang, &joined_channel_id);
+				ret = myHttpOperate.DoPush(g_client_charset, g_client_lang, "Channel Comments", &joined_channel_id);
 				__android_log_print(ANDROID_LOG_INFO, "NativeMainFunc", "DoPush() = %d\n", ret);
 				if_on_push_result(ret, joined_channel_id);
 				if (ret == 1 && joined_channel_id > 0) {
@@ -1007,6 +985,8 @@ void StartDoConnection()
 {
 	g_bDoConnection1 = TRUE;
 	g_bDoConnection2 = FALSE;
+	
+	NativeMainFunc(NULL);//Test
 }
 
 void StopDoConnection()

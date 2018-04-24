@@ -16,7 +16,7 @@ import com.lsngroup.live.R;
 public class NodeListAdapter extends BaseAdapter
 {
     private Context context = null;
-    private List<ANYPC_NODE> nodeList = null;
+    private List<CHANNEL_NODE> nodeList = null;
     
     public class ViewHolder{   
         ImageView imageViewIcon;   
@@ -26,7 +26,7 @@ public class NodeListAdapter extends BaseAdapter
     }
     
     
-    public NodeListAdapter(Context _context, List<ANYPC_NODE> _nodeList)
+    public NodeListAdapter(Context _context, List<CHANNEL_NODE> _nodeList)
     {
     	this.context = _context;
     	this.nodeList = _nodeList;
@@ -45,7 +45,7 @@ public class NodeListAdapter extends BaseAdapter
     }
     
     public View getView(int position, View convertView, ViewGroup parent) {   
-        final ANYPC_NODE anypcNode = (ANYPC_NODE)getItem(position);   
+        final CHANNEL_NODE anypcNode = (CHANNEL_NODE)getItem(position);   
         ViewHolder viewHolder = null;   
         if (convertView == null){   
             Log.d("NodeListAdapter", "New convertView, position="+position);   
@@ -71,19 +71,7 @@ public class NodeListAdapter extends BaseAdapter
         
         
         if (anypcNode.isOnline()) {
-        	if (anypcNode.isAnypcNode()) {
-        		viewHolder.imageViewIcon.setImageResource(R.drawable.anypc_online);
-        	}
-        	else if (anypcNode.isYkzNode()) {
-        		viewHolder.imageViewIcon.setImageResource(R.drawable.ykz_online);
-        	}
-        	else if (anypcNode.isRobNode()) {
-        		viewHolder.imageViewIcon.setImageResource(R.drawable.rob_online);
-        	}
-        	else if (anypcNode.isUavNode()) {
-        		viewHolder.imageViewIcon.setImageResource(R.drawable.uav_online);
-        	}
-        	else /* if (anypcNode.isYcamNode()) */{
+        	{/* if (anypcNode.isYcamNode()) */
         		viewHolder.imageViewIcon.setImageResource(R.drawable.ycam_online);
         	}
         	if (anypcNode.location.equals(SharedFuncLib.ANYPC_LOCAL_LAN)) {
@@ -94,30 +82,14 @@ public class NodeListAdapter extends BaseAdapter
         	}
         }
         else {
-        	if (anypcNode.isAnypcNode()) {
-        		viewHolder.imageViewIcon.setImageResource(R.drawable.anypc_offline);
-        	}
-        	else if (anypcNode.isYkzNode()) {
-        		viewHolder.imageViewIcon.setImageResource(R.drawable.ykz_offline);
-        	}
-        	else if (anypcNode.isRobNode()) {
-        		viewHolder.imageViewIcon.setImageResource(R.drawable.rob_offline);
-        	}
-        	else if (anypcNode.isUavNode()) {
-        		viewHolder.imageViewIcon.setImageResource(R.drawable.uav_offline);
-        	}
-        	else /* if (anypcNode.isYcamNode()) */{
+        	{/* if (anypcNode.isYcamNode()) */
         		viewHolder.imageViewIcon.setImageResource(R.drawable.ycam_offline);
         	}
         	viewHolder.textViewInfo.setText(R.string.msg_mobcam_offline);
         }
 
-        if (anypcNode.isLanOnly()) {
-        	viewHolder.textViewName.setText("[ID:" + "NONE" + "] " + anypcNode.node_name);
-        }
-        else {
-        	viewHolder.textViewName.setText("[ID:" + anypcNode.comments_id + "] " + anypcNode.node_name);
-        }
+
+       	viewHolder.textViewName.setText("[ID:" + anypcNode.channel_id + "] " + anypcNode.channel_comments);
         //viewHolder.imageViewArm.setImageResource(anypcNode.comments_id);
         
         return convertView;   

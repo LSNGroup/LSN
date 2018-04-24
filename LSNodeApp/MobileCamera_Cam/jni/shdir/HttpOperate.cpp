@@ -8,9 +8,13 @@
 #include "base64.h"
 #include "TWSocket.h"
 #include "HttpOperate.h"
+#ifdef WIN32
+#include "LogMsg.h"
+#endif
 
 #ifdef ANDROID_NDK
 #include <android/log.h>
+#define log_msg(msg, lev)  __android_log_print(ANDROID_LOG_INFO, "shdir", msg)
 #endif
 
 
@@ -18,6 +22,8 @@
 #define HTTP_REGISTER_REFERER	"/lsnctrl/Register.html"
 #define HTTP_UNREGISTER_URL		"/lsnctrl/Unregister.php"
 #define HTTP_UNREGISTER_REFERER	"/lsnctrl/Unregister.html"
+#define HTTP_QUERYCHANNELS_URL		"/lsnctrl/QueryChannels.php"
+#define HTTP_QUERYCHANNELS_REFERER	"/lsnctrl/QueryChannels.html"
 #define HTTP_PUSH_URL				"/lsnctrl/Push.php"
 #define HTTP_PUSH_REFERER			"/lsnctrl/Push.html"
 #define HTTP_PULL_URL				"/lsnctrl/Pull.php"
@@ -170,11 +176,7 @@ static int RecvHttpResponse(TWSocket *sock, char *lpBuff, int nSize, char **psta
 #ifdef ANDROID_NDK ////Debug
 				__android_log_print(ANDROID_LOG_INFO, "RecvHttpResponse", "ret = %d, want=%d", ret, nSize - 1 - nRecvd);
 #endif
-#ifdef WIN32
-				Sleep(800);
-#else
 				usleep(800000);
-#endif
 			}
 		}
 	}
@@ -920,10 +922,146 @@ int HttpOperate::DoUnregister(const char *client_charset, const char *client_lan
 //
 // Return Value:
 // -1: Error
+//  0: Success
+//
+int HttpOperate::DoQueryChannels(const char *client_charset, const char *client_lang, int page_offset, int page_rows, CHANNEL_NODE *nodesArray, int *lpCount, int *lpNum)
+{
+#define POST_BUFF_SIZE	(1024*NODES_PER_PAGE)
+
+	TWSocket sockClient;
+	char szKey1[PHP_MD5_OUTPUT_CHARS+1];
+	char szKey2[PHP_MD5_OUTPUT_CHARS+1];
+	char szPostBody[1024];
+	char *szPost;
+	char *start, *end;
+	int result = -1;
+	char name[32];
+	char value[1024];
+	char *next_start = NULL;
+	int num;
+	int nCount = 0;
+
+
+	if (nodesArray == NULL || lpCount == NULL || *lpCount < 0) {
+		return -1;
+	}
+
+	if (dwHttpServerIp == 0) {
+		if (TWSocket::GetIPAddr(g1_http_server, szIpAddr, sizeof(szIpAddr)) == 0) {
+			return -1;
+		}
+		dwHttpServerIp = inet_addr(szIpAddr);
+	}
+
+	if (sockClient.Create() < 0) {
+		return -1;
+	}
+
+	if (sockClient.Connect(szIpAddr, HTTP_SERVER_PORT) != 0) {
+		dwHttpServerIp = 0;
+		sockClient.CloseSocket();
+		return -1;
+	}
+
+	sockClient.SetSockSendBufferSize(POST_BUFF_SIZE);
+	sockClient.SetSockRecvBufferSize(POST_BUFF_SIZE);
+
+	szPost = (char *)malloc(POST_BUFF_SIZE);
+
+
+	snprintf(szPostBody, sizeof(szPostBody), 
+			"page_offset=%d"
+			"&page_rows=%d"
+			"&client_charset=%s"
+			"&client_lang=%s",
+			page_offset,
+			page_rows,
+			client_charset, client_lang);
+
+	php_md5(szPostBody, szKey1, sizeof(szKey1));
+	php_md5(szKey1, szKey2, sizeof(szKey2));
+	strcat(szPostBody, "&session_key=");
+	strcat(szPostBody, szKey2);
+
+	snprintf(szPost, POST_BUFF_SIZE, szPostFormat, 
+										HTTP_QUERYCHANNELS_URL,
+										g1_http_server, HTTP_QUERYCHANNELS_REFERER,
+										g1_http_server,
+										strlen(szPostBody),
+										szPostBody);
+
+	if (sockClient.Send_Stream(szPost, strlen(szPost)) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+
+	if (RecvHttpResponse(&sockClient, szPost, POST_BUFF_SIZE, &start, &end) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+
+	while(1) {
+
+		if (ParseLine(start, name, sizeof(name), value, sizeof(value), &next_start) == FALSE) {
+			sockClient.CloseSocket();
+			free(szPost);
+			return -1;
+		}
+
+
+		if (strcmp(value, "") != 0)
+		{
+			if (strcmp(name, "num") == 0) {
+				num = atol(value);
+				if (lpNum) {
+					*lpNum = num;
+				}
+				if (num == 0) {
+					break;
+				}
+			}
+			else if (strcmp(name, "row") == 0) {
+				if (nCount < *lpCount) {
+					if (ParseChannelRowValue(value, &(nodesArray[nCount])) == FALSE) {
+						sockClient.CloseSocket();
+						free(szPost);
+						return -1;
+					}
+					nCount += 1;
+				}
+			}
+		}
+
+
+		if (next_start == NULL) {
+			break;
+		}
+		start = next_start;
+	}
+
+
+	sockClient.ShutDown();
+	sockClient.CloseSocket();
+
+	*lpCount = nCount;
+	free(szPost);
+	return 0;
+
+#undef POST_BUFF_SIZE
+}
+
+
+//
+// Return Value:
+// -1: Error
 //  0: NG.
 //  1: OK.event
 //
-int HttpOperate::DoPush(const char *client_charset, const char *client_lang, int *joined_channel_id)
+int HttpOperate::DoPush(const char *client_charset, const char *client_lang, const char *channel_comments, int *joined_channel_id)
 {
 #define POST_BUFF_SIZE	(2*1024)
 
@@ -968,12 +1106,14 @@ int HttpOperate::DoPush(const char *client_charset, const char *client_lang, int
 												"&pub_port=%d"
 												"&no_nat=%d"
 												"&nat_type=%d"
+												"&channel_comments=%s"
 												"&client_charset=%s"
 												"&client_lang=%s",
 					m0_node_id[0], m0_node_id[1], m0_node_id[2], m0_node_id[3], m0_node_id[4], m0_node_id[5],
 					UrlEncode(g0_node_name).c_str(), g0_version, MakeIpStr(), m0_port, MakePubIpStr(), m0_pub_port, 
 					(m0_no_nat ? 1 : 0),
 					m0_nat_type,
+					UrlEncode(channel_comments).c_str(),
 					client_charset, client_lang);
 	
 	php_md5(szPostBody, szKey1, sizeof(szKey1));
@@ -1329,11 +1469,9 @@ int HttpOperate::DoReport1(const char *client_charset, const char *client_lang, 
 	}
 
 	if (bUpgradeVersion) {
-#ifdef WIN32
-		if (NULL == hThread_Upgrade) {
-			hThread_Upgrade = ::CreateThread(NULL,0,UpgradeThreadFn,NULL,0,&dwThreadID_Upgrade);
-		}
-#endif
+		//if (NULL == hThread_Upgrade) {
+		//	hThread_Upgrade = ::CreateThread(NULL,0,UpgradeThreadFn,NULL,0,&dwThreadID_Upgrade);
+		//}
 		result = 2;
 	}
 
@@ -1352,7 +1490,7 @@ int HttpOperate::DoReport1(const char *client_charset, const char *client_lang, 
 //  2: settings
 //  3: settings,event
 int HttpOperate::DoReport2(const char *client_charset, const char *client_lang, 
-	DWORD joined_channel_id, BYTE joined_node_id[6], int viewer_grow_rate,
+	DWORD joined_channel_id, BYTE joined_node_id[6], int device_node_num, int viewer_grow_rate,
 	const char *root_device_uuid, const char *root_public_ip, BYTE device_node_id[6],
 	int route_item_num, int route_item_max,
 	int level_1_max_connections, int level_1_current_connections, int level_1_max_streams, int level_1_current_streams,
@@ -1401,6 +1539,7 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 			 "settings_only=0"
 			 "&joined_channel_id=%ld"
 			 "&joined_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+			 "&device_node_num=%d"
 			 "&viewer_grow_rate=%d"
 			 "&root_device_uuid=%s"
 			 "&root_public_ip=%s"
@@ -1428,7 +1567,7 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 			 "&client_lang=%s",
 			joined_channel_id, 
 			joined_node_id[0],joined_node_id[1],joined_node_id[2],joined_node_id[3],joined_node_id[4],joined_node_id[5],
-			viewer_grow_rate,
+			device_node_num, viewer_grow_rate,
 			root_device_uuid, root_public_ip, 
 			device_node_id[0],device_node_id[1],device_node_id[2],device_node_id[3],device_node_id[4],device_node_id[5],
 			route_item_num, route_item_max,
@@ -1563,11 +1702,9 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 	}
 
 	if (bUpgradeVersion) {
-#ifdef WIN32
-		if (NULL == hThread_Upgrade) {
-			hThread_Upgrade = ::CreateThread(NULL,0,UpgradeThreadFn,NULL,0,&dwThreadID_Upgrade);
-		}
-#endif
+		//if (NULL == hThread_Upgrade) {
+		//	hThread_Upgrade = ::CreateThread(NULL,0,UpgradeThreadFn,NULL,0,&dwThreadID_Upgrade);
+		//}
 		result = 2;
 	}
 

@@ -56,6 +56,16 @@ typedef struct _tag_anypc_node {
 } ANYPC_NODE;
 
 
+typedef struct _tag_channel_node {
+	DWORD channel_id;
+	char channel_comments[MAX_LOADSTRING];
+	char device_uuid[MAX_LOADSTRING];
+	char node_id_str[MAX_LOADSTRING];
+	char pub_ip_str[16];
+	char location[MAX_LOADSTRING];
+} CHANNEL_NODE;
+
+
 typedef struct _tag_notification_item {
 	char text[MAX_LOADSTRING];
 	char link[MAX_LOADSTRING];
@@ -185,6 +195,9 @@ void EndProxy(SOCKET udp_sock, DWORD dest_ip, WORD dest_port);
 
 
 BOOL ParseRowValue(char *value, ANYPC_NODE *lpNode);
+
+
+BOOL ParseChannelRowValue(char *value, CHANNEL_NODE *lpNode);
 
 
 //

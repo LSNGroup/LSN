@@ -62,7 +62,7 @@ public class MainListActivity extends ListActivity {
 		    	
 		    	_instance.m_nCurrentSelected = -1;
 		    	_instance.m_nodesArray.clear();
-		    	DoSearchServers((String)(msg.obj));
+		    	DoSearchChannels(0, 30);//msg.obj
 	    		send_msg = _instance.mMainHandler.obtainMessage(UI_MSG_REFRESH_RESULT);
 		    	_instance.mMainHandler.sendMessage(send_msg);
 		    	
@@ -88,7 +88,7 @@ public class MainListActivity extends ListActivity {
 		    	_instance.mMainHandler.sendMessage(send_msg);
 		    	
 		    	String strPass = AppSettings.GetSoftwareKeyValue(_instance, 
-		    			"" + _instance.m_nodesArray.get(_instance.m_nCurrentSelected).comments_id + AppSettings.STRING_REGKEY_NAME_CAM_PASSWORD, 
+		    			"" + _instance.m_nodesArray.get(_instance.m_nCurrentSelected).channel_id + AppSettings.STRING_REGKEY_NAME_CAM_PASSWORD, 
 		    			"");
 		    	if (false == strPass.equals("")) {
 		    		strPass = SharedFuncLib.phpMd5(strPass);
@@ -96,7 +96,6 @@ public class MainListActivity extends ListActivity {
 		    	
 		    	int[] arrResults = new int[3];
 		    	ret = SharedFuncLib.CtrlCmdHELLO(_instance.conn_type, _instance.conn_fhandle, strPass, arrResults);
-		    	_instance.m_nodesArray.get(_instance.m_nCurrentSelected).func_flags = (byte)(arrResults[2]);
 		    	
 		    	//////////////////////////PROGRESS_CANCEL
 		    	send_msg = _instance.mMainHandler.obtainMessage(UI_MSG_PROGRESS_CANCEL);
@@ -191,28 +190,6 @@ public class MainListActivity extends ListActivity {
 			case UI_MSG_REFRESH_RESULT:
 				NodeListAdapter adapter = new NodeListAdapter(_instance, m_nodesArray);
 				mListView.setAdapter(adapter);
-				
-				////////////////////////////////////////////{{{
-				boolean shouldSave = false;
-				String save_ids = "";
-				for (int i = 0; i < m_nodesArray.size(); i++)
-				{
-					if (false == m_nodesArray.get(i).isLanOnly())
-					{
-						shouldSave = true;
-					}
-					if (i == 0) {
-						save_ids += String.format("%d", m_nodesArray.get(i).comments_id);
-					}
-					else {
-						save_ids += String.format("-%d", m_nodesArray.get(i).comments_id);
-					}
-				}
-				if (shouldSave) {
-					AppSettings.SaveSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_QUERYIDS, save_ids);
-				}
-				////////////////////////////////////////////}}}
-				
 				break;
 			
 			case UI_MSG_CONNECT_PASSDLG:
@@ -234,7 +211,6 @@ public class MainListActivity extends ListActivity {
 		        		    	
 		        		    	int[] arrResults = new int[3];
 		        		    	int ret = SharedFuncLib.CtrlCmdHELLO(_instance.conn_type, _instance.conn_fhandle, strPass, arrResults);
-		        		    	_instance.m_nodesArray.get(_instance.m_nCurrentSelected).func_flags = (byte)(arrResults[2]);
 		        		    	
 		        		    	if (0 != ret) {
 		        		    		Message send_msg = _instance.mMainHandler.obtainMessage(UI_MSG_MESSAGETIP, _instance.getResources().getString(R.string.msg_connect_checking_password_failed1));
@@ -253,7 +229,7 @@ public class MainListActivity extends ListActivity {
 		        		    	else {// OK, save password and go to AvParam or AvPlay
 		        		    		
 		        		    		AppSettings.SaveSoftwareKeyValue(_instance, 
-		        			    			"" + _instance.m_nodesArray.get(_instance.m_nCurrentSelected).comments_id + AppSettings.STRING_REGKEY_NAME_CAM_PASSWORD, 
+		        			    			"" + _instance.m_nodesArray.get(_instance.m_nCurrentSelected).channel_id + AppSettings.STRING_REGKEY_NAME_CAM_PASSWORD, 
 		        			    			editPass.getText().toString());
 		        		    		
 		        		        	Message send_msg = _instance.mMainHandler.obtainMessage(UI_MSG_CONNECT_RESULT);
@@ -285,58 +261,16 @@ public class MainListActivity extends ListActivity {
 			  }
 			  else if (_instance.do_func == DO_FUNC_AV)
 			  {////////
-		    		if ((m_nodesArray.get(m_nCurrentSelected).func_flags & SharedFuncLib.FUNC_FLAGS_ACTIVATED) == 0
-		    				&& SharedFuncLib.getLowestLevelForAv() > 0)
-		    		{
-		        		SharedFuncLib.CtrlCmdBYE(conn_type, conn_fhandle);
-		        		DoDisconnect();
-		    			SharedFuncLib.MyMessageBox(_instance, _instance.getResources().getString(R.string.app_name), _instance.getResources().getString(R.string.msg_level_too_low_for_this_function));
-		        		onBtnRefresh();
-		    			break;
-		    		}
-		    		else if ((m_nodesArray.get(m_nCurrentSelected).func_flags & SharedFuncLib.FUNC_FLAGS_AV) == 0)
-		    		{
-		        		SharedFuncLib.CtrlCmdBYE(conn_type, conn_fhandle);
-		        		DoDisconnect();
-		    			SharedFuncLib.MyMessageBox(_instance, _instance.getResources().getString(R.string.app_name), _instance.getResources().getString(R.string.msg_server_not_support_this_function));
-		        		onBtnRefresh();
-		    			break;
-		    		}
-				  
-	    		if (0 == AppSettings.GetSoftwareKeyDwordValue(_instance, "" + m_nodesArray.get(m_nCurrentSelected).comments_id + AppSettings.STRING_REGKEY_NAME_CAM_AVPARAM_FRAMERATE, 0))
-	    		{
-	    	    	Intent intent = new Intent(_instance, AvParamActivity.class);
+	    			Intent intent = new Intent(_instance, AvPlayActivity.class);
 	    	    	Bundle bundle = new Bundle();
-	    	    	bundle.putInt("comments_id", m_nodesArray.get(m_nCurrentSelected).comments_id);
-	    	    	bundle.putInt("conn_type", _instance.conn_type);
-	    	    	bundle.putInt("audio_channels", m_nodesArray.get(m_nCurrentSelected).audio_channels);
-	    	    	bundle.putInt("video_channels", m_nodesArray.get(m_nCurrentSelected).video_channels);
-	    	    	intent.putExtras(bundle);
-	    	    	startActivityForResult(intent, REQUEST_CODE_AVPARAM);
-	    		}
-	    		else {
-	    			Intent intent = null;
-	    			if (m_nodesArray.get(m_nCurrentSelected).isRobNode()
-	    				|| m_nodesArray.get(m_nCurrentSelected).isUavNode()) {
-	    				intent = new Intent(_instance, AvCtrlActivity.class);
-	    			}
-	    			else {
-	    				intent = new Intent(_instance, AvPlayActivity.class);
-	    			}
-	    	    	Bundle bundle = new Bundle();
-	    	    	bundle.putInt("comments_id", m_nodesArray.get(m_nCurrentSelected).comments_id);
+	    	    	bundle.putInt("comments_id", m_nodesArray.get(m_nCurrentSelected).channel_id);
 	    	    	bundle.putInt("conn_type", _instance.conn_type);
 	    	    	bundle.putInt("conn_fhandle", _instance.conn_fhandle);
-	    	    	bundle.putInt("audio_channels", m_nodesArray.get(m_nCurrentSelected).audio_channels);
-	    	    	bundle.putInt("video_channels", m_nodesArray.get(m_nCurrentSelected).video_channels);
+	    	    	bundle.putInt("audio_channels", 1);
+	    	    	bundle.putInt("video_channels", 1);
 	    	    	bundle.putString("device_uuid", m_nodesArray.get(m_nCurrentSelected).device_uuid);
 	    	    	intent.putExtras(bundle);
 	    	    	startActivityForResult(intent, REQUEST_CODE_AVPLAY);
-	    		}
-			  }////////
-			  
-			  else if (_instance.do_func == DO_FUNC_DP)
-			  {////////
 			  }////////
 			  
 			  mMainHandler.removeCallbacks(auto_send_ctrlnull_runnable);
@@ -390,7 +324,7 @@ public class MainListActivity extends ListActivity {
 	public static final int DO_FUNC_DP = 4;//DroidPlanner
 	
 	private ListView mListView = null;
-	private List<ANYPC_NODE> m_nodesArray = null;
+	private List<CHANNEL_NODE> m_nodesArray = null;
 	private int m_nCurrentSelected;
 	
 	
@@ -413,7 +347,7 @@ public class MainListActivity extends ListActivity {
         
         
         mListView = this.getListView();
-        m_nodesArray = new ArrayList<ANYPC_NODE>();
+        m_nodesArray = new ArrayList<CHANNEL_NODE>();
     	m_nCurrentSelected = -1;
         
      
@@ -534,11 +468,7 @@ public class MainListActivity extends ListActivity {
     
     
     static final int REQUEST_CODE_ADDCAM = 1;
-    static final int REQUEST_CODE_AVPARAM = 2;
-    static final int REQUEST_CODE_AVPLAY = 3;
-    static final int REQUEST_CODE_VNCVIEWER = 4;
-    static final int REQUEST_CODE_DROIDPLANNER = 5;
-    static final int REQUEST_CODE_CONNECT = 6;
+    static final int REQUEST_CODE_AVPLAY = 2;
     
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data)
@@ -552,47 +482,7 @@ public class MainListActivity extends ListActivity {
     		}
     		break;
     		
-    	case REQUEST_CODE_AVPARAM:
-    		if (RESULT_OK == resultCode)
-    		{
-    			Intent intent = null;
-    			if (m_nodesArray.get(m_nCurrentSelected).isRobNode()
-    				|| m_nodesArray.get(m_nCurrentSelected).isUavNode()) {
-    				intent = new Intent(_instance, AvCtrlActivity.class);
-    			}
-    			else {
-    				intent = new Intent(_instance, AvPlayActivity.class);
-    			}
-    	    	Bundle bundle = new Bundle();
-    	    	bundle.putInt("comments_id", m_nodesArray.get(m_nCurrentSelected).comments_id);
-    	    	bundle.putInt("conn_type", _instance.conn_type);
-    	    	bundle.putInt("conn_fhandle", _instance.conn_fhandle);
-    	    	bundle.putInt("audio_channels", m_nodesArray.get(m_nCurrentSelected).audio_channels);
-    	    	bundle.putInt("video_channels", m_nodesArray.get(m_nCurrentSelected).video_channels);
-    	    	bundle.putString("device_uuid", m_nodesArray.get(m_nCurrentSelected).device_uuid);
-    	    	intent.putExtras(bundle);
-    	    	startActivityForResult(intent, REQUEST_CODE_AVPLAY);
-    		}
-    		else {
-    			mMainHandler.removeCallbacks(auto_send_ctrlnull_runnable);
-    			SharedFuncLib.CtrlCmdBYE(conn_type, conn_fhandle);
-        		DoDisconnect();
-        		onBtnRefresh();
-    		}
-    		break;
-    		
     	case REQUEST_CODE_AVPLAY:
-    		mMainHandler.removeCallbacks(auto_send_ctrlnull_runnable);
-    		SharedFuncLib.CtrlCmdBYE(conn_type, conn_fhandle);
-    		DoDisconnect();
-    		onBtnRefresh();
-    		break;
-    		
-    	case REQUEST_CODE_CONNECT:
-    	case REQUEST_CODE_VNCVIEWER:
-    	case REQUEST_CODE_DROIDPLANNER:
-    		SharedFuncLib.ProxyClientAllQuit();
-    		
     		mMainHandler.removeCallbacks(auto_send_ctrlnull_runnable);
     		SharedFuncLib.CtrlCmdBYE(conn_type, conn_fhandle);
     		DoDisconnect();
@@ -608,16 +498,8 @@ public class MainListActivity extends ListActivity {
     	if (m_nCurrentSelected >= 0) {
     		if (m_nodesArray.get(m_nCurrentSelected).isOnline())
     		{
-    			if (m_nodesArray.get(m_nCurrentSelected).isRobNode() 
-    				|| m_nodesArray.get(m_nCurrentSelected).isUavNode())
-    			{
-    				//this.dismissDialog(id);
-    				this.showDialog(DIALOG_ONLINE_2_OPERATIONS);
-    			}
-    			else {
-    				//this.dismissDialog(id);
-    				this.showDialog(DIALOG_ONLINE_OPERATIONS);
-    			}
+				//this.dismissDialog(id);
+				this.showDialog(DIALOG_ONLINE_OPERATIONS);
     		}
     		else
     		{
@@ -630,7 +512,6 @@ public class MainListActivity extends ListActivity {
     
     static final int DIALOG_OFFLINE_OPERATIONS = 0;
     static final int DIALOG_ONLINE_OPERATIONS = 1;
-    static final int DIALOG_ONLINE_2_OPERATIONS = 2;
     
     @Override
     protected Dialog onCreateDialog(int id)
@@ -651,13 +532,9 @@ public class MainListActivity extends ListActivity {
 	    				}
 	    				else if (1 == which)
 	    				{
-	    					onMenuItemLocation();
-	    				}
-	    				else if (2 == which)
-	    				{
 	    					onMenuItemSetParams();
 	    				}
-	    				else if (3 == which)
+	    				else if (2 == which)
 	    				{
 	    					onMenuItemRemove();
 	    				}
@@ -672,13 +549,9 @@ public class MainListActivity extends ListActivity {
 	    			{
 	    				if (0 == which)
 	    				{
-	    					onMenuItemLocation();
-	    				}
-	    				else if (1 == which)
-	    				{
 	    					onMenuItemSetParams();
 	    				}
-	    				else if (2 == which)
+	    				else if (1 == which)
 	    				{
 	    					onMenuItemRemove();
 	    				}
@@ -729,114 +602,28 @@ public class MainListActivity extends ListActivity {
     
     private void onMenuItemConnect()
     {
-    	autoAddCam(m_nodesArray.get(m_nCurrentSelected).comments_id);
+    	autoAddCam(m_nodesArray.get(m_nCurrentSelected).channel_id);
     	
     	if (false == m_nodesArray.get(m_nCurrentSelected).isOnline()) {
     		return;
     	}
     	
-    	DoConnect(m_nodesArray.get(m_nCurrentSelected).node_id_str,
-    			m_nodesArray.get(m_nCurrentSelected).pub_ip_str,
-    			m_nodesArray.get(m_nCurrentSelected).pub_port_str,
-    			m_nodesArray.get(m_nCurrentSelected).bLanNode,
-    			m_nodesArray.get(m_nCurrentSelected).no_nat,
-    			m_nodesArray.get(m_nCurrentSelected).nat_type);
-    }
-    
-    private void onMenuItemConnectTcp()
-    {
-    	autoAddCam(m_nodesArray.get(m_nCurrentSelected).comments_id);
-    	
-    	if (false == m_nodesArray.get(m_nCurrentSelected).isOnline()) {
-    		return;
-    	}
-    	
-    	if (true == m_nodesArray.get(m_nCurrentSelected).bLanNode) {
-    		SharedFuncLib.MyMessageTip(_instance, _instance.getResources().getString(R.string.msg_lan_cant_tcp_connect));
-    		return;
-    	}
-    	
-    	DoConnectTcp(m_nodesArray.get(m_nCurrentSelected).node_id_str,
-    			m_nodesArray.get(m_nCurrentSelected).pub_ip_str,
-    			m_nodesArray.get(m_nCurrentSelected).pub_port_str,
-    			m_nodesArray.get(m_nCurrentSelected).bLanNode,
-    			m_nodesArray.get(m_nCurrentSelected).no_nat,
-    			m_nodesArray.get(m_nCurrentSelected).nat_type);
+    	DoConnect("123456",	m_nodesArray.get(m_nCurrentSelected).channel_id);
     }
     
     private void onMenuItemSetParams()
     {
-    	autoAddCam(m_nodesArray.get(m_nCurrentSelected).comments_id);
-    	
-    	Intent intent = new Intent(_instance, AvParamActivity.class);
-    	Bundle bundle = new Bundle();
-    	bundle.putInt("comments_id", m_nodesArray.get(m_nCurrentSelected).comments_id);
-    	bundle.putInt("conn_type", SharedFuncLib.SOCKET_TYPE_UNKNOWN);
-    	if (m_nodesArray.get(m_nCurrentSelected).isOnline())
-    	{
-	    	bundle.putInt("audio_channels", m_nodesArray.get(m_nCurrentSelected).audio_channels);
-	    	bundle.putInt("video_channels", m_nodesArray.get(m_nCurrentSelected).video_channels);
-	    } else {
-	    	bundle.putInt("audio_channels", 2);
-	    	bundle.putInt("video_channels", 2);
-		}
-    	intent.putExtras(bundle);
-    	startActivity(intent);
-    }
-    
-    private void onMenuItemLocation()
-    {
-    	autoAddCam(m_nodesArray.get(m_nCurrentSelected).comments_id);
-    	
-    	if (m_nodesArray.get(m_nCurrentSelected).device_uuid.contains("@ANYPC@")) {
-    		SharedFuncLib.MyMessageTip(_instance, _instance.getResources().getString(R.string.msg_not_support_location));
-    		return;
-    	}
-    
-    	String strIdPassParam = null;
-    	strIdPassParam = "cam_id=" + m_nodesArray.get(m_nCurrentSelected).comments_id;
-    	
-    	String strPass = AppSettings.GetSoftwareKeyValue(_instance, 
-    			"" + _instance.m_nodesArray.get(_instance.m_nCurrentSelected).comments_id + AppSettings.STRING_REGKEY_NAME_CAM_PASSWORD, 
-    			"");
-    	if (false == strPass.equals("")) {
-    		String strPasswd = "O0" + Base64.encodeToString(strPass.getBytes(), Base64.NO_WRAP);
-    		strIdPassParam += "&cam_pass=" + URLEncoder.encode(strPasswd);
-    	}
-    	
-    	if (false == m_nodesArray.get(m_nCurrentSelected).isOnline()) {
-    		Uri mUri = Uri.parse("http://ykz.e2eye.com/cloudctrl/LocationMap.php?" + strIdPassParam);
-			Intent mIntent = new Intent(Intent.ACTION_VIEW, mUri);
-			startActivity(mIntent);
-			return;
-    	}
-    	
-    	String arr[] = m_nodesArray.get(m_nCurrentSelected).os_info.split("@");
-    	if (arr.length >= 3 && arr[0].equals("Windows") == false && arr[1].equals("NONE") == false && arr[2].equals("NONE") == false) {
-			Uri mUri = Uri.parse("http://ykz.e2eye.com/cloudctrl/LocationMap.php?lati=" + arr[2] + "&longi=" + arr[1] + "&" + strIdPassParam);
-			Intent mIntent = new Intent(Intent.ACTION_VIEW, mUri);
-			startActivity(mIntent);
-			return;
-    	}
-
-    	Uri mUri = Uri.parse("http://ykz.e2eye.com/cloudctrl/LocationMap.php?" + strIdPassParam);
-		Intent mIntent = new Intent(Intent.ACTION_VIEW, mUri);
-		startActivity(mIntent);
     }
     
     private void onMenuItemRemove()
     {
-    	if (m_nodesArray.get(m_nCurrentSelected).isLanOnly()) {
-    		return;
-    	}
-    	
     	String ids = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_QUERYIDS, "");
     	if (ids.equals("")) {
     		return;
     	}
     	
     	String ids2 = "-" + ids + "-";
-    	String target = String.format("-%d-", m_nodesArray.get(m_nCurrentSelected).comments_id);
+    	String target = String.format("-%d-", m_nodesArray.get(m_nCurrentSelected).channel_id);
     	ids2 = ids2.replace(target, "-");
     	if (ids2.equals("-") || ids2.equals("--")) {
     		ids = "";
@@ -851,11 +638,8 @@ public class MainListActivity extends ListActivity {
     }
     
     
-    public void FillAnyPCNode(int index, boolean bLanNode, String node_id_str, String node_name,
-    		int version, String ip_str, String port_str, String pub_ip_str, String pub_port_str,
-    		boolean no_nat, int nat_type, boolean is_admin, boolean is_busy,
-    		int audio_channels, int video_channels, 
-    		String os_info, String device_uuid, int comments_id, String location 		)
+    public void FillChannelNode(int index, int channel_id, String channel_comments, 
+    		String device_uuid,	String node_id_str, String pub_ip_str, String location 		)
     {
     	if (null == m_nodesArray) {
     		return;
@@ -865,25 +649,13 @@ public class MainListActivity extends ListActivity {
     		m_nodesArray.clear();
     	}
     	
-    	ANYPC_NODE node = new ANYPC_NODE();
+    	CHANNEL_NODE node = new CHANNEL_NODE();
     	
-    	node.bLanNode = bLanNode;  /* LAN_NODE_SUPPORT */
-    	node.node_id_str = node_id_str;
-    	node.node_name = node_name;
-    	node.version = version;
-    	node.ip_str = ip_str;
-    	node.port_str = port_str;
-    	node.pub_ip_str = pub_ip_str;
-    	node.pub_port_str = pub_port_str;
-    	node.no_nat = no_nat;
-    	node.nat_type = nat_type;
-    	node.is_admin = is_admin;
-    	node.is_busy = is_busy;
-    	node.audio_channels = audio_channels;
-    	node.video_channels = video_channels;
-    	node.os_info = os_info;
+    	node.channel_id = channel_id;
+    	node.channel_comments = channel_comments;
     	node.device_uuid = device_uuid;
-    	node.comments_id = comments_id;
+    	node.node_id_str = node_id_str;
+    	node.pub_ip_str = pub_ip_str;
     	node.location = location;
     	
     	m_nodesArray.add(node);
@@ -1009,7 +781,7 @@ public class MainListActivity extends ListActivity {
     public native void SetThisObject();
     public native int StartNative(String str_client_charset, String str_client_lang);
     public native void StopNative();
-    public native int DoSearchServers(String strRequestNodes);
+    public native int DoSearchChannels(int page_offset, int page_rows);
     public native void DoConnect(String password_str, int channel_id);
     public native void DoDisconnect();
     

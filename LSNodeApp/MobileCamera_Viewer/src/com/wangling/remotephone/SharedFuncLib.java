@@ -189,8 +189,6 @@ public class SharedFuncLib {
 	public static native String phpMd5(String strSrc);
 	public static native int CtrlCmdHELLO(int type, int fhandle, String strPass/* EncPass */, int[] arrResults/* [0]:result_code [1]:dwServerVersion [2]:bFuncFlags */);
 	public static native int CtrlCmdRUN(int type, int fhandle, String strCmd);
-	public static native byte[] CtrlCmdMAVTLV(int type, int fhandle, int[] arrReturn);/*int[0]:return*/
-	public static native int CtrlCmdPROXY(int type, int fhandle, int wTcpPort);
 	public static native int CtrlCmdARM(int type, int fhandle);
 	public static native int CtrlCmdDISARM(int type, int fhandle);
 	public static native int CtrlCmdAVSTART(int type, int fhandle, byte flags, byte video_size, byte video_framerate, int audio_channel, int video_channel);
@@ -200,13 +198,6 @@ public class SharedFuncLib {
 	//public static native int CtrlCmdVOICE(int type, int fhandle, byte[] data, int len);
 	public static native int CtrlCmdBYE(int type, int fhandle);
 	public static native int CtrlCmdSendNULL(int type, int fhandle);
-	public static native int CtrlCmdMAVSTART(int type, int fhandle);
-	public static native int CtrlCmdMAVSTOP(int type, int fhandle);
-	
-	public static native void ProxyClientStartSlave(int wLocalTcpPort);
-	public static native void ProxyClientStartProxy(int ftype, int fhandle, boolean bAutoClose, int wLocalTcpPort);
-	public static native void ProxyClientAllQuit();
-	public static native void ProxyClientClearQuitFlag();
 	
 	public static native void SendVoice(int type, int fhandle, byte[] data, int len);
 	

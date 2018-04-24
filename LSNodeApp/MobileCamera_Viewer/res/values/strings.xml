@@ -51,12 +51,10 @@
 	
     <string-array name="array_select_operation_items">
         <item>观看直播</item>
-        <item>在地图中定位</item>
         <item>设置音视频参数</item>
         <item>从列表中移除</item>
     </string-array>
     <string-array name="array_select_operation_offline_items">
-    	<item>在地图中定位</item>
         <item>设置音视频参数</item>
         <item>从列表中移除</item>
     </string-array>

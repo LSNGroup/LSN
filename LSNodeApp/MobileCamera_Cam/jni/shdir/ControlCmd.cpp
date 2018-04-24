@@ -1,22 +1,18 @@
 //#include "stdafx.h"
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "platform.h"
 #include "CommonLib.h"
 #include "ControlCmd.h"
+#ifdef WIN32
+#include "LogMsg.h"
+#endif
 
 #ifdef ANDROID_NDK
 #include <android/log.h>
-#endif
-
-
-#ifdef ANDROID_NDK
 #define log_msg(msg, lev)  __android_log_print(ANDROID_LOG_INFO, "shdir", msg)
-#else
-#define log_msg(msg, lev)  printf(msg)
 #endif
-
 
 
 static BOOL m_bInit = FALSE;

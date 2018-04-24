@@ -113,10 +113,18 @@ public:
 	//
 	// Return Value:
 	// -1: Error
+	//  0: Success
+	//
+	static int DoQueryChannels(const char *client_charset, const char *client_lang, int page_offset, int page_rows, CHANNEL_NODE *nodesArray, int *lpCount, int *lpNum);
+
+
+	//
+	// Return Value:
+	// -1: Error
 	//  0: NG.
 	//  1: OK.event
 	//
-	int DoPush(const char *client_charset, const char *client_lang, int *joined_channel_id);
+	int DoPush(const char *client_charset, const char *client_lang, const char *channel_comments, int *joined_channel_id);
 
 
 	//
@@ -146,7 +154,7 @@ public:
 	//  2: settings
 	//  3: settings,event
 	static int DoReport2(const char *client_charset, const char *client_lang, 
-		DWORD joined_channel_id, BYTE joined_node_id[6], int viewer_grow_rate,
+		DWORD joined_channel_id, BYTE joined_node_id[6], int device_node_num, int viewer_grow_rate,
 		const char *root_device_uuid, const char *root_public_ip, BYTE device_node_id[6],
 		int route_item_num, int route_item_max,
 		int level_1_max_connections, int level_1_current_connections, int level_1_max_streams, int level_1_current_streams,
