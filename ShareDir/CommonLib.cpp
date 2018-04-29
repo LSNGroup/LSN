@@ -57,6 +57,11 @@ void trim(char *str)
 	 trim_right(str);
 }
 
+DWORD get_system_milliseconds()
+{
+	return GetTickCount();//从操作系统启动所经过（elapsed）的milliseconds
+}
+
 
 static inline unsigned __int64 CalculateMicroseconds(unsigned __int64 performancecount,unsigned __int64 performancefrequency)
 {
@@ -870,6 +875,79 @@ BOOL ParseRowValue(char *value, ANYPC_NODE *lpNode)
 	}
 	*p = '\0';
 	lpNode->comments_id = atol(value);
+
+
+	/* location */
+	value = p + 1;
+	p = strchr(value, '|');
+	if (p != NULL) { /* Last field */
+		*p = '\0';
+	}
+	strncpy(lpNode->location, value, sizeof(lpNode->location));
+	if (strcmp(lpNode->location, "NONE") == 0) {
+		strcpy(lpNode->location, "");
+	}
+
+	return TRUE;
+}
+
+BOOL ParseChannelRowValue(char *value, CHANNEL_NODE *lpNode)
+{
+	char *p;
+
+
+	if (!value || !lpNode) {
+		return FALSE;
+	}
+
+
+	/* joined_channel_id */
+	p = strchr(value, '|');
+	if (p == NULL) {
+		return FALSE;
+	}
+	*p = '\0';
+	lpNode->channel_id = atol(value);
+
+
+	/* device_uuid */
+	value = p + 1;
+	p = strchr(value, '|');
+	if (p == NULL) {
+		return FALSE;
+	}
+	*p = '\0';
+	strncpy(lpNode->device_uuid, value, sizeof(lpNode->device_uuid));////UrlDecode
+
+
+	/* device_node_id */
+	value = p + 1;
+	p = strchr(value, '|');
+	if (p == NULL) {
+		return FALSE;
+	}
+	*p = '\0';
+	strncpy(lpNode->node_id_str, value, sizeof(lpNode->node_id_str));
+
+
+	/* comments */
+	value = p + 1;
+	p = strchr(value, '|');
+	if (p == NULL) {
+		return FALSE;
+	}
+	*p = '\0';
+	strncpy(lpNode->channel_comments, value, sizeof(lpNode->channel_comments));
+
+
+	/* public_ip */
+	value = p + 1;
+	p = strchr(value, '|');
+	if (p == NULL) {
+		return FALSE;
+	}
+	*p = '\0';
+	strncpy(lpNode->pub_ip_str, value, sizeof(lpNode->pub_ip_str));
 
 
 	/* location */

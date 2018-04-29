@@ -50,7 +50,7 @@ typedef struct _tag_topo_route_item {
 
 typedef struct _tag_viewer_node {
 	BOOL bFirstCheckStun;
-	CRITICAL_SECTION localbind_csec;
+	pthread_mutex_t localbind_csec;
 	HttpOperate httpOP;
 	BOOL bConnecting;
 	BOOL bConnected;
@@ -63,9 +63,9 @@ typedef struct _tag_viewer_node {
 	unsigned char m_pps_buff[1024];//包含8字节头部
 	int m_pps_len;
 
-	HANDLE	hConnectThread;
-	HANDLE	hConnectThread2;
-	HANDLE	hConnectThreadRev;
+	pthread_t	hConnectThread;
+	pthread_t	hConnectThread2;
+	pthread_t	hConnectThreadRev;
 	char password[MAX_PATH];
 	int nID;
 	BOOL bUsing;
@@ -90,15 +90,20 @@ public:
 
 public:
 	BOOL m_bQuit;
-	HANDLE m_hThread;
+	pthread_t m_hThread;
 
 	VIEWER_NODE viewerArray[MAX_VIEWER_NUM];
 	int currentSourceIndex;
+	DWORD currentLastMediaTime;
+	DWORD timeoutMedia;
+	void CalculateTimeoutMedia();
+	void SwitchMediaSource(int oldIndex, int newIndex);
 	void ReturnViewerNode(VIEWER_NODE *pViewerNode);
 
 	void ConnectNode(int i, char *password);
 	void ConnectRevNode(int i, char *password);
 	void DisconnectNode(VIEWER_NODE *pViewerNode);
+	void UnregisterNode(VIEWER_NODE *pViewerNode);
 
 	DWORD joined_channel_id;
 	BYTE joined_node_id[6];
@@ -106,7 +111,7 @@ public:
 	BYTE device_node_id[6];
 	int device_max_streams;
 	TOPO_ROUTE_ITEM device_route_table[MAX_ROUTE_ITEM_NUM];
-	CRITICAL_SECTION route_table_csec;
+	pthread_mutex_t route_table_csec;
 
 	BOOL ShouldDoHttpOP();
 

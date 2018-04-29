@@ -22,9 +22,15 @@ int g_video_fps = 25;
 
 CShiyong* g_pShiyong = NULL;
 
+#ifdef WIN32
 DWORD WINAPI ConnectThreadFn(LPVOID lpParameter);
 DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter);
 DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter);
+#else
+void *ConnectThreadFn(void *lpParameter);
+void *ConnectThreadFn2(void *lpParameter);
+void *ConnectThreadFnRev(void *lpParameter);
+#endif
 
 static int lastDoReportTime = 0;
 void OnReportSettings(char *settings_str);
@@ -45,7 +51,9 @@ static void HandleKeepLoop(void *eloop_ctx, void *timeout_ctx)
 		if (now - lastDoReportTime >= g1_register_period)
 		{
 			lastDoReportTime = now;
-			HttpOperate::DoReport2("gbk", "zh", g_pShiyong->joined_channel_id, g_pShiyong->joined_node_id, g_pShiyong->get_viewer_grow_rate(),
+			HttpOperate::DoReport2("gbk", "zh", g_pShiyong->joined_channel_id, g_pShiyong->joined_node_id, 
+				g_pShiyong->get_level_device_num(1) + g_pShiyong->get_level_device_num(2) + g_pShiyong->get_level_device_num(3) + g_pShiyong->get_level_device_num(4),
+				g_pShiyong->get_viewer_grow_rate(),
 				g0_device_uuid, g_pShiyong->get_public_ip(), g_pShiyong->device_node_id, 
 				g_pShiyong->get_route_item_num(), MAX_ROUTE_ITEM_NUM, 
 				g_pShiyong->get_level_max_connections(1), g_pShiyong->get_level_current_connections(1), g_pShiyong->get_level_max_streams(1), g_pShiyong->get_level_current_streams(1),
@@ -62,6 +70,34 @@ static void HandleKeepLoop(void *eloop_ctx, void *timeout_ctx)
 static void HandleTopoReport(void *eloop_ctx, void *timeout_ctx)
 {
 	g_pShiyong->DeviceTopoReport();//非Root节点
+}
+
+static void HandleMediaStreamingChech(void *eloop_ctx, void *timeout_ctx)
+{
+	if (g_pShiyong->timeoutMedia > 0 && g_pShiyong->currentLastMediaTime > 0)
+	{
+		DWORD nowTime = get_system_milliseconds();
+		if (nowTime - g_pShiyong->currentLastMediaTime > g_pShiyong->timeoutMedia) {
+
+			//尝试找到另一个已连接的ViewNode
+			int i;
+			for (i = 0; i < MAX_VIEWER_NUM; i++)
+			{
+				if (g_pShiyong->viewerArray[i].bUsing == FALSE || g_pShiyong->viewerArray[i].bConnected == FALSE) {
+					continue;
+				}
+				if (g_pShiyong->viewerArray[i].bTopoPrimary == FALSE && g_pShiyong->currentSourceIndex != i) {
+					break;
+				}
+			}
+			if (i < MAX_VIEWER_NUM)//找到一个！切换。。。
+			{
+				g_pShiyong->SwitchMediaSource(g_pShiyong->currentSourceIndex, i);
+			}
+
+		}
+	}
+	eloop_register_timeout(0, 50000, HandleMediaStreamingChech, NULL, NULL);
 }
 
 static void HandleDoUnregister(void *eloop_ctx, void *timeout_ctx)
@@ -103,7 +139,7 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 	int ipCountTemp;
 
 
-	::EnterCriticalSection(&(pViewerNode->localbind_csec));////////
+	pthread_mutex_lock(&(pViewerNode->localbind_csec));////////
 
 	/* STUN Information */
 	if (strcmp(g1_stun_server, "NONE") == 0)
@@ -255,17 +291,24 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 	}
 
 _OUT:
-	::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
+	pthread_mutex_unlock(&(pViewerNode->localbind_csec));////////
 
 
 	eloop_register_timeout(g1_register_period, 0, HandleRegister, pViewerNode, NULL);
 }
 
+#ifdef WIN32
 DWORD WINAPI WorkingThreadFn(LPVOID pvThreadParam)
+#else
+void *WorkingThreadFn(void *pvThreadParam)
+#endif
 {
 	eloop_init(NULL);
 
 	eloop_register_timeout(1, 0, HandleKeepLoop, NULL, NULL);
+
+	eloop_register_timeout(0, 50000, HandleMediaStreamingChech, NULL, NULL);
+
 	for (int i = 0; i < MAX_VIEWER_NUM; i++)
 	{
 		eloop_register_timeout(1 + i * 2, 0, HandleRegister, &(g_pShiyong->viewerArray[i]), NULL);
@@ -280,7 +323,10 @@ DWORD WINAPI WorkingThreadFn(LPVOID pvThreadParam)
 
 void OnReportSettings(char *settings_str)
 {
-	ParseTopoSettings((const char *)settings_str);
+	if (MAX_VIEWER_NUM > 0)
+	{
+		g_pShiyong->viewerArray[0].httpOP.ParseTopoSettings((const char *)settings_str);
+	}
 
 	for (int i = 0; i < MAX_SERVER_NUM; i++)
 	{
@@ -366,6 +412,7 @@ int CheckPassword(VIEWER_NODE *pViewerNode, SOCKET_TYPE sock_type, SOCKET fhandl
 	}
 	else {
 		pViewerNode->bTopoPrimary = TRUE;
+		g_pShiyong->currentSourceIndex = pViewerNode->nID;
 	}
 
 	php_md5(pViewerNode->password, szPassEnc, sizeof(szPassEnc));
@@ -430,6 +477,7 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 
 			ret = RecvStream(ftype, fhandle, (char *)pRecvData, copy_len);
 			if (ret == 0) {
+				g_pShiyong->currentLastMediaTime = get_system_milliseconds();
 				fake_rtp_recv_fn(pViewerNode, pRecvData[0], ntohl(pf_get_dword(pRecvData + 4)), pRecvData, copy_len);
 				free(pRecvData);
 			}
@@ -522,7 +570,9 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 				return;
 			}
 
-			ParseTopoSettings((const char *)pRecvData);
+			pViewerNode->httpOP.ParseTopoSettings((const char *)pRecvData);
+
+			g_pShiyong->CalculateTimeoutMedia();
 
 			for (int i = 0; i < MAX_SERVER_NUM; i++)
 			{
@@ -610,8 +660,11 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 	pViewerNode->bConnected = FALSE;
 }
 
-
+#ifdef WIN32
 DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
+#else
+void *ConnectThreadFn(void *lpParameter)
+#endif
 {
 	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)lpParameter;
 	CShiyong *pDlg = g_pShiyong;
@@ -648,16 +701,16 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 	for (i = pViewerNode->httpOP.m1_wait_time; i > 0; i--) {
 		_snprintf(szStatusStr, sizeof(szStatusStr), "正在排队等待服务响应，%d秒。。。", i);
 		SetStatusInfo(pDlg->m_hWnd, szStatusStr);
-		Sleep(1000);
+		usleep(1000*1000);
 	}
 
 
-	::EnterCriticalSection(&(pViewerNode->localbind_csec));////////
+	pthread_mutex_lock(&(pViewerNode->localbind_csec));////////
 
 
 	pViewerNode->httpOP.m1_use_udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
 	if (pViewerNode->httpOP.m1_use_udp_sock == INVALID_SOCKET) {
-		::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
+		pthread_mutex_unlock(&(pViewerNode->localbind_csec));////////
 		SetStatusInfo(pDlg->m_hWnd, "连接失败！(udp socket failed)");
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
@@ -673,7 +726,7 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 	my_addr.sin_addr.s_addr = INADDR_ANY;
 	memset(&(my_addr.sin_zero), '\0', 8);
 	if (bind(pViewerNode->httpOP.m1_use_udp_sock, (sockaddr *)&my_addr, sizeof(my_addr)) < 0) {
-		::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
+		pthread_mutex_unlock(&(pViewerNode->localbind_csec));////////
 		SetStatusInfo(pDlg->m_hWnd, "连接失败！(udp bind failed)");
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
@@ -688,7 +741,7 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 	if (FindOutConnection(pViewerNode->httpOP.m1_use_udp_sock, pViewerNode->httpOP.m0_node_id, pViewerNode->httpOP.m1_peer_node_id, 
 							pViewerNode->httpOP.m1_peer_pri_ipArray, pViewerNode->httpOP.m1_peer_pri_ipCount, pViewerNode->httpOP.m1_peer_pri_port, pViewerNode->httpOP.m1_peer_ip, pViewerNode->httpOP.m1_peer_port,
 							&use_ip, &use_port) != 0) {
-		::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
+		pthread_mutex_unlock(&(pViewerNode->localbind_csec));////////
 		SetStatusInfo(pDlg->m_hWnd, "连接失败！(FindOutConnection failed)");
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
@@ -715,7 +768,7 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 
 	if (UDT::ERROR == UDT::bind(fhandle, pViewerNode->httpOP.m1_use_udp_sock))
 	{
-		::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
+		pthread_mutex_unlock(&(pViewerNode->localbind_csec));////////
 		SetStatusInfo(pDlg->m_hWnd, "连接失败！(udt bind failed)");
 		UDT::close(fhandle);
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
@@ -737,7 +790,7 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 	waitval.tv_usec = 0;
 	ret = UDT::select(fhandle + 1, fhandle, NULL, NULL, &waitval);
 	if (ret == UDT::ERROR || ret == 0) {
-		::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
+		pthread_mutex_unlock(&(pViewerNode->localbind_csec));////////
 		SetStatusInfo(pDlg->m_hWnd, "暂时性网络状况不好，直连有点小困难，请稍后重试或者采用TCP连接！");
 		UDT::close(fhandle);
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
@@ -753,7 +806,7 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 
 	UDTSOCKET fhandle2;
 	if ((fhandle2 = UDT::accept(fhandle, (sockaddr*)&their_addr, &namelen)) == UDT::INVALID_SOCK) {
-		::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
+		pthread_mutex_unlock(&(pViewerNode->localbind_csec));////////
 		SetStatusInfo(pDlg->m_hWnd, "暂时性网络状况不好，直连有点小困难，请稍后重试或者采用TCP连接！");
 		UDT::close(fhandle);
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
@@ -793,7 +846,7 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 
 	CtrlCmd_BYE(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
 
-	Sleep(3000);
+	usleep(3000*1000);
 
 	ret = UDT::close(pViewerNode->httpOP.m1_use_udt_sock);
 	pViewerNode->httpOP.m1_use_udt_sock = INVALID_SOCKET;
@@ -802,14 +855,18 @@ DWORD WINAPI ConnectThreadFn(LPVOID lpParameter)
 	ret = closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 	pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
 
-	::LeaveCriticalSection(&(pViewerNode->localbind_csec));////////
+	pthread_mutex_unlock(&(pViewerNode->localbind_csec));////////
 	CloseHandle(pViewerNode->hConnectThread);
 	pViewerNode->hConnectThread = NULL;
 	pDlg->ReturnViewerNode(pViewerNode);
 	return 0;
 }
 
+#ifdef WIN32
 DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter)
+#else
+void *ConnectThreadFn2(void *lpParameter)
+#endif
 {
 	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)lpParameter;
 	CShiyong *pDlg = g_pShiyong;
@@ -920,7 +977,7 @@ DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter)
 
 	CtrlCmd_BYE(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
 
-	Sleep(3000);
+	usleep(3000*1000);
 
 	ret = UDT::close(pViewerNode->httpOP.m1_use_udt_sock);
 	pViewerNode->httpOP.m1_use_udt_sock = INVALID_SOCKET;
@@ -935,7 +992,11 @@ DWORD WINAPI ConnectThreadFn2(LPVOID lpParameter)
 	return 0;
 }
 
+#ifdef WIN32
 DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
+#else
+void *ConnectThreadFnRev(void *lpParameter)
+#endif
 {
 	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)lpParameter;
 	CShiyong *pDlg = g_pShiyong;
@@ -958,7 +1019,7 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 	for (i = pViewerNode->httpOP.m1_wait_time; i > 0; i--) {
 		_snprintf(szStatusStr, sizeof(szStatusStr), "正在排队等待服务响应，%d秒。。。", i);
 		SetStatusInfo(pDlg->m_hWnd, szStatusStr);
-		Sleep(1000);
+		usleep(1000*1000);
 	}
 
 
@@ -1072,7 +1133,7 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 
 	CtrlCmd_BYE(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
 
-	Sleep(3000);
+	usleep(3000*1000);
 
 	ret = UDT::close(pViewerNode->httpOP.m1_use_udt_sock);
 	pViewerNode->httpOP.m1_use_udt_sock = INVALID_SOCKET;
@@ -1088,11 +1149,90 @@ DWORD WINAPI ConnectThreadFnRev(LPVOID lpParameter)
 }
 
 
+//
+//  0: OK
+// -1: NG
+static int get_device_uuid(char *buff, int size)
+{
+	BOOL bRetry = FALSE;
+	DWORD dwResult = NO_ERROR;
+	DWORD dwRet;
+	ULONG ulOutBufLen = 0;
+	IP_ADAPTER_INFO *pAdapterInfo = NULL, *pLoopAdapter = NULL;
+
+
+	TCHAR szValueData[_MAX_PATH];
+	DWORD dwDataLen = _MAX_PATH;
+	if (GetSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID,(LPBYTE)szValueData,&dwDataLen) && strlen(szValueData) > 0)
+	{
+		strncpy(buff, szValueData, size);
+		return 0;
+	}
+
+	dwRet = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen);
+	if (NO_ERROR != dwRet && ERROR_BUFFER_OVERFLOW != dwRet) {
+		dwResult = dwRet;
+		goto exit;
+	}
+
+	pAdapterInfo = (IP_ADAPTER_INFO*)malloc(ulOutBufLen);
+
+_RETRY:
+	dwRet = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen);	/* call second */
+	if (NO_ERROR !=  dwRet) {
+		dwResult = dwRet;
+		goto exit;
+	}
+
+	pLoopAdapter = pAdapterInfo;
+	while (pLoopAdapter != NULL) {
+		/* 接口类型为： 有线接口（无线接口，拨号网络接口）*/
+		if (MIB_IF_TYPE_ETHERNET == pLoopAdapter->Type) {
+			if (bRetry) {
+				break;
+			}
+			else
+			{
+				if (NULL == strstr(pLoopAdapter->Description, "Wireless") && NULL == strstr(pLoopAdapter->Description, "USB")) {
+					break;
+				}
+			}
+		}
+		
+		pLoopAdapter = pLoopAdapter->Next;
+	}
+
+	if (pLoopAdapter != NULL) {
+		_snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@1", 
+			SERVER_TYPE,
+			pLoopAdapter->Address[0], pLoopAdapter->Address[1], pLoopAdapter->Address[2], 
+			pLoopAdapter->Address[3], pLoopAdapter->Address[4], pLoopAdapter->Address[5],
+			UUID_EXT);
+		//保存到注册表
+		SaveSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID, buff);
+	}
+	else {
+		if (bRetry) {
+			dwResult = ERROR_ACCESS_DENIED;
+		}
+		else {
+			bRetry = TRUE;
+			goto _RETRY;
+		}
+	}
+
+exit:
+	if (pAdapterInfo) {
+		free(pAdapterInfo);
+	}
+	return (dwResult == NO_ERROR ? 0 : -1);
+}
 
 static void InitVar()
 {
-	strncpy(g0_device_uuid, "Viewer Device UUID", sizeof(g0_device_uuid));
-	strncpy(g0_node_name,   "Viewer Node Name", sizeof(g0_node_name));
+	get_device_uuid(g0_device_uuid, sizeof(g0_device_uuid));
+
+	strncpy(g0_node_name,   "Windows Node Name", sizeof(g0_node_name));
 	GetOsInfo(g0_os_info, sizeof(g0_os_info));
 
 	g0_version = MYSELF_VERSION;
@@ -1119,7 +1259,7 @@ CShiyong::CShiyong()
 		viewerArray[i].bUsing = FALSE;
 		viewerArray[i].nID = -1;
 		viewerArray[i].bFirstCheckStun = TRUE;
-		::InitializeCriticalSection(&(viewerArray[i].localbind_csec));
+		pthread_mutex_init(&(viewerArray[i].localbind_csec), NULL);
 		
 		viewerArray[i].bConnecting = FALSE;
 		viewerArray[i].bConnected = FALSE;
@@ -1128,7 +1268,7 @@ CShiyong::CShiyong()
 		viewerArray[i].httpOP.m0_p2p_port = FIRST_CONNECT_PORT - (i+1)*4;
 		
 		//每次有不一样的node_id
-		Sleep(200);
+		usleep(200*1000);
 		generate_nodeid(viewerArray[i].httpOP.m0_node_id, sizeof(viewerArray[i].httpOP.m0_node_id));
 
 		viewerArray[i].bQuitRecvSocketLoop = TRUE;
@@ -1138,6 +1278,8 @@ CShiyong::CShiyong()
 	}
 	
 	currentSourceIndex = -1;
+	currentLastMediaTime = 0;
+	timeoutMedia = 0;
 
 	joined_channel_id = 0;
 	memset(joined_node_id, 0, 6);
@@ -1149,7 +1291,7 @@ CShiyong::CShiyong()
 #endif
 	generate_nodeid(device_node_id, sizeof(device_node_id));
 
-	::InitializeCriticalSection(&route_table_csec);
+	pthread_mutex_init(&route_table_csec, NULL);
 
 	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
 	{
@@ -1166,10 +1308,10 @@ CShiyong::~CShiyong()
 {
 	for (int i = 0; i < MAX_VIEWER_NUM; i++ )
 	{
-		::DeleteCriticalSection(&(viewerArray[i].localbind_csec));
+		pthread_mutex_destroy(&(viewerArray[i].localbind_csec));
 	}
 
-	::DeleteCriticalSection(&route_table_csec);
+	pthread_mutex_destroy(&route_table_csec);
 
 	g_pShiyong = NULL;
 }
@@ -1180,10 +1322,16 @@ BOOL CShiyong::OnInit()
 
 	HttpOperate::DoReport1("gbk", "zh", OnReportSettings);
 
-
+#ifdef WIN32
 	DWORD dwThreadID;
 	HANDLE hThread = ::CreateThread(NULL,0,WorkingThreadFn,(void *)this,0,&dwThreadID);
-	if (hThread != NULL) {
+	if (hThread != NULL)
+#else
+	pthread_t hThread;
+	int err = pthread_create(&hThread, NULL, WorkingThreadFn, this);
+	if (0 == err)
+#endif
+	{
 		m_hThread = hThread;
 	}
 	else {
@@ -1229,10 +1377,18 @@ void CShiyong::ConnectNode(int i, char *password)
 	DWORD dwID = 0;
 	if (FALSE == viewerArray[i].httpOP.m1_peer_nonat)
 	{
+#ifdef WIN32
 		viewerArray[i].hConnectThread = CreateThread(NULL, 0, ConnectThreadFn, (void *)(&(viewerArray[i])), 0, &dwID);
+#else
+		pthread_create(&(viewerArray[i].hConnectThread), NULL, ConnectThreadFn, (void *)(&(viewerArray[i])));
+#endif
 	}
 	else {
+#ifdef WIN32
 		viewerArray[i].hConnectThread2 = CreateThread(NULL, 0, ConnectThreadFn2, (void *)(&(viewerArray[i])), 0, &dwID);
+#else
+		pthread_create(&(viewerArray[i].hConnectThread2), NULL, ConnectThreadFn2, (void *)(&(viewerArray[i])));
+#endif
 	}
 }
 
@@ -1270,7 +1426,11 @@ void CShiyong::ConnectRevNode(int i, char *password)
 
 	DWORD dwID = 0;
 	{
+#ifdef WIN32
 		viewerArray[i].hConnectThreadRev = CreateThread(NULL, 0, ConnectThreadFnRev, (void *)(&(viewerArray[i])), 0, &dwID);
+#else
+		pthread_create(&(viewerArray[i].hConnectThreadRev), NULL, ConnectThreadFnRev, (void *)(&(viewerArray[i])));
+#endif
 	}
 }
 
@@ -1279,9 +1439,31 @@ void CShiyong::DisconnectNode(VIEWER_NODE *pViewerNode)
 	if (pViewerNode->bUsing == FALSE) {
 		return;
 	}
-	if (pViewerNode->bTopoPrimary) {
-		CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+	//if (pViewerNode->bTopoPrimary) {
+	//	CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+	//}
+	if (g_pShiyong->currentSourceIndex == pViewerNode->nID) {
+
+		//尝试找到另一个已连接的ViewNode
+		int i;
+		for (i = 0; i < MAX_VIEWER_NUM; i++)
+		{
+			if (g_pShiyong->viewerArray[i].bUsing == FALSE || g_pShiyong->viewerArray[i].bConnected == FALSE) {
+				continue;
+			}
+			if (g_pShiyong->viewerArray[i].bTopoPrimary == FALSE && g_pShiyong->currentSourceIndex != i) {
+				break;
+			}
+		}
+		if (i < MAX_VIEWER_NUM)//找到一个！切换。。。
+		{
+			g_pShiyong->SwitchMediaSource(g_pShiyong->currentSourceIndex, i);
+		}
+		else {
+			CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+		}
 	}
+
 	pViewerNode->bQuitRecvSocketLoop = TRUE;
 }
 
@@ -1293,6 +1475,61 @@ void CShiyong::ReturnViewerNode(VIEWER_NODE *pViewerNode)
 		pViewerNode->bUsing = FALSE;
 		pViewerNode->nID = -1;
 	}
+}
+
+void CShiyong::CalculateTimeoutMedia()
+{
+	//To do...
+}
+
+void CShiyong::SwitchMediaSource(int oldIndex, int newIndex)
+{
+	if (oldIndex < 0 || oldIndex >= MAX_VIEWER_NUM)	{
+		return;
+	}
+	if (newIndex < 0 || newIndex >= MAX_VIEWER_NUM)	{
+		return;
+	}
+	if (oldIndex == newIndex)	{
+		return;
+	}
+
+	//切换进行中。。。避免下次Check又重复切换操作
+	currentLastMediaTime = 0;
+
+	viewerArray[oldIndex].bTopoPrimary = FALSE;
+	viewerArray[newIndex].bTopoPrimary = TRUE;
+	currentSourceIndex = newIndex;
+
+	//if (viewerArray[newIndex].bTopoPrimary)
+	{
+		//必须视频可靠传输，音频非冗余传输！！！
+		BYTE bFlags = AV_FLAGS_VIDEO_ENABLE | AV_FLAGS_AUDIO_ENABLE | AV_FLAGS_VIDEO_RELIABLE | AV_FLAGS_VIDEO_H264 | AV_FLAGS_AUDIO_G729A;
+		BYTE bVideoSize = AV_VIDEO_SIZE_VGA;
+		if (g_video_width == 640 && g_video_height == 480) {
+			bVideoSize = AV_VIDEO_SIZE_VGA;
+		}
+		else if (g_video_width == 480 && g_video_height == 320) {
+			bVideoSize = AV_VIDEO_SIZE_480x320;
+		}
+		else if (g_video_width == 320 && g_video_height == 240) {
+			bVideoSize = AV_VIDEO_SIZE_QVGA;
+		}
+		BYTE bVideoFrameRate = g_video_fps;
+		DWORD audioChannel = 0;
+		DWORD videoChannel = 0;
+		CtrlCmd_AV_START(viewerArray[newIndex].httpOP.m1_use_sock_type, viewerArray[newIndex].httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
+	}
+
+	//if (viewerArray[oldIndex].bTopoPrimary == FALSE)
+	{
+		CtrlCmd_AV_STOP(viewerArray[oldIndex].httpOP.m1_use_sock_type, viewerArray[oldIndex].httpOP.m1_use_udt_sock);
+	}
+}
+
+void CShiyong::UnregisterNode(VIEWER_NODE *pViewerNode)
+{
+	HandleDoUnregister(pViewerNode, NULL);
 }
 
 BOOL CShiyong::ShouldDoHttpOP()
@@ -1329,27 +1566,27 @@ int CShiyong::FindViewerNode(BYTE *viewer_node_id)
 // -1: Not exist
 int CShiyong::FindTopoRouteItem(BYTE *dest_node_id)
 {
-	::EnterCriticalSection(&route_table_csec);////////
+	pthread_mutex_lock(&route_table_csec);////////
 	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
 	{
 		if (device_route_table[i].bUsing == FALSE) {
 			continue;
 		}
 		if (memcmp(device_route_table[i].node_id, dest_node_id, 6) == 0) {
-			::LeaveCriticalSection(&route_table_csec);////////
+			pthread_mutex_unlock(&route_table_csec);////////
 			return i;
 		}
 	}
-	::LeaveCriticalSection(&route_table_csec);////////
+	pthread_mutex_unlock(&route_table_csec);////////
 	return -1;
 }
 
 int CShiyong::FindRouteNode(BYTE *node_id)
 {
 	int ret = -1;
-	::EnterCriticalSection(&route_table_csec);////////
+	pthread_mutex_lock(&route_table_csec);////////
 	ret = FindRouteNode_NoLock(node_id);
-	::LeaveCriticalSection(&route_table_csec);////////
+	pthread_mutex_unlock(&route_table_csec);////////
 	return ret;
 }
 
@@ -1369,7 +1606,7 @@ int CShiyong::FindRouteNode_NoLock(BYTE *node_id)
 
 void CShiyong::DropRouteItem(BYTE node_type, BYTE *node_id)
 {
-	::EnterCriticalSection(&route_table_csec);////////
+	pthread_mutex_lock(&route_table_csec);////////
 
 	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
 	{
@@ -1383,14 +1620,14 @@ void CShiyong::DropRouteItem(BYTE node_type, BYTE *node_id)
 		}
 	}
 
-	::LeaveCriticalSection(&route_table_csec);////////
+	pthread_mutex_unlock(&route_table_csec);////////
 }
 
 void CShiyong::CheckTopoRouteTable()
 {
 	time_t now = time(NULL);
 
-	::EnterCriticalSection(&route_table_csec);////////
+	pthread_mutex_lock(&route_table_csec);////////
 
 	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
 	{
@@ -1403,7 +1640,7 @@ void CShiyong::CheckTopoRouteTable()
 		}
 	}
 
-	::LeaveCriticalSection(&route_table_csec);////////
+	pthread_mutex_unlock(&route_table_csec);////////
 }
 
 static BOOL ParseReportNode(char *value, TOPO_ROUTE_ITEM *pRouteItem)
@@ -1620,7 +1857,7 @@ int CShiyong::UpdateRouteTable(int guajiIndex, char *report_string)
 			temp_route_item.guaji_index = guajiIndex;
 			temp_route_item.last_refresh_time = time(NULL);
 			int index = FindTopoRouteItem(temp_route_item.node_id);
-			::EnterCriticalSection(&route_table_csec);////////
+			pthread_mutex_lock(&route_table_csec);////////
 			if (-1 == index)
 			{
 				int i;
@@ -1644,7 +1881,7 @@ int CShiyong::UpdateRouteTable(int guajiIndex, char *report_string)
 				device_route_table[index].bUsing = TRUE;
 				device_route_table[index].nID = index;
 			}
-			::LeaveCriticalSection(&route_table_csec);////////
+			pthread_mutex_unlock(&route_table_csec);////////
 		}
 
 		if (next_start == NULL) {
@@ -1796,7 +2033,7 @@ const char * CShiyong::get_node_array()
 
 	strcpy(s_node_array, "");
 
-	::EnterCriticalSection(&route_table_csec);////////
+	pthread_mutex_lock(&route_table_csec);////////
 
 	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
 	{
@@ -1852,7 +2089,7 @@ const char * CShiyong::get_node_array()
 		}
 	}
 
-	::LeaveCriticalSection(&route_table_csec);////////
+	pthread_mutex_unlock(&route_table_csec);////////
 
 	return s_node_array;
 }
@@ -1862,7 +2099,7 @@ int CShiyong::get_route_item_num()
 {
 	int count = 0;
 
-	::EnterCriticalSection(&route_table_csec);////////
+	pthread_mutex_lock(&route_table_csec);////////
 
 	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
 	{
@@ -1872,7 +2109,7 @@ int CShiyong::get_route_item_num()
 		count += 1;
 	}
 
-	::LeaveCriticalSection(&route_table_csec);////////
+	pthread_mutex_unlock(&route_table_csec);////////
 
 	return count;
 }
@@ -1890,7 +2127,7 @@ int CShiyong::get_level_device_num(int topo_level)
 	time_t now = time(NULL);
 	int count = 0;
 
-	::EnterCriticalSection(&route_table_csec);////////
+	pthread_mutex_lock(&route_table_csec);////////
 
 	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
 	{
@@ -1908,7 +2145,7 @@ int CShiyong::get_level_device_num(int topo_level)
 		}
 	}
 
-	::LeaveCriticalSection(&route_table_csec);////////
+	pthread_mutex_unlock(&route_table_csec);////////
 
 	return count;
 }
@@ -1918,7 +2155,7 @@ int CShiyong::get_level_max_connections(int topo_level)
 	time_t now = time(NULL);
 	int count = 0;
 
-	::EnterCriticalSection(&route_table_csec);////////
+	pthread_mutex_lock(&route_table_csec);////////
 
 	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
 	{
@@ -1936,7 +2173,7 @@ int CShiyong::get_level_max_connections(int topo_level)
 		}
 	}
 
-	::LeaveCriticalSection(&route_table_csec);////////
+	pthread_mutex_unlock(&route_table_csec);////////
 
 	return count;
 }
@@ -1946,7 +2183,7 @@ int CShiyong::get_level_current_connections(int topo_level)
 	time_t now = time(NULL);
 	int count = 0;
 
-	::EnterCriticalSection(&route_table_csec);////////
+	pthread_mutex_lock(&route_table_csec);////////
 
 	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
 	{
@@ -1964,7 +2201,7 @@ int CShiyong::get_level_current_connections(int topo_level)
 		}
 	}
 
-	::LeaveCriticalSection(&route_table_csec);////////
+	pthread_mutex_unlock(&route_table_csec);////////
 
 	return count;
 }
@@ -1985,7 +2222,7 @@ int CShiyong::get_level_current_streams(int topo_level)
 	time_t now = time(NULL);
 	int count = 0;
 
-	::EnterCriticalSection(&route_table_csec);////////
+	pthread_mutex_lock(&route_table_csec);////////
 
 	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
 	{
@@ -2003,7 +2240,7 @@ int CShiyong::get_level_current_streams(int topo_level)
 		}
 	}
 
-	::LeaveCriticalSection(&route_table_csec);////////
+	pthread_mutex_unlock(&route_table_csec);////////
 
 	return count;
 }
@@ -2035,13 +2272,17 @@ void CShiyong::DoExit()
 	}
 
 
-	//::EnterCriticalSection(&m_localbind_csec);////////
-	//::LeaveCriticalSection(&m_localbind_csec);////////
+	//pthread_mutex_lock(&m_localbind_csec);////////
+	//pthread_mutex_unlock(&m_localbind_csec);////////
 
 	if (m_hThread != NULL) {
 		eloop_terminate();
+#ifdef WIN32
 		::WaitForSingleObject(m_hThread, INFINITE);
 		::CloseHandle(m_hThread);
+#else
+		pthread_join(m_hThread, NULL);
+#endif
 		m_hThread = NULL;
 	}
 }

@@ -50,6 +50,16 @@ typedef struct _tag_anypc_node {
 } ANYPC_NODE;
 
 
+typedef struct _tag_channel_node {
+	DWORD channel_id;
+	char channel_comments[MAX_LOADSTRING];
+	char device_uuid[MAX_LOADSTRING];
+	char node_id_str[MAX_LOADSTRING];
+	char pub_ip_str[16];
+	char location[MAX_LOADSTRING];
+} CHANNEL_NODE;
+
+
 typedef struct _tag_av_param_ {
 	BYTE bFlags;
 	BYTE bVideoMode;
@@ -66,6 +76,9 @@ typedef struct _tag_av_param_ {
 
 
 void trim(char *str);
+
+
+DWORD get_system_milliseconds();
 
 
 //
@@ -180,6 +193,7 @@ void EndProxy(SOCKET udp_sock, DWORD dest_ip, WORD dest_port);
 BOOL ParseRowValue(char *value, ANYPC_NODE *lpNode);
 
 
+BOOL ParseChannelRowValue(char *value, CHANNEL_NODE *lpNode);
 
 
 DWORD RunExeWait(LPTSTR szCmdLine, BOOL bShowWnd);
@@ -250,3 +264,16 @@ void ConfigUdtSocket(UDTSOCKET fhandle);
 
 
 void CopyTextToClipboard(const char *txt);
+
+
+///////////////////////////////////////////////////////////////////
+
+#define pthread_mutex_t				CRITICAL_SECTION
+#define pthread_mutex_init(m, n)	InitializeCriticalSection(m)
+#define pthread_mutex_destroy(m)	DeleteCriticalSection(m)
+#define pthread_mutex_lock(m)		EnterCriticalSection(m)
+#define pthread_mutex_unlock(m)		LeaveCriticalSection(m)
+
+#define pthread_t					HANDLE
+
+#define usleep(u)					Sleep((u)/1000)

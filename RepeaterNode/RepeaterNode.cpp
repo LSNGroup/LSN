@@ -338,7 +338,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 			//}
 			for (int i = 0; i < copy_len; i++) {
 				RecvStream(SOCKET_TYPE_TCP, g_fhandle, buf, 1);
-				Sleep(10);
+				usleep(10*1000);
 			}
 			log_msg("Unknow wCmd, read done!", LOG_LEVEL_INFO);
 			continue;

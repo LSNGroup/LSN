@@ -60,13 +60,8 @@ static void UiLoop(void)
 {
 	char cmd[MAX_PATH];
 	int index;
-	char cam_id[MAX_PATH];
-	char pass[MAX_PATH];
 	char temp[MAX_PATH];
-	char type[MAX_PATH];
-	int ext;
-	int num;
-	char name[MAX_PATH];
+
 
 	printf("\n>");
 
@@ -80,13 +75,9 @@ static void UiLoop(void)
 		{
 			printf("\n");
 			printf("h(help)                       帮助\n");
-			printf("l                             列出所有已连接的推流端 以及观看端数量\n");
+			printf("l                             列出当前状态信息\n");
 			printf("f <width> <height> <fps>      设置视频格式\n");
-			printf("c <cam_id> <password>         连接新的推流端\n");
-			printf("d <index>                     断开指定推流端\n");
-			printf("s <index>                     视频源切到指定推流端\n");
-			printf("v <0/1>                       当前推流端切换摄像头\n");
-			printf("o <type> <ext> <num> <name> <pass> <tcp_addr>   转发器online\n");
+			printf("s <index>                     视频源切换\n");
 			printf("x                             退出程序\n");
 		}
 		else if (strncmp(cmd, "f ", 2) == 0)
@@ -98,28 +89,15 @@ static void UiLoop(void)
 		{
 			printf("Current video format: %dx%d fps(%d) \n", g_video_width, g_video_height, g_video_fps);
 			printf("Current source index: %d \n", g_pShiyong->currentSourceIndex);
+			printf("Joined channel id: %ld \n", g_pShiyong->joined_channel_id);
+			printf("Device topo level: %d \n", g_pShiyong->device_topo_level);
 			printf("---------------------------------------------------------------\n");
 			for (int i = 0; i < MAX_VIEWER_NUM; i++)
 			{
+				printf("  ViewerNode %d(port%d), bUsing=%d  bConnecting=%d  bConnected=%d  bTopoPrimary=%d  \n", i, g_pShiyong->viewerArray[i].httpOP.m0_p2p_port, g_pShiyong->viewerArray[i].bUsing, g_pShiyong->viewerArray[i].bConnecting, g_pShiyong->viewerArray[i].bConnected, g_pShiyong->viewerArray[i].bTopoPrimary);
 			}
 			printf("---------------------------------------------------------------\n");
-			printf("\nServerNodes=%d, connected_av=%d\n", MAX_SERVER_NUM, GetAvClientsCount());
-		}
-		else if (strncmp(cmd, "c ", 2) == 0)
-		{
-			sscanf(cmd, "%s%s%s", temp, cam_id, pass);
-			printf("To connect id(%s) with password(%s)...\n", cam_id, pass);
-		}
-		else if (strncmp(cmd, "d ", 2) == 0)
-		{
-			sscanf(cmd, "%s%d", temp, &index);
-			printf("To disconnect index(%d)...\n", index);
-			if (g_pShiyong->viewerArray[index].bUsing == FALSE) {
-				printf("ViewerNode not using!\n");
-			}
-			else {
-				g_pShiyong->DisconnectNode(&(g_pShiyong->viewerArray[index]));
-			}
+			printf("\nGuajiNodes=%d, connected_av=%d\n", MAX_SERVER_NUM, GetAvClientsCount());
 		}
 		else if (strncmp(cmd, "s ", 2) == 0)
 		{
@@ -130,83 +108,23 @@ static void UiLoop(void)
 			}
 			else {
 				if (g_pShiyong->currentSourceIndex != index) {
-
-					//由于电脑推流端（ViewerNode[0]）的T264不会周期性发送SPS、PPS，所以切换时要重新发送一遍！！！
-					int t264_index = 0;
-					if (index == t264_index)
-					{
-						//先切断PacketRepeater的转发过程，避免SPS与PPS之间有东西。。。
-						g_pShiyong->currentSourceIndex = -1;
-
-						for (int i = 0; i < MAX_SERVER_NUM; i++)
-						{
-							if (arrServerProcesses[i].m_bAVStarted == FALSE) {
-								continue;
-							}
-							if (arrServerProcesses[i].m_bVideoEnable == FALSE) {
-								continue;
-							}
-							
-							int ret = CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE_TCP, arrServerProcesses[i].m_fhandle, g_pShiyong->viewerArray[t264_index].m_sps_buff, g_pShiyong->viewerArray[t264_index].m_sps_len);
-							if (ret < 0) {
-								log_msg("Switch video source: CtrlCmd_Send_FAKERTP_RESP(sps) failed!", LOG_LEVEL_ERROR);
-							}
-							ret = CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE_TCP, arrServerProcesses[i].m_fhandle, g_pShiyong->viewerArray[t264_index].m_pps_buff, g_pShiyong->viewerArray[t264_index].m_pps_len);
-							if (ret < 0) {
-								log_msg("Switch video source: CtrlCmd_Send_FAKERTP_RESP(pps) failed!", LOG_LEVEL_ERROR);
-							}
-						}
-					}//if (index == t264_index)
-
-					g_pShiyong->currentSourceIndex = index;
+					g_pShiyong->SwitchMediaSource(g_pShiyong->currentSourceIndex, index);
 				}
 			}
-		}
-		else if (strncmp(cmd, "v ", 2) == 0)
-		{
-			sscanf(cmd, "%s%d", temp, &index);
-			if (g_pShiyong->currentSourceIndex == -1 || g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].bUsing == FALSE || g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].bConnected == FALSE) {
-				printf("Current ViewerNode not using!\n");
-			}
-			else {
-				printf("推流端(%d) will use camera(%d)...\n", g_pShiyong->currentSourceIndex, index);
-				CtrlCmd_AV_SWITCH(g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].httpOP.m1_use_sock_type,
-								g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].httpOP.m1_use_udt_sock,
-								index);
-			}
-		}
-		else if (strncmp(cmd, "o ", 2) == 0)
-		{
-			sscanf(cmd, "%s%s%d%d%s%s%s", temp, type, &ext, &num, name, pass, g_tcp_address);
-			printf("online type(%s)-%d num(%d) name(%s) pass(%s) tcp_addr(%s)...\n", type, ext, num, name, pass, g_tcp_address);
 
-			if (arrServerProcesses != NULL) {
-				printf("不能重复上线！\n");
-			}
-			else if (g_pShiyong->currentSourceIndex == -1 || g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].bUsing == FALSE) {
-				printf("请先连接并选中视频源！\n");
-			}
-			else {
-				strncpy(SERVER_TYPE, type, sizeof(SERVER_TYPE));
-				UUID_EXT = ext;
-				MAX_SERVER_NUM = num;
-				strncpy(NODE_NAME, name, sizeof(NODE_NAME));
-				strncpy(CONNECT_PASSWORD, pass, sizeof(CONNECT_PASSWORD));
-
-				g_pShiyong->device_max_streams = 5;//测速。。。
-				MAX_SERVER_NUM = g_pShiyong->device_max_streams * 2;
-				
-				StartServerProcesses();
-			}
 		}
 		else if (strcmp(cmd, "x") == 0)
 		{
 			printf("Stop ViewerNode...\n");
 			for (int i = 0; i < MAX_VIEWER_NUM; i++)
 			{
+				g_pShiyong->UnregisterNode(&(g_pShiyong->viewerArray[i]));
+			}
+			for (int i = 0; i < MAX_VIEWER_NUM; i++)
+			{
 				g_pShiyong->DisconnectNode(&(g_pShiyong->viewerArray[i]));
 			}
-			Sleep(15000);
+			usleep(15000*1000);
 			g_pShiyong->DoExit();
 
 			printf("Stop ServerProcesses...\n");
@@ -214,7 +132,7 @@ static void UiLoop(void)
 			{
 				CtrlCmd_Send_END(SOCKET_TYPE_TCP, arrServerProcesses[i].m_fhandle);
 			}
-			Sleep(1000);
+			usleep(1000*1000);
 			printf("Done!!!\n");
 
 			break;
@@ -277,8 +195,27 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 
 
 		{//////////////////////////////////////////////////////////////
+			if (arrServerProcesses != NULL) {
+				printf("不能重复上线！\n");
+			}
+			else {
+#if FIRST_LEVEL_REPEATER
+				strncpy(SERVER_TYPE, "STAR", sizeof(SERVER_TYPE));
+#else
+				strncpy(SERVER_TYPE, "TREE", sizeof(SERVER_TYPE));
+#endif
+				UUID_EXT = 1;
+				strncpy(NODE_NAME, "Node Name", sizeof(NODE_NAME));
+				strncpy(CONNECT_PASSWORD, "123456", sizeof(CONNECT_PASSWORD));
+				strncpy(g_tcp_address, "127.0.0.1", sizeof(g_tcp_address));
 
+				g_pShiyong->device_max_streams = 3;//测速。。。
+				MAX_SERVER_NUM = g_pShiyong->device_max_streams * 2;
+				
+				printf("Online type(%s)-%d num(%d) name(%s) pass(%s) tcp_addr(%s)...\n", SERVER_TYPE, UUID_EXT, MAX_SERVER_NUM, NODE_NAME, CONNECT_PASSWORD, g_tcp_address);
 
+				StartServerProcesses();
+			}
 		}//////////////////////////////////////////////////////////////
 
 		UiLoop();

@@ -344,7 +344,11 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 	}
 }
 
+#ifdef WIN32
 DWORD WINAPI IpcThreadFn(LPVOID pvThreadParam)
+#else
+void *IpcThreadFn(void *pvThreadParam)
+#endif
 {
 	SOCKET server;
 	sockaddr_in my_addr;
@@ -382,14 +386,14 @@ DWORD WINAPI IpcThreadFn(LPVOID pvThreadParam)
 	while (count < MAX_SERVER_NUM)
 	{
 		if (NULL == arrServerProcesses) {
-			Sleep(3000);
+			usleep(3000*1000);
 			continue;
 		}
 
 		SOCKET fhandle = accept(server, (sockaddr*)&their_addr, &namelen);
 		if (INVALID_SOCKET == fhandle) {
 			printf("IpcThreadFn: TCP accept() failed!\n");
-			Sleep(10);
+			usleep(10*1000);
 			continue;
 		}
 
@@ -418,7 +422,7 @@ DWORD WINAPI IpcThreadFn(LPVOID pvThreadParam)
 		ret = select(max_fd + 1, &allset, NULL, NULL, &waitval);
 		if (ret < 0) {
 			printf("IpcThreadFn: select() failed!\n");
-			Sleep(10);
+			usleep(10*1000);
 			continue;
 		}
 		for (int i = 0; i < MAX_SERVER_NUM; i++)
@@ -436,9 +440,16 @@ DWORD WINAPI IpcThreadFn(LPVOID pvThreadParam)
 
 void StartServerProcesses()
 {
+#ifdef WIN32
 	DWORD dwThreadID;
 	HANDLE hThread = ::CreateThread(NULL,0,IpcThreadFn,NULL,0,&dwThreadID);
-	if (hThread == NULL) {
+	if (hThread == NULL)
+#else
+	pthread_t hThread;
+	int err = pthread_create(&hThread, NULL, IpcThreadFn, NULL);
+	if (0 != err)
+#endif
+	{
 		printf("Create IpcThreadFn failed!\n");/* Error */
 	}
 
@@ -471,7 +482,7 @@ void StartServerProcesses()
 		_snprintf(szExeCmd, MAX_PATH, "RepeaterNode.exe  %s %d %d %s %s %d %d %d %d %d %s", SERVER_TYPE, UUID_EXT, MAX_SERVER_NUM, NODE_NAME, CONNECT_PASSWORD, p2p_port, IPC_SERVER_BIND_PORT, g_video_width, g_video_height, g_video_fps, g_tcp_address);
 		RunExeNoWait(szExeCmd, FALSE);
 
-		Sleep(200);//保证RepeaterNode.exe 生成的受控端node_id不重复
+		usleep(200*1000);//保证RepeaterNode.exe 生成的受控端node_id不重复
 	}
 }
 

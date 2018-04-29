@@ -19,16 +19,6 @@
 
 
 
-#define pthread_mutex_t				CRITICAL_SECTION
-#define pthread_mutex_init(m, n)	InitializeCriticalSection(m)
-#define pthread_mutex_destroy(m)	DeleteCriticalSection(m)
-#define pthread_mutex_lock(m)		EnterCriticalSection(m)
-#define pthread_mutex_unlock(m)		LeaveCriticalSection(m)
-
-#define usleep(u)					Sleep((u)/1000)
-
-
-
 static void learn_remote_addr2(void *ctx2, sockaddr* his_addr, int addr_len)
 {
 	FAKERTPSEND *pFRS = (FAKERTPSEND *)ctx2;

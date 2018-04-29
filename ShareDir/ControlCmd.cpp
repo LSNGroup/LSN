@@ -1,30 +1,18 @@
 #include "stdafx.h"
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "platform.h"
 #include "CommonLib.h"
 #include "ControlCmd.h"
+#ifdef WIN32
+#include "LogMsg.h"
+#endif
 
 #ifdef ANDROID_NDK
 #include <android/log.h>
-#endif
-
-
-#ifdef ANDROID_NDK
 #define log_msg(msg, lev)  __android_log_print(ANDROID_LOG_INFO, "shdir", msg)
-#else
-#define log_msg(msg, lev)  printf(msg)
 #endif
-
-
-#define pthread_mutex_t				CRITICAL_SECTION
-#define pthread_mutex_init(m, n)	InitializeCriticalSection(m)
-#define pthread_mutex_destroy(m)	DeleteCriticalSection(m)
-#define pthread_mutex_lock(m)		EnterCriticalSection(m)
-#define pthread_mutex_unlock(m)		LeaveCriticalSection(m)
-
-#define usleep(u)					Sleep((u)/1000)
 
 
 static BOOL m_bInit = FALSE;

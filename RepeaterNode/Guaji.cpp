@@ -14,10 +14,6 @@
 
 
 
-#define usleep(u)					Sleep((u)/1000)
-
-
-
 SOCKET g_fhandle = INVALID_SOCKET;
 
 SERVER_NODE *g_pServerNode = NULL;
@@ -45,11 +41,19 @@ char g_tcp_address[MAX_PATH];
 static void InitVar();
 int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandle);
 
+#ifdef WIN32
 DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam);
 DWORD WINAPI UnregisterThreadFn(LPVOID pvThreadParam);
 DWORD WINAPI WorkingThreadFn1(LPVOID pvThreadParam);
 DWORD WINAPI WorkingThreadFnRev(LPVOID pvThreadParam);
 DWORD WINAPI WorkingThreadFn2(LPVOID pvThreadParam);
+#else
+void *WinMainThreadFn(void *pvThreadParam);
+void *UnregisterThreadFn(void *pvThreadParam);
+void *WorkingThreadFn1(void *pvThreadParam);
+void *WorkingThreadFnRev(void *pvThreadParam);
+void *WorkingThreadFn2(void *pvThreadParam);
+#endif
 
 
 void StartAnyPC()
@@ -79,9 +83,16 @@ void StartAnyPC()
 
 		InitVar();
 
+#ifdef WIN32
 		DWORD dwThreadID;
 		HANDLE hThread = ::CreateThread(NULL,0,WinMainThreadFn,g_pServerNode,0,&dwThreadID);
-		if (hThread == NULL) {
+		if (hThread == NULL)
+#else
+		pthread_t hThread;
+		int err = pthread_create(&hThread, NULL, WinMainThreadFn, g_pServerNode);
+		if (0 != err)
+#endif
+		{
 			log_msg("Create WinMainThreadFn failed!\n", LOG_LEVEL_ERROR);/* Error */
 		}
 	}
@@ -99,8 +110,13 @@ void StopDoConnection(SERVER_NODE* pServerNode)
 {
 	if (pServerNode->m_bDoConnection1) {
 		log_msg("DoUnregister()...\n", LOG_LEVEL_INFO);
+#ifdef WIN32
 		DWORD dwThreadID;
 		::CreateThread(NULL,0,UnregisterThreadFn,(void *)pServerNode,0,&dwThreadID);
+#else
+		pthread_t hTempThread;
+		pthread_create(&hTempThread, NULL, UnregisterThreadFn, (void *)pServerNode);
+#endif
 	}
 	pServerNode->m_bDoConnection1 = FALSE;
 	pServerNode->m_bDoConnection2 = FALSE;
@@ -422,8 +438,11 @@ static void InitVar()
 	g1_comments_id = 0;
 }
 
-
+#ifdef WIN32
 DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
+#else
+void *WinMainThreadFn(void *pvThreadParam)
+#endif
 {
 	SERVER_NODE* pServerNode = (SERVER_NODE*)pvThreadParam;
 	int ret;
@@ -432,9 +451,9 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 	BOOL bNoNAT;
 	int  nNatType;
 	DWORD dwThreadID;
-	HANDLE hThread;
+	pthread_t hThread;
 	DWORD dwThreadID2;
-	HANDLE hThread2;
+	pthread_t hThread2;
 	char msg[MAX_LOADSTRING];
 
 
@@ -444,9 +463,14 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 	SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_CAMID, 0);
 	SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_CAMID_EXP, 0);
 
-
+#ifdef WIN32
 	hThread2 = ::CreateThread(NULL,0,WorkingThreadFn2,(void *)pServerNode,0,&dwThreadID2);
-	if (hThread2 == NULL) {
+	if (hThread2 == NULL)
+#else
+	int err = pthread_create(&hThread2, NULL, WorkingThreadFn2, (void *)pServerNode);
+	if (0 != err)
+#endif
+	{
 		log_msg("Create WorkingThread2 failed!", LOG_LEVEL_ERROR);
 	}
 
@@ -455,7 +479,7 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 	{
 		now_time = time(NULL);
 		if (now_time - last_register_time < g1_register_period) {
-			Sleep((g1_register_period - (now_time - last_register_time)) * 1000);
+			usleep((g1_register_period - (now_time - last_register_time)) * 1000 * 1000);
 		}
 		last_register_time = time(NULL);
 
@@ -676,17 +700,26 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 				if (pServerNode->myHttpOperate.m0_no_nat == FALSE)
 				{
 					pServerNode->m_InConnection1 = TRUE;
-
+#ifdef WIN32
 					hThread = ::CreateThread(NULL,0,WorkingThreadFn1,(void *)pServerNode,0,&dwThreadID);
-					if (hThread == NULL) {
+					if (hThread == NULL)
+#else
+					int err = pthread_create(&hThread, NULL, WorkingThreadFn1, (void *)pServerNode);
+					if (0 != err)
+#endif
+					{
 						pServerNode->m_InConnection1 = FALSE;
 						log_msg("Create WorkingThreadFn1 failed!", LOG_LEVEL_ERROR);
 						continue;
 					}
 
 					/* Wait... */
+#ifdef WIN32
 					::WaitForSingleObject(hThread, INFINITE);
 					::CloseHandle(hThread);
+#else
+					pthread_join(hThread, NULL);
+#endif
 					log_msg("WorkingThread ends, continue to do Register loop...", LOG_LEVEL_INFO);
 
 					pServerNode->m_InConnection1 = FALSE;
@@ -697,17 +730,26 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 				strcpy(pServerNode->myHttpOperate.m1_event_type, "");
 
 				pServerNode->m_InConnection1 = TRUE;
-
+#ifdef WIN32
 				hThread = ::CreateThread(NULL,0,WorkingThreadFnRev,(void *)pServerNode,0,&dwThreadID);
-				if (hThread == NULL) {
+				if (hThread == NULL)
+#else
+				int err = pthread_create(&hThread, NULL, WorkingThreadFnRev, (void *)pServerNode);
+				if (0 != err)
+#endif
+				{
 					pServerNode->m_InConnection1 = FALSE;
 					log_msg("Create WorkingThreadFnRev failed!", LOG_LEVEL_ERROR);
 					continue;
 				}
 
 				/* Wait... */
+#ifdef WIN32
 				::WaitForSingleObject(hThread, INFINITE);
 				::CloseHandle(hThread);
+#else
+				pthread_join(hThread, NULL);
+#endif
 				log_msg("WorkingThread ends, continue to do Register loop...", LOG_LEVEL_INFO);
 
 				pServerNode->m_InConnection1 = FALSE;
@@ -732,7 +774,12 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 
 	if (pServerNode->m_bDoConnection1) {
 		log_msg("DoUnregister()...", LOG_LEVEL_INFO);
+#ifdef WIN32
 		::CreateThread(NULL,0,UnregisterThreadFn,(void *)pServerNode,0,&dwThreadID);
+#else
+		pthread_t hTempThread;
+		pthread_create(&hTempThread, NULL, UnregisterThreadFn, (void *)pServerNode);
+#endif
 	}
 
 	// 设置退出标志
@@ -744,14 +791,22 @@ DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam)
 	return 0;
 }
 
+#ifdef WIN32
 DWORD WINAPI UnregisterThreadFn(LPVOID pvThreadParam)
+#else
+void *UnregisterThreadFn(void *pvThreadParam)
+#endif
 {
 	SERVER_NODE* pServerNode = (SERVER_NODE*)pvThreadParam;
 	CtrlCmd_TOPO_DROP(SOCKET_TYPE_TCP, g_fhandle, ROUTE_ITEM_TYPE_GUAJINODE, pServerNode->myHttpOperate.m0_node_id);
 	return 0;
 }
 
+#ifdef WIN32
 DWORD WINAPI WorkingThreadFn1(LPVOID pvThreadParam)
+#else
+void *WorkingThreadFn1(void *pvThreadParam)
+#endif
 {
 	SERVER_NODE* pServerNode = (SERVER_NODE*)pvThreadParam;
 	UDTSOCKET fhandle;
@@ -772,7 +827,7 @@ DWORD WINAPI WorkingThreadFn1(LPVOID pvThreadParam)
 	for (i = pServerNode->myHttpOperate.m1_wait_time; i > 0; i--) {
 		_snprintf(msg, sizeof(msg), "正在排队等待服务响应，%d秒。。。\n", i);
 		log_msg(msg, LOG_LEVEL_INFO);
-		Sleep(1000);
+		usleep(1000*1000);
 	}
 
 	pServerNode->myHttpOperate.m1_use_udp_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -846,8 +901,13 @@ DWORD WINAPI WorkingThreadFn1(LPVOID pvThreadParam)
 
 	if (pServerNode->m_bDoConnection1) {
 		log_msg("DoUnregister()...", LOG_LEVEL_INFO);
+#ifdef WIN32
 		DWORD dwThreadID;
 		::CreateThread(NULL,0,UnregisterThreadFn,(void *)pServerNode,0,&dwThreadID);
+#else
+		pthread_t hTempThread;
+		pthread_create(&hTempThread, NULL, UnregisterThreadFn, (void *)pServerNode);
+#endif
 	}
 
 	pServerNode->myHttpOperate.m1_use_peer_ip = their_addr.sin_addr.s_addr;
@@ -878,7 +938,11 @@ DWORD WINAPI WorkingThreadFn1(LPVOID pvThreadParam)
 	return 0;
 }
 
+#ifdef WIN32
 DWORD WINAPI WorkingThreadFnRev(LPVOID pvThreadParam)
+#else
+void *WorkingThreadFnRev(void *pvThreadParam)
+#endif
 {
 	SERVER_NODE* pServerNode = (SERVER_NODE*)pvThreadParam;
 	UDTSOCKET fhandle;
@@ -898,7 +962,7 @@ DWORD WINAPI WorkingThreadFnRev(LPVOID pvThreadParam)
 	for (i = pServerNode->myHttpOperate.m1_wait_time; i > 0; i--) {
 		_snprintf(msg, sizeof(msg), "正在排队等待服务响应，%d秒。。。", i);
 		log_msg(msg, LOG_LEVEL_INFO);
-		Sleep(1000);
+		usleep(1000*1000);
 	}
 
 	pServerNode->myHttpOperate.m1_use_udp_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -963,8 +1027,13 @@ DWORD WINAPI WorkingThreadFnRev(LPVOID pvThreadParam)
 
 	if (pServerNode->m_bDoConnection1) {
 		log_msg("DoUnregister()...", LOG_LEVEL_INFO);
+#ifdef WIN32
 		DWORD dwThreadID;
 		::CreateThread(NULL,0,UnregisterThreadFn,(void *)pServerNode,0,&dwThreadID);
+#else
+		pthread_t hTempThread;
+		pthread_create(&hTempThread, NULL, UnregisterThreadFn, (void *)pServerNode);
+#endif
 	}
 
 	pServerNode->myHttpOperate.m1_use_peer_ip = their_addr.sin_addr.s_addr;
@@ -995,7 +1064,11 @@ DWORD WINAPI WorkingThreadFnRev(LPVOID pvThreadParam)
 	return 0;
 }
 
+#ifdef WIN32
 DWORD WINAPI WorkingThreadFn2(LPVOID pvThreadParam)
+#else
+void *WorkingThreadFn2(void *pvThreadParam)
+#endif
 {
 	SERVER_NODE* pServerNode = (SERVER_NODE*)pvThreadParam;
 	SOCKET udp_sock;
@@ -1029,7 +1102,7 @@ DWORD WINAPI WorkingThreadFn2(LPVOID pvThreadParam)
 
 	while (true)
 	{
-		Sleep(500);  /* 2010-06-24 */
+		usleep(500*1000);  /* 2010-06-24 */
 
 		if (pServerNode->m_InConnection1) {
 			continue;
@@ -1096,7 +1169,12 @@ DWORD WINAPI WorkingThreadFn2(LPVOID pvThreadParam)
 				/* 即将进入连接处理，如果启用服务器连接模式，则使其在服务器列表内不可见。*/
 				if (pServerNode->m_bDoConnection1) {
 					log_msg("WorkingThreadFn2: DoUnregister()...\n", LOG_LEVEL_INFO);
+#ifdef WIN32
 					::CreateThread(NULL,0,UnregisterThreadFn,(void *)pServerNode,0,&dwThreadID);
+#else
+					pthread_t hTempThread;
+					pthread_create(&hTempThread, NULL, UnregisterThreadFn, (void *)pServerNode);
+#endif
 				}
 
 
