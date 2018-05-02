@@ -87,3 +87,35 @@ int log_msg(const char *msg, int level)
 	return 0;
 }
 
+int log_msg_f(int level, const char *format, ...)
+{
+	va_list   arg;
+	FILE *f;
+	char log_time[MAX_PATH];
+	char pbString[1024];
+
+
+	if (level < LOG_MSG_LEVEL) {
+		return 0;
+	}
+
+	if (format == NULL) {
+		return -1;
+	}
+
+	f = fopen(LOG_FILE_NAME, "a");
+	if (f == NULL) {
+		return -1;
+	}
+
+	get_log_time_str(log_time, sizeof(log_time));
+
+	va_start(arg, format);
+	vsprintf(pbString, format, arg);
+	va_end(arg);
+
+	fprintf(f, "[%s] %s: %s\r\n", log_time, log_level_strs[level], pbString);
+
+	fclose(f);
+	return 0;
+}

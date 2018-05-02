@@ -50,8 +50,14 @@ DWORD g1_lowest_version;
 char g1_http_server[MAX_LOADSTRING];
 char g1_stun_server[MAX_LOADSTRING];
 char g1_measure_server[MAX_LOADSTRING];
-int g1_register_period;  /* Seconds */
-int g1_expire_period;  /* Seconds */
+int g1_register_period = DEFAULT_REGISTER_PERIOD;  /* Seconds */
+int g1_expire_period   = DEFAULT_EXPIRE_PERIOD;  /* Seconds */
+
+BOOL g1_trigger_restart = FALSE;
+int g1_stream_timeout_l3 = 100;
+int g1_stream_timeout_step = 200;
+int g1_bandwidth_per_stream = BANDWIDTH_PER_STREAM_UNKNOWN;
+DWORD g1_system_debug_flags = 0;
 
 //#ifdef JNI_FOR_MOBILECAMERA
 BOOL g1_is_activated = TRUE;
@@ -289,6 +295,7 @@ BOOL HttpOperate::ParseIpValue(char *value)
 //          /* event=3F-1A-CD-90-4B-67|6|Connect   |4F-1A-CD-90-66-88|61.126.78.32|23745|0|5|192.168.1.101-192.168.110.103|3478 */
 //          /* event=3F-1A-CD-90-4B-67|6|ConnectRev|4F-1A-CD-90-66-88|61.126.78.32|23745|0|5|192.168.1.101-192.168.110.103|3478 */
 //          /* event=3F-1A-CD-90-4B-67|6|Disconnect|4F-1A-CD-90-66-88 */
+//          /* event=3F-1A-CD-90-4B-67|0|Switch    |00-00-00-00-00-00 */
 //                   the_node_id   wait_time  type     peer_node_id       pub_ip  pub_port  no_nat  nat_type  ip  port 
 BOOL HttpOperate::ParseEventValue(char *value)
 {
@@ -512,6 +519,18 @@ BOOL HttpOperate::ParseEventValue(char *value)
 		node_id_str = value;
 		mac_addr(node_id_str, m1_peer_node_id, NULL);
 	}
+	else if (strcmp(type_str, "Switch") == 0)
+	{
+
+		/* NODE ID */
+		value = p + 1;
+		p = strchr(value, '|');
+		if (p != NULL) {
+			*p = '\0';  /* Last field */
+		}
+		node_id_str = value;
+		//mac_addr(node_id_str, m1_switch_to_node_id, NULL);
+	}
 	else {
 		return FALSE;
 	}
@@ -718,6 +737,26 @@ int HttpOperate::ParseTopoSettings(const char *settings_string)
 			else if (strcmp(name, "expire_period") == 0) {
 				g1_expire_period = atol(value);
 			}
+			else if (strcmp(name, "trigger_restart") == 0) {
+				if (strcmp(value, "0") == 0) {
+					g1_trigger_restart = FALSE;
+				}
+				else {
+					g1_trigger_restart = TRUE;
+				}
+			}
+			else if (strcmp(name, "stream_timeout_l3") == 0) {
+				g1_stream_timeout_l3 = atol(value);
+			}
+			else if (strcmp(name, "stream_timeout_step") == 0) {
+				g1_stream_timeout_step = atol(value);
+			}
+			else if (strcmp(name, "bandwidth_per_stream") == 0) {
+				g1_bandwidth_per_stream = atol(value);
+			}
+			else if (strcmp(name, "system_debug_flags") == 0) {
+				g1_system_debug_flags = atol(value);
+			}
 		}
 
 
@@ -868,6 +907,27 @@ int HttpOperate::DoRegister1(const char *client_charset, const char *client_lang
 			else if (strcmp(name, "expire_period") == 0) {
 				g1_expire_period = atol(value);
 			}
+			else if (strcmp(name, "trigger_restart") == 0) {
+				if (strcmp(value, "0") == 0) {
+					g1_trigger_restart = FALSE;
+				}
+				else {
+					g1_trigger_restart = TRUE;
+				}
+			}
+			else if (strcmp(name, "stream_timeout_l3") == 0) {
+				g1_stream_timeout_l3 = atol(value);
+			}
+			else if (strcmp(name, "stream_timeout_step") == 0) {
+				g1_stream_timeout_step = atol(value);
+			}
+			else if (strcmp(name, "bandwidth_per_stream") == 0) {
+				g1_bandwidth_per_stream = atol(value);
+			}
+			else if (strcmp(name, "system_debug_flags") == 0) {
+				g1_system_debug_flags = atol(value);
+			}
+
 		}
 
 
@@ -1531,6 +1591,36 @@ int HttpOperate::DoReport1(const char *client_charset, const char *client_lang, 
 				strcat(szPostBody, value);
 				strcat(szPostBody, "\n");
 			}
+			else if (strcmp(name, "trigger_restart") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "stream_timeout_l3") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "stream_timeout_step") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "bandwidth_per_stream") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "system_debug_flags") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
 		}
 
 
@@ -1746,6 +1836,36 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 				strcat(szPostBody, "\n");
 			}
 			else if (strcmp(name, "expire_period") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "trigger_restart") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "stream_timeout_l3") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "stream_timeout_step") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "bandwidth_per_stream") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "system_debug_flags") == 0) {
 				strcat(szPostBody, name);
 				strcat(szPostBody, "=");
 				strcat(szPostBody, value);

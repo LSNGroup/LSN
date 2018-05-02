@@ -47,6 +47,7 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 	char buff[16*1024];
 	WORD wCommand;
 	DWORD dwDataLength;
+	BYTE is_connected;
 	BYTE node_type;
 	BYTE source_node_id[6];
 	BYTE dest_node_id[6];
@@ -100,11 +101,13 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 			case CMD_CODE_ARM_REQ:
 				printf("if_mc_arm() fd=%ld \n", fhandle);
 				//if_mc_arm();
+				pServerPorcess->m_bConnected = TRUE;//借用
 				break;
 				
 			case CMD_CODE_DISARM_REQ:
 				printf("if_mc_disarm() fd=%ld \n", fhandle);
 				//if_mc_disarm();
+				pServerPorcess->m_bConnected = FALSE;//借用
 				break;
 
 			case CMD_CODE_AV_START_REQ:
@@ -234,6 +237,12 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				if (ret != 0) {
 					break;
 				}
+				is_connected = *(BYTE *)buff;
+
+				ret = RecvStream(type, fhandle, buff, 1);
+				if (ret != 0) {
+					break;
+				}
 				node_type = *(BYTE *)buff;
 
 				ret = RecvStream(type, fhandle, buff, 6);
@@ -242,7 +251,31 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				}
 				memcpy(object_node_id, buff, 6);
 
-				g_pShiyong->DropRouteItem(node_type, object_node_id);
+				if (is_connected == 0) {//真的Exit了
+					g_pShiyong->DropRouteItem(node_type, object_node_id);
+				}
+
+				if (is_connected != 0 && node_type == ROUTE_ITEM_TYPE_VIEWERNODE)
+				{
+					int found_item = g_pShiyong->FindConnectingItemViewerNode(object_node_id);
+					if (found_item != -1) {//从EventTable中删除。。。
+						g_pShiyong->connecting_event_table[found_item].bUsing = FALSE;
+						g_pShiyong->connecting_event_table[found_item].nID = -1;
+					}
+					if (found_item != -1 && g_pShiyong->connecting_event_table[found_item].switch_after_connected) {
+						//
+						int ret_index = g_pShiyong->FindTopoRouteItem(object_node_id);
+						if (-1 != ret_index)
+						{
+							char szEvent[64];
+							snprintf(szEvent, sizeof(szEvent), "%02X-%02X-%02X-%02X-%02X-%02X|0|Switch|00-00-00-00-00-00", 
+										object_node_id[0],object_node_id[1],object_node_id[2],object_node_id[3],object_node_id[4],object_node_id[5]);
+
+							int guaji_index = g_pShiyong->device_route_table[ret_index].guaji_index;
+							CtrlCmd_TOPO_EVENT(SOCKET_TYPE_TCP, arrServerProcesses[guaji_index].m_fhandle, object_node_id, (const char *)szEvent);
+						}
+					}
+				}
 
 				if (g_pShiyong->ShouldDoHttpOP())//Root Node, DoDrop()
 				{
@@ -257,7 +290,7 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 						}
 						if (g_pShiyong->viewerArray[i].bTopoPrimary == TRUE)
 						{
-							CtrlCmd_TOPO_DROP(g_pShiyong->viewerArray[i].httpOP.m1_use_sock_type, g_pShiyong->viewerArray[i].httpOP.m1_use_udt_sock, node_type, object_node_id);
+							CtrlCmd_TOPO_DROP(g_pShiyong->viewerArray[i].httpOP.m1_use_sock_type, g_pShiyong->viewerArray[i].httpOP.m1_use_udt_sock, is_connected, node_type, object_node_id);
 							break;
 						}
 					}
@@ -470,6 +503,7 @@ void StartServerProcesses()
 
 		arrServerProcesses[i].m_fhandle = INVALID_SOCKET;
 
+		arrServerProcesses[i].m_bConnected = FALSE;
 		arrServerProcesses[i].m_bAVStarted = FALSE;
 
 		arrServerProcesses[i].m_bVideoEnable = FALSE;

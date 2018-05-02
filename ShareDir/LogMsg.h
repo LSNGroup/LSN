@@ -15,3 +15,4 @@ typedef enum _tag_log_level_enum {
 
 int log_msg_init(const char *log_file = NULL);
 int log_msg(const char *msg, int level);
+int log_msg_f(int level, const char *format, ...);

@@ -16,6 +16,7 @@ typedef struct _tag_server_process_node {
 	BYTE m_node_id[6];
 	char m_ipcReport[512];
 
+	BOOL m_bConnected;
 	BOOL m_bAVStarted;
 	
 	BOOL m_bVideoEnable;

@@ -12,6 +12,15 @@
 #define DEFAULT_REGISTER_PERIOD		10
 #define DEFAULT_EXPIRE_PERIOD		25
 
+#define BANDWIDTH_PER_STREAM_UNKNOWN	0 //用于判断g1_bandwidth_per_stream是否已获取
+#define BANDWIDTH_PER_STREAM_DEFAULT	260 //单位KB/s
+
+#define  def_debug_device_online	0x0001
+#define  def_debug_connect_ok		0x0002
+#define  def_debug_connect_ng		0x0004
+#define  def_debug_stream_switch	0x0008
+#define  def_debug_error_msg		0x0010
+
 
 typedef void (*ON_REPORT_SETTINGS_FN)(char *settings_str);
 typedef void (*ON_REPORT_EVENT_FN)(char *event_str);
@@ -29,6 +38,12 @@ extern char g1_stun_server[MAX_LOADSTRING];
 extern char g1_measure_server[MAX_LOADSTRING];
 extern int g1_register_period;  /* Seconds */
 extern int g1_expire_period;  /* Seconds */
+
+extern BOOL g1_trigger_restart;
+extern int g1_stream_timeout_l3;
+extern int g1_stream_timeout_step;
+extern int g1_bandwidth_per_stream;
+extern DWORD g1_system_debug_flags;
 
 //#ifdef JNI_FOR_MOBILECAMERA
 extern BOOL g1_is_activated;

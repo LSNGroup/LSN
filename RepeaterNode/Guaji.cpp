@@ -61,6 +61,8 @@ void StartAnyPC()
 	g_pServerNode = (SERVER_NODE *)malloc(sizeof(SERVER_NODE));
 
 	{
+		g_pServerNode->m_bExit = FALSE;
+
 		g_pServerNode->myHttpOperate.m0_is_admin = FALSE;
 		g_pServerNode->myHttpOperate.m0_is_busy = FALSE;
 		g_pServerNode->myHttpOperate.m0_p2p_port = P2P_PORT;
@@ -100,6 +102,8 @@ void StartAnyPC()
 
 void StartDoConnection(SERVER_NODE* pServerNode)
 {
+	pServerNode->m_bExit = FALSE;
+
 	pServerNode->m_bConnected = FALSE;
 
 	pServerNode->m_bDoConnection1 = TRUE;
@@ -110,6 +114,7 @@ void StopDoConnection(SERVER_NODE* pServerNode)
 {
 	if (pServerNode->m_bDoConnection1) {
 		log_msg("DoUnregister()...\n", LOG_LEVEL_INFO);
+		pServerNode->m_bExit = TRUE;
 #ifdef WIN32
 		DWORD dwThreadID;
 		::CreateThread(NULL,0,UnregisterThreadFn,(void *)pServerNode,0,&dwThreadID);
@@ -363,11 +368,31 @@ void if_on_register_result(int comments_id, bool approved)
 void if_on_client_connected(SERVER_NODE* pServerNode)
 {
 	pServerNode->m_bConnected = TRUE;
+
+	if (INVALID_SOCKET != g_fhandle)
+	{
+		CtrlCmd_ARM(SOCKET_TYPE_TCP, g_fhandle);//借用
+	}
 }
 
 void if_on_client_disconnected(SERVER_NODE* pServerNode)
 {
 	pServerNode->m_bConnected = FALSE;
+
+	if (INVALID_SOCKET != g_fhandle)
+	{
+		CtrlCmd_DISARM(SOCKET_TYPE_TCP, g_fhandle);//借用
+	}
+}
+
+void if_mc_arm()
+{
+//被借用
+}
+
+void if_mc_disarm()
+{
+//被借用
 }
 
 void if_contrl_system_shutdown()
@@ -774,6 +799,7 @@ void *WinMainThreadFn(void *pvThreadParam)
 
 	if (pServerNode->m_bDoConnection1) {
 		log_msg("DoUnregister()...", LOG_LEVEL_INFO);
+		pServerNode->m_bExit = TRUE;
 #ifdef WIN32
 		::CreateThread(NULL,0,UnregisterThreadFn,(void *)pServerNode,0,&dwThreadID);
 #else
@@ -798,7 +824,8 @@ void *UnregisterThreadFn(void *pvThreadParam)
 #endif
 {
 	SERVER_NODE* pServerNode = (SERVER_NODE*)pvThreadParam;
-	CtrlCmd_TOPO_DROP(SOCKET_TYPE_TCP, g_fhandle, ROUTE_ITEM_TYPE_GUAJINODE, pServerNode->myHttpOperate.m0_node_id);
+	BYTE is_connected = (pServerNode->m_bExit ? 0 : 1);
+	CtrlCmd_TOPO_DROP(SOCKET_TYPE_TCP, g_fhandle, is_connected, ROUTE_ITEM_TYPE_GUAJINODE, pServerNode->myHttpOperate.m0_node_id);
 	return 0;
 }
 
@@ -1334,21 +1361,6 @@ void DShowAV_Contrl(SERVER_NODE* pServerNode, WORD contrl, DWORD contrl_param)
 	}
 }
 
-void if_mc_arm()
-{
-	if (INVALID_SOCKET != g_fhandle)
-	{
-		CtrlCmd_ARM(SOCKET_TYPE_TCP, g_fhandle);
-	}
-}
-
-void if_mc_disarm()
-{
-	if (INVALID_SOCKET != g_fhandle)
-	{
-		CtrlCmd_DISARM(SOCKET_TYPE_TCP, g_fhandle);
-	}
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -1376,6 +1388,7 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 	WORD wCommand;
 	DWORD dwDataLength;
 	WORD wTemp;
+	BYTE is_connected;
 	BYTE node_type;
 	BYTE source_node_id[6];
 	BYTE dest_node_id[6];
@@ -1605,6 +1618,13 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 					bQuitLoop = TRUE;
 					break;
 				}
+				is_connected = *(BYTE *)buff;
+
+				ret = RecvStream(type, fhandle, buff, 1);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
 				node_type = *(BYTE *)buff;
 
 				ret = RecvStream(type, fhandle, buff, 6);
@@ -1614,7 +1634,7 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 				}
 				memcpy(object_node_id, buff, 6);
 
-				CtrlCmd_TOPO_DROP(SOCKET_TYPE_TCP, g_fhandle, node_type, object_node_id);
+				CtrlCmd_TOPO_DROP(SOCKET_TYPE_TCP, g_fhandle, is_connected, node_type, object_node_id);
 
 				break;
 

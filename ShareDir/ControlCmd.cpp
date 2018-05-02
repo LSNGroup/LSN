@@ -384,19 +384,20 @@ int CtrlCmd_TOPO_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, 
 	return ret;
 }
 
-int CtrlCmd_TOPO_DROP(SOCKET_TYPE type, SOCKET fhandle, BYTE node_type, BYTE *node_id)
+int CtrlCmd_TOPO_DROP(SOCKET_TYPE type, SOCKET fhandle, BYTE is_connected, BYTE node_type, BYTE *node_id)
 {
 	int ret;
 	char bSendPacket[32];
 
 	memset(bSendPacket, 0, sizeof(bSendPacket));
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_TOPO_DROP));
-	pf_set_dword(bSendPacket + 2, htonl(1 + 6));
-	*(BYTE *)(bSendPacket + 6) = node_type;
-	memcpy(bSendPacket + 7, node_id, 6);
+	pf_set_dword(bSendPacket + 2, htonl(1 + 1 + 6));
+	*(BYTE *)(bSendPacket + 6) = is_connected;
+	*(BYTE *)(bSendPacket + 7) = node_type;
+	memcpy(bSendPacket + 8, node_id, 6);
 	
 	pthread_mutex_lock(getMutexSend(type));
-	ret = SendStream(type, fhandle, bSendPacket, 6+1+6);
+	ret = SendStream(type, fhandle, bSendPacket, 6+1+1+6);
 	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }

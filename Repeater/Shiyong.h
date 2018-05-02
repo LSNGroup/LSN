@@ -10,7 +10,6 @@
 
 
 #define MAX_TOPO_LEVEL			4
-#define BANDWIDTH_PER_STREAM	260 // KB/s
 
 
 
@@ -36,6 +35,8 @@ typedef struct _tag_topo_route_item {
 			int  nat_type;
 		}node_nat_info;
 		struct {
+			int connected_viewer_nodes;
+			int unconnected_guaji_nodes;
 			int device_free_streams;
 			char device_node_str[200];  //device_uuid|node_name|version|os_info
 		}device_info;
@@ -43,6 +44,20 @@ typedef struct _tag_topo_route_item {
 	int nID;
 	BOOL bUsing;
 } TOPO_ROUTE_ITEM;
+
+
+
+#define MAX_CONNECTING_EVENT_NUM	10
+
+typedef struct _tag_connecting_event_item {
+	BYTE viewer_owner_node_id[6];
+	BYTE viewer_node_id[6];
+	BYTE guaji_node_id[6];
+	DWORD create_time;
+	BOOL switch_after_connected;
+	int nID;
+	BOOL bUsing;
+} CONNECTING_EVENT_ITEM;
 
 
 
@@ -110,10 +125,16 @@ public:
 	BYTE device_topo_level;
 	BYTE device_node_id[6];
 	int device_max_streams;
+	CONNECTING_EVENT_ITEM connecting_event_table[MAX_CONNECTING_EVENT_NUM];
 	TOPO_ROUTE_ITEM device_route_table[MAX_ROUTE_ITEM_NUM];
 	pthread_mutex_t route_table_csec;
 
 	BOOL ShouldDoHttpOP();
+	BOOL ShouldDoAdjustAndOptimize();
+
+	int FindConnectingItemViewerOwnerNode(BYTE *node_id);
+	int FindConnectingItemViewerNode(BYTE *node_id);
+	int FindConnectingItemGuajiNode(BYTE *node_id);
 
 	int FindViewerNode(BYTE *viewer_node_id);
 	int FindTopoRouteItem(BYTE *dest_node_id);
@@ -121,7 +142,15 @@ public:
 	int FindRouteNode_NoLock(BYTE *node_id);
 	void DropRouteItem(BYTE node_type, BYTE *node_id);
 	void CheckTopoRouteTable();
+	int FindUncleGuajiNode_NoLock(int father_topo_level, BYTE *father_device_node_id, int *device_free_streams);
+	int FindDeviceFreeViewerNode_NoLock(BYTE *device_node_id);
+	void AdjustTopoStructure();////
+	int FindLevelHeaviestStreamDeviceNode_NoLock(int topo_level);
+	int FindTheOtherViewerFatherDevieFreeStreams_NoLock(BYTE *viewer_node_id);
+	void OptimizeStreamPath();////
 	int UpdateRouteTable(int guajiIndex, char *report_string);
+	int GetConnectedViewerNodes();
+	int GetUnconnectedGuajiNodes();
 	int GetDeviceFreeStreams();
 	int DeviceTopoReport();
 

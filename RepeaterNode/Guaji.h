@@ -11,6 +11,8 @@
 
 typedef struct _tag_server_node {
 
+	BOOL m_bExit;
+
 	HttpOperate myHttpOperate;
 	
 	BOOL m_bConnected;

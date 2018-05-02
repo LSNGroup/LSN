@@ -317,7 +317,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 				break;
 			}
 
-			ParseTopoSettings((const char *)pRecvData);
+			g_pServerNode->myHttpOperate.ParseTopoSettings((const char *)pRecvData);
 
 			if (g_pServerNode->m_bConnected == TRUE && g_is_topo_primary) {
 				CtrlCmd_TOPO_SETTINGS(g_pServerNode->myHttpOperate.m1_use_sock_type, g_pServerNode->myHttpOperate.m1_use_udt_sock, g_device_topo_level, (const char *)pRecvData);;

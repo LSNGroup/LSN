@@ -209,6 +209,16 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 				strncpy(CONNECT_PASSWORD, "123456", sizeof(CONNECT_PASSWORD));
 				strncpy(g_tcp_address, "127.0.0.1", sizeof(g_tcp_address));
 
+				for (int i = 0; i < 20; i++)
+				{
+					usleep(500*1000);
+					if (g1_bandwidth_per_stream != BANDWIDTH_PER_STREAM_UNKNOWN) {
+						break;
+					}
+				}
+				if (g1_bandwidth_per_stream == BANDWIDTH_PER_STREAM_UNKNOWN) {
+					g1_bandwidth_per_stream = BANDWIDTH_PER_STREAM_DEFAULT;
+				}
 				g_pShiyong->device_max_streams = 3;//²âËÙ¡£¡£¡£
 				MAX_SERVER_NUM = g_pShiyong->device_max_streams * 2;
 				
