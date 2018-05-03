@@ -5,7 +5,7 @@
 #include "CommonLib.h"
 
 
-#define DEFAULT_HTTP_SERVER		"www.e2eye.com"
+#define DEFAULT_HTTP_SERVER		"www.lsnet.io"
 #define DEFAULT_STUN_SERVER		"Unknown" /* 可以用来测试是否可以访问HTTP Server */
 #define HTTP_SERVER_PORT		80
 

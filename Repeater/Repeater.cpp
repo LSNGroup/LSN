@@ -91,12 +91,12 @@ static void UiLoop(void)
 			printf("Current source index: %d \n", g_pShiyong->currentSourceIndex);
 			printf("Joined channel id: %ld \n", g_pShiyong->joined_channel_id);
 			printf("Device topo level: %d \n", g_pShiyong->device_topo_level);
-			printf("---------------------------------------------------------------\n");
+			printf("-------------------------------------------------------------------------\n");
 			for (int i = 0; i < MAX_VIEWER_NUM; i++)
 			{
 				printf("  ViewerNode %d(port%d), bUsing=%d  bConnecting=%d  bConnected=%d  bTopoPrimary=%d  \n", i, g_pShiyong->viewerArray[i].httpOP.m0_p2p_port, g_pShiyong->viewerArray[i].bUsing, g_pShiyong->viewerArray[i].bConnecting, g_pShiyong->viewerArray[i].bConnected, g_pShiyong->viewerArray[i].bTopoPrimary);
 			}
-			printf("---------------------------------------------------------------\n");
+			printf("-------------------------------------------------------------------------\n");
 			printf("\nGuajiNodes=%d, connected_av=%d\n", MAX_SERVER_NUM, GetAvClientsCount());
 		}
 		else if (strncmp(cmd, "s ", 2) == 0)
@@ -205,9 +205,13 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 				strncpy(SERVER_TYPE, "TREE", sizeof(SERVER_TYPE));
 #endif
 				UUID_EXT = 1;
-				strncpy(NODE_NAME, "Node Name", sizeof(NODE_NAME));
+				strncpy(NODE_NAME, "NodeName", sizeof(NODE_NAME));
 				strncpy(CONNECT_PASSWORD, "123456", sizeof(CONNECT_PASSWORD));
 				strncpy(g_tcp_address, "127.0.0.1", sizeof(g_tcp_address));
+
+
+				g_pShiyong = new CShiyong();
+				g_pShiyong->OnInit();
 
 				for (int i = 0; i < 20; i++)
 				{
@@ -215,6 +219,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 					if (g1_bandwidth_per_stream != BANDWIDTH_PER_STREAM_UNKNOWN) {
 						break;
 					}
+					printf("Waiting for parameter bandwidth_per_stream...\n");
 				}
 				if (g1_bandwidth_per_stream == BANDWIDTH_PER_STREAM_UNKNOWN) {
 					g1_bandwidth_per_stream = BANDWIDTH_PER_STREAM_DEFAULT;
@@ -222,6 +227,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 				g_pShiyong->device_max_streams = 3;//测速。。。
 				MAX_SERVER_NUM = g_pShiyong->device_max_streams * 2;
 				
+				//字符串参数，如NODE_NAME，不能包含空格！！！因为RepeaterNode用sscanf()解析参数。
 				printf("Online type(%s)-%d num(%d) name(%s) pass(%s) tcp_addr(%s)...\n", SERVER_TYPE, UUID_EXT, MAX_SERVER_NUM, NODE_NAME, CONNECT_PASSWORD, g_tcp_address);
 
 				StartServerProcesses();
@@ -229,6 +235,12 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 		}//////////////////////////////////////////////////////////////
 
 		UiLoop();
+
+		if (NULL != g_pShiyong)
+		{
+			delete g_pShiyong;
+			g_pShiyong = NULL;
+		}
 
 
 		CtrlCmd_Uninit();

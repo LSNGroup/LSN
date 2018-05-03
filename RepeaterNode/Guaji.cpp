@@ -443,8 +443,7 @@ static void InitVar()
 	int ret;
 
 	ret = if_get_device_uuid(g0_device_uuid, sizeof(g0_device_uuid));
-	log_msg("InitVar: if_get_device_uuid() = ", LOG_LEVEL_DEBUG);
-	log_msg(g0_device_uuid, LOG_LEVEL_DEBUG);
+	log_msg_f(LOG_LEVEL_DEBUG, "InitVar: if_get_device_uuid() = %s", g0_device_uuid);
 
 	//GetOsInfo(g0_os_info, sizeof(g0_os_info));
 
@@ -485,9 +484,6 @@ void *WinMainThreadFn(void *pvThreadParam)
 	SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_VERSION, (DWORD)MYSELF_VERSION);
 	SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_STOPFLAG, (DWORD)0);
 
-	SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_CAMID, 0);
-	SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_CAMID_EXP, 0);
-
 #ifdef WIN32
 	hThread2 = ::CreateThread(NULL,0,WorkingThreadFn2,(void *)pServerNode,0,&dwThreadID2);
 	if (hThread2 == NULL)
@@ -499,6 +495,9 @@ void *WinMainThreadFn(void *pvThreadParam)
 		log_msg("Create WorkingThread2 failed!", LOG_LEVEL_ERROR);
 	}
 
+
+	ret = pServerNode->myHttpOperate.DoRegister1("gbk", "zh");
+	log_msg_f(LOG_LEVEL_DEBUG, "DoRegister1() = %d", ret);
 
 	while (1)
 	{

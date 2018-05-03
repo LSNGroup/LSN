@@ -12,6 +12,7 @@
 #include "base64.h"
 #include "Discovery.h"
 #include "Eloop.h"
+#include "LogMsg.h"
 #include "PacketRepeater.h"
 
 
@@ -73,7 +74,7 @@ static void HandleKeepLoop(void *eloop_ctx, void *timeout_ctx)
 		if (now - lastDoReportTime >= g1_register_period)
 		{
 			lastDoReportTime = now;
-			HttpOperate::DoReport2("gbk", "zh", g_pShiyong->joined_channel_id, g_pShiyong->joined_node_id, 
+			int ret = HttpOperate::DoReport2("gbk", "zh", g_pShiyong->joined_channel_id, g_pShiyong->joined_node_id, 
 				g_pShiyong->get_level_device_num(1) + g_pShiyong->get_level_device_num(2) + g_pShiyong->get_level_device_num(3) + g_pShiyong->get_level_device_num(4),
 				g_pShiyong->get_viewer_grow_rate(),
 				g0_device_uuid, g_pShiyong->get_public_ip(), g_pShiyong->device_node_id, 
@@ -83,6 +84,8 @@ static void HandleKeepLoop(void *eloop_ctx, void *timeout_ctx)
 				g_pShiyong->get_level_max_connections(3), g_pShiyong->get_level_current_connections(3), g_pShiyong->get_level_max_streams(3), g_pShiyong->get_level_current_streams(3),
 				g_pShiyong->get_level_max_connections(4), g_pShiyong->get_level_current_connections(4), g_pShiyong->get_level_max_streams(4), g_pShiyong->get_level_current_streams(4),
 				g_pShiyong->get_node_array(), OnReportSettings, OnReportEvent);
+			
+			log_msg_f(LOG_LEVEL_DEBUG, "DoReport2()=%d\n", ret);
 		}
 	}
 
@@ -138,7 +141,8 @@ static void HandleDoUnregister(void *eloop_ctx, void *timeout_ctx)
 
 	if (g_pShiyong->ShouldDoHttpOP())//Root Node, DoDrop()
 	{
-		HttpOperate::DoDrop("gbk", "zh", g_pShiyong->device_node_id, (node_type == ROUTE_ITEM_TYPE_VIEWERNODE), object_node_id);
+		int ret = HttpOperate::DoDrop("gbk", "zh", g_pShiyong->device_node_id, (node_type == ROUTE_ITEM_TYPE_VIEWERNODE), object_node_id);
+		log_msg_f(LOG_LEVEL_DEBUG, "DoDrop()=%d\n", ret);
 	}
 	else
 	{//优先选择Primary通道，向上转发。。。
@@ -174,7 +178,7 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 	{
 		ret = CheckStunMyself(g1_http_server, pViewerNode->httpOP.m0_p2p_port, &mapped, &bNoNAT, &nNatType, &(pViewerNode->httpOP.m0_net_time));
 		if (ret == -1) {
-		   TRACE("CheckStunMyself: fialed!\n");
+		   log_msg_f(LOG_LEVEL_ERROR, "CheckStunMyself: fialed!\n");
 
 		   mapped.addr = ntohl(pViewerNode->httpOP.m1_http_client_ip);
 		   mapped.port = pViewerNode->httpOP.m0_p2p_port;
@@ -192,12 +196,12 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 		      nNatType = StunTypeIndependentFilter;
 		   }
 		   
-			SetStatusInfo(pDlgWnd, "本端NAT探测成功! - CheckStunHttp");
+			log_msg_f(LOG_LEVEL_INFO, "本端NAT探测成功! - CheckStunHttp");
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
 			pViewerNode->httpOP.m0_nat_type = nNatType;
-			TRACE("CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
+			log_msg_f(LOG_LEVEL_DEBUG, "CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
 				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
 				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
 				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
@@ -205,12 +209,12 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 				pViewerNode->httpOP.m0_pub_port,  pViewerNode->httpOP.m0_no_nat ? 1 : 0);
 		}
 		else {
-			SetStatusInfo(pDlgWnd, "本端NAT探测成功!");
+			log_msg_f(LOG_LEVEL_INFO, "本端NAT探测成功! - CheckStunMyself");
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
 			pViewerNode->httpOP.m0_nat_type = nNatType;
-			TRACE("CheckStunMyself: %d.%d.%d.%d[%d]\n", 
+			log_msg_f(LOG_LEVEL_DEBUG, "CheckStunMyself: %d.%d.%d.%d[%d]\n", 
 				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
 				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
 				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
@@ -222,7 +226,7 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 	{
 		ret = CheckStun(g1_stun_server, pViewerNode->httpOP.m0_p2p_port, &mapped, &bNoNAT, &nNatType);
 		if (ret == -1) {
-		   TRACE("CheckStun: fialed!\n");
+		   log_msg_f(LOG_LEVEL_ERROR, "CheckStun: fialed!\n");
 
 		   mapped.addr = ntohl(pViewerNode->httpOP.m1_http_client_ip);
 		   mapped.port = pViewerNode->httpOP.m0_p2p_port;
@@ -240,12 +244,12 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 		      nNatType = StunTypeIndependentFilter;
 		   }
 		   
-			SetStatusInfo(pDlgWnd, "本端NAT探测成功! - CheckStunHttp");
+			log_msg_f(LOG_LEVEL_INFO, "本端NAT探测成功! - CheckStunHttp");
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
 			pViewerNode->httpOP.m0_nat_type = nNatType;
-			TRACE("CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
+			log_msg_f(LOG_LEVEL_DEBUG, "CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
 				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
 				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
 				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
@@ -253,20 +257,20 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 				pViewerNode->httpOP.m0_pub_port,  pViewerNode->httpOP.m0_no_nat ? 1 : 0);
 		}
 		else if (ret == 0) {
-			SetStatusInfo(pDlgWnd, "本端NAT无法穿透!!!您的网络环境可能封锁了UDP通信。");
+			log_msg_f(LOG_LEVEL_WARNING, "本端NAT无法穿透!!!您的网络环境可能封锁了UDP通信。");
 			pViewerNode->httpOP.m0_pub_ip = 0;
 			pViewerNode->httpOP.m0_pub_port = 0;
 			pViewerNode->httpOP.m0_no_nat = FALSE;
 			pViewerNode->httpOP.m0_nat_type = nNatType;
 		}
 		else {
-			SetStatusInfo(pDlgWnd, "本端NAT探测成功!");
+			log_msg_f(LOG_LEVEL_INFO, "本端NAT探测成功! - CheckStun");
 			pViewerNode->bFirstCheckStun = FALSE;
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
 			pViewerNode->httpOP.m0_nat_type = nNatType;
-			TRACE("CheckStun: %d.%d.%d.%d[%d]\n", 
+			log_msg_f(LOG_LEVEL_DEBUG, "CheckStun: %d.%d.%d.%d[%d]\n", 
 				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
 				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
 				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
@@ -278,7 +282,7 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 		TRACE("CheckStunSimple......\n");
 		ret = CheckStunSimple(g1_stun_server, pViewerNode->httpOP.m0_p2p_port, &mapped);
 		if (ret == -1) {
-			TRACE("CheckStunSimple: fialed!\n");
+			log_msg_f(LOG_LEVEL_ERROR, "CheckStunSimple: fialed!\n");
 			mapped.addr = ntohl(pViewerNode->httpOP.m1_http_client_ip);
 			mapped.port = pViewerNode->httpOP.m0_p2p_port;
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
@@ -287,7 +291,7 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 		else {
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
-			TRACE("CheckStunSimple: %d.%d.%d.%d[%d]\n", 
+			log_msg_f(LOG_LEVEL_DEBUG, "CheckStunSimple: %d.%d.%d.%d[%d]\n", 
 				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
 				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
 				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
@@ -306,7 +310,7 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 	/* Local IP Address */
 	ipCountTemp = MAX_ADAPTER_NUM;
 	if (GetLocalAddress(ipArrayTemp, &ipCountTemp) != NO_ERROR) {
-		TRACE("GetLocalAddress: fialed!\n");
+		log_msg_f(LOG_LEVEL_ERROR, "GetLocalAddress: fialed!\n");
 	}
 	else {
 		pViewerNode->httpOP.m0_ipCount = ipCountTemp;
@@ -1287,7 +1291,7 @@ static void InitVar()
 
 CShiyong::CShiyong()
 {
-	usleep(200*1000);//等待Repeater中全局初始化完成！！！
+	log_msg("CShiyong()...\n", LOG_LEVEL_DEBUG);
 
 	m_bQuit = FALSE;
 	m_hThread = NULL;
@@ -1343,9 +1347,9 @@ CShiyong::CShiyong()
 		connecting_event_table[i].nID = -1;
 	}
 
-	g_pShiyong = this;
+	//g_pShiyong = this;
 
-	OnInit();
+	//OnInit();
 }
 
 CShiyong::~CShiyong()
@@ -1357,14 +1361,15 @@ CShiyong::~CShiyong()
 
 	pthread_mutex_destroy(&route_table_csec);
 
-	g_pShiyong = NULL;
+	//g_pShiyong = NULL;
 }
 
 BOOL CShiyong::OnInit()
 {
 	InitVar();
 
-	HttpOperate::DoReport1("gbk", "zh", OnReportSettings);
+	int ret = HttpOperate::DoReport1("gbk", "zh", OnReportSettings);
+	log_msg_f(LOG_LEVEL_DEBUG, "DoReport1()=%d\n", ret);
 
 #ifdef WIN32
 	DWORD dwThreadID;
@@ -2845,7 +2850,3 @@ void CShiyong::DoExit()
 	}
 }
 
-
-///////////////////////////////////////////////////////
-
-CShiyong  the_shiyong;

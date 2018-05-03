@@ -17,16 +17,13 @@
 #define MAX_NOTIFICATION_NUM	15
 #define UDT_CONNECT_TIMES		1
 #define UDT_ACCEPT_TIME			15  /* seconds */
-#define FIRST_CONNECT_PORT		8848
-#define SECOND_CONNECT_PORT		8846
+#define FIRST_CONNECT_PORT		3478
+#define SECOND_CONNECT_PORT		3476
 
 #define VNC_SERVER_PORT			5901
 #define WEBMONI_SERVER_PORT		22
 #define ADB_SERVER_PORT			5555
 #define LOCAL_PORT_BASE			10000
-
-#define SYS_TEMP_USER			"Assistant"
-#define SYS_TEMP_PASSWORD		"ykz123"
 
 #define REPEATER_PASSWORD		"repeaterpassword"
 
