@@ -94,10 +94,10 @@ static void UiLoop(void)
 			printf("-------------------------------------------------------------------------\n");
 			for (int i = 0; i < MAX_VIEWER_NUM; i++)
 			{
-				printf("  ViewerNode %d(port%d), bUsing=%d  bConnecting=%d  bConnected=%d  bTopoPrimary=%d  \n", i, g_pShiyong->viewerArray[i].httpOP.m0_p2p_port, g_pShiyong->viewerArray[i].bUsing, g_pShiyong->viewerArray[i].bConnecting, g_pShiyong->viewerArray[i].bConnected, g_pShiyong->viewerArray[i].bTopoPrimary);
+				printf("  ViewerNode %d(port%d), bUsing=%d  bConnecting=%d  bConnected=%d  bTopoPrimary=%d  \n", i, g_pShiyong->viewerArray[i].httpOP.m0_p2p_port, (g_pShiyong->viewerArray[i].bUsing ? 1 : 0), (g_pShiyong->viewerArray[i].bConnecting ? 1 : 0), (g_pShiyong->viewerArray[i].bConnected ? 1 : 0), (g_pShiyong->viewerArray[i].bTopoPrimary ? 1 : 0));
 			}
 			printf("-------------------------------------------------------------------------\n");
-			printf("\nGuajiNodes=%d, connected_av=%d\n", MAX_SERVER_NUM, GetAvClientsCount());
+			printf("\n max_connections=%d  current_connections=%d  max_streams=%d  current_streams=%d\n", MAX_SERVER_NUM, MAX_SERVER_NUM - g_pShiyong->GetUnconnectedGuajiNodes(), g_pShiyong->device_max_streams, GetAvClientsCount());
 		}
 		else if (strncmp(cmd, "s ", 2) == 0)
 		{
@@ -205,7 +205,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 				strncpy(SERVER_TYPE, "TREE", sizeof(SERVER_TYPE));
 #endif
 				UUID_EXT = 1;
-				strncpy(NODE_NAME, "NodeName", sizeof(NODE_NAME));
+				strncpy(NODE_NAME, "GuajiNodeName", sizeof(NODE_NAME));
 				strncpy(CONNECT_PASSWORD, "123456", sizeof(CONNECT_PASSWORD));
 				strncpy(g_tcp_address, "127.0.0.1", sizeof(g_tcp_address));
 

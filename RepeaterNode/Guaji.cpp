@@ -187,11 +187,11 @@ _RETRY:
 	}
 
 	if (pLoopAdapter != NULL) {
-		_snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@1", 
+		_snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@%d", 
 			SERVER_TYPE,
 			pLoopAdapter->Address[0], pLoopAdapter->Address[1], pLoopAdapter->Address[2], 
 			pLoopAdapter->Address[3], pLoopAdapter->Address[4], pLoopAdapter->Address[5],
-			UUID_EXT);
+			UUID_EXT, UUID_EXT);
 		//保存到注册表
 		SaveSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID, buff);
 	}
@@ -268,7 +268,7 @@ int if_read_nodename(char *buff, int size)
 // -1: NG
 int if_read_emailaddr(char *buff, int size)
 {
-	strcpy(buff, "repeater@rouji.com");
+	strcpy(buff, "repeater@lsnet.io");
 	return 0;
 }
 
@@ -277,92 +277,41 @@ int if_read_emailaddr(char *buff, int size)
 // -1: NG
 int if_get_osinfo(char *buff, int size)
 {
-	char pass[MAX_PATH];
-	if_read_password(pass, MAX_PATH);
-	if (strlen(pass) == 0)
-	{
-		strcpy(pass, "NONE");
-	}
-	std::string pass2 = Base64::encodeFromArray(pass, strlen(pass));
-	int str_len = pass2.length();
-	unsigned int temp = (unsigned int)time(NULL);
-	srand(temp);
-	pass[0] = pass2[abs(rand()) % (str_len-1)];
-	pass[1] = pass2[abs(rand()) % (str_len-1)];
-	strncpy(pass + 2, pass2.c_str(), MAX_PATH - 2);
+	GetOsInfo(buff, size);
 
-
-	char szEmail[MAX_PATH];
-	if_read_emailaddr(szEmail, MAX_PATH);
-	
 	char *p;
-	p = strchr(szEmail, '@');
-	while (p != NULL)
-	{
-		*p = '#';
-		p = strchr(szEmail, '@');
-	}
-	p = strchr(szEmail, '-');
+	p = strchr(buff, '.');
 	while (p != NULL)
 	{
 		*p = ' ';
-		p = strchr(szEmail, '-');
+		p = strchr(buff, '.');
 	}
-	p = strchr(szEmail, '+');
+	p = strchr(buff, '-');
 	while (p != NULL)
 	{
 		*p = ' ';
-		p = strchr(szEmail, '+');
+		p = strchr(buff, '-');
 	}
-	p = strchr(szEmail, '&');
+	p = strchr(buff, '_');
 	while (p != NULL)
 	{
 		*p = ' ';
-		p = strchr(szEmail, '&');
+		p = strchr(buff, '_');
 	}
-	p = strchr(szEmail, '\r');
+	p = strchr(buff, '+');
 	while (p != NULL)
 	{
 		*p = ' ';
-		p = strchr(szEmail, '\r');
+		p = strchr(buff, '+');
 	}
-	p = strchr(szEmail, '\n');
+	p = strchr(buff, '&');
 	while (p != NULL)
 	{
 		*p = ' ';
-		p = strchr(szEmail, '\n');
+		p = strchr(buff, '&');
 	}
 
-
-	if (strcmp(SERVER_TYPE, "ANYPC") == 0) {
-
-		DWORD cap_num,is_overlay,cap_width,cap_height;
-
-		cap_num=1;
-		is_overlay=1;
-		cap_width  = g_video_width;
-		cap_height = g_video_height;
-
-		snprintf(buff, size, "Windows@%d@%d@%d@%d@%s@NONE@NONE@%s", cap_num,is_overlay,cap_width,cap_height,pass,szEmail);
-	}
-	else {
-		char szInfo[MAX_PATH];
-		strcpy(szInfo, "Android-()");
-
-		char szGPSLongi[32];
-		char szGPSLati[32];
-		strcpy(szGPSLongi, "0.000000");
-		strcpy(szGPSLati,  "0.000000");
-
-		snprintf(buff, size, "%s@%s@%s@%s@NONE@NONE@%s", szInfo,szGPSLongi,szGPSLati,pass,szEmail);
-		//__android_log_print(ANDROID_LOG_INFO, "mobcam_if", "osinfo:(%s)", buff);
-	}
 	return 0;
-}
-
-//Register Result
-void if_on_register_result(int comments_id, bool approved)
-{
 }
 
 void if_on_client_connected(SERVER_NODE* pServerNode)
@@ -496,9 +445,6 @@ void *WinMainThreadFn(void *pvThreadParam)
 	}
 
 
-	ret = pServerNode->myHttpOperate.DoRegister1("gbk", "zh");
-	log_msg_f(LOG_LEVEL_DEBUG, "DoRegister1() = %d", ret);
-
 	while (1)
 	{
 		now_time = time(NULL);
@@ -508,6 +454,10 @@ void *WinMainThreadFn(void *pvThreadParam)
 		last_register_time = time(NULL);
 
 		if (pServerNode->m_InConnection2) {
+			continue;
+		}
+
+		if (strcmp(g1_stun_server, DEFAULT_STUN_SERVER) == 0) {//等待IPC通道收到Settings
 			continue;
 		}
 

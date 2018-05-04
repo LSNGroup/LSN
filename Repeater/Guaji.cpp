@@ -171,16 +171,26 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 					break;
 				}
 
-				if (dwDataLength - 12 <= sizeof(pServerPorcess->m_ipcReport)) {
-					ret = RecvStream(type, fhandle, pServerPorcess->m_ipcReport, dwDataLength - 12);
+				snprintf(pServerPorcess->m_szReport, sizeof(pServerPorcess->m_szReport), 
+					"row=%d"//"node_type=%d"
+					"|%d"//"&topo_level=%d"
+					"|%02X-%02X-%02X-%02X-%02X-%02X"//"&owner_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+					"|"
+					,
+					ROUTE_ITEM_TYPE_GUAJINODE,
+					g_pShiyong->device_topo_level,
+					g_pShiyong->device_node_id[0],g_pShiyong->device_node_id[1],g_pShiyong->device_node_id[2],g_pShiyong->device_node_id[3],g_pShiyong->device_node_id[4],g_pShiyong->device_node_id[5]);
+
+
+				if (dwDataLength - 12 + strlen(pServerPorcess->m_szReport) <= sizeof(pServerPorcess->m_szReport)) {
+					ret = RecvStream(type, fhandle, pServerPorcess->m_szReport + strlen(pServerPorcess->m_szReport), dwDataLength - 12);
+					if (ret == 0) {
+						strcat(pServerPorcess->m_szReport, "\n");
+						g_pShiyong->UpdateRouteTable(pServerPorcess->m_nIndex, pServerPorcess->m_szReport);
+					}
 				}
 				else {
-					ret = RecvStream(type, fhandle, pServerPorcess->m_ipcReport, sizeof(pServerPorcess->m_ipcReport));
-					pServerPorcess->m_ipcReport[sizeof(pServerPorcess->m_ipcReport) - 1] = '\0';
-					for (int i = 0; i < (dwDataLength - 12) - sizeof(pServerPorcess->m_ipcReport); i++)
-					{
-						RecvStream(type, fhandle, buff, 1);
-					}
+					log_msg_f(LOG_LEVEL_ERROR, "OnIpcMsg: m_szReport overflow!!!");
 				}
 
 				break;
@@ -494,11 +504,8 @@ void StartServerProcesses()
 	}
 
 	arrServerProcesses = (SERVER_PROCESS_NODE *)malloc(sizeof(SERVER_PROCESS_NODE) * MAX_SERVER_NUM);
-
 	for (int i = 0; i < MAX_SERVER_NUM; i++ )
 	{
-		printf("ServerProcessNode %d online...\n", i+1);
-
 		arrServerProcesses[i].m_nIndex = i;
 
 		arrServerProcesses[i].m_fhandle = INVALID_SOCKET;
@@ -509,6 +516,12 @@ void StartServerProcesses()
 		arrServerProcesses[i].m_bVideoEnable = FALSE;
 		arrServerProcesses[i].m_bAudioEnable = FALSE;
 		arrServerProcesses[i].m_bTLVEnable = FALSE;
+	}
+
+
+	for (int i = 0; i < MAX_SERVER_NUM; i++ )
+	{
+		printf("ServerProcessNode %d online...\n", i+1);
 
 		char szExeCmd[MAX_PATH];
 		int p2p_port = FIRST_CONNECT_PORT + i*4;

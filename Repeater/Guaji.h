@@ -14,9 +14,9 @@ typedef struct _tag_server_process_node {
 	SOCKET m_fhandle;
 
 	BYTE m_node_id[6];
-	char m_ipcReport[512];
+	char m_szReport[512];//row=node_type|topo_level|...\n
 
-	BOOL m_bConnected;
+	BOOL m_bConnected;//rudp client connected
 	BOOL m_bAVStarted;
 	
 	BOOL m_bVideoEnable;

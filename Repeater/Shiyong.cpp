@@ -16,6 +16,9 @@
 #include "PacketRepeater.h"
 
 
+#define LOG_MSG  1
+
+
 int g_video_width  = 640;
 int g_video_height = 480;
 int g_video_fps = 25;
@@ -362,6 +365,10 @@ void OnReportSettings(char *settings_str)
 
 	for (int i = 0; i < MAX_SERVER_NUM; i++)
 	{
+		if (arrServerProcesses == NULL) {
+			log_msg_f(LOG_LEVEL_WARNING, "OnReportSettings: Guaji processes not started!\n");
+			break;
+		}
 		int ret = CtrlCmd_TOPO_SETTINGS(SOCKET_TYPE_TCP, arrServerProcesses[i].m_fhandle, g_pShiyong->device_topo_level, (const char *)settings_str);
 		if (ret < 0) {
 			continue;
@@ -570,7 +577,7 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 					}
 				}
 			}
-			else {
+			else if (-1 == g_pShiyong->FindConnectingItemViewerNode(dest_node_id) && -1 == g_pShiyong->FindConnectingItemGuajiNode(dest_node_id)) {
 				index = g_pShiyong->FindTopoRouteItem(dest_node_id);
 				if (-1 != index)
 				{
@@ -634,7 +641,7 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 
 		default:
 #if LOG_MSG
-			log_msg("RecvSocketDataLoop: CMD_CODE_???????...\n", LOG_LEVEL_DEBUG);
+			log_msg_f(LOG_LEVEL_DEBUG, "RecvSocketDataLoop: CMD_CODE_???=0x%x, dwDataLength=%d\n", wCmd, copy_len);
 #endif
 			for (int i = 0; i < copy_len; i++) {
 				ret = RecvStream(ftype, fhandle, buf, 1);
@@ -1242,11 +1249,11 @@ _RETRY:
 	}
 
 	if (pLoopAdapter != NULL) {
-		_snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@1", 
+		_snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@%d", 
 			SERVER_TYPE,
 			pLoopAdapter->Address[0], pLoopAdapter->Address[1], pLoopAdapter->Address[2], 
 			pLoopAdapter->Address[3], pLoopAdapter->Address[4], pLoopAdapter->Address[5],
-			UUID_EXT);
+			UUID_EXT, UUID_EXT);
 		//保存到注册表
 		SaveSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID, buff);
 	}
@@ -1271,7 +1278,7 @@ static void InitVar()
 {
 	get_device_uuid(g0_device_uuid, sizeof(g0_device_uuid));
 
-	strncpy(g0_node_name,   "Windows Node Name", sizeof(g0_node_name));
+	strncpy(g0_node_name,   "DeviceNodeName", sizeof(g0_node_name));
 	GetOsInfo(g0_os_info, sizeof(g0_os_info));
 
 	g0_version = MYSELF_VERSION;
@@ -1659,8 +1666,18 @@ BOOL CShiyong::ShouldDoAdjustAndOptimize()
 // -1: Not exist
 int CShiyong::FindConnectingItemViewerOwnerNode(BYTE *node_id)
 {
+	DWORD now = time(NULL);
+
 	for (int i = 0; i < MAX_CONNECTING_EVENT_NUM; i++)
 	{
+		if (FALSE == connecting_event_table[i].bUsing) {
+			continue;
+		}
+		if (now - connecting_event_table[i].create_time > 60) {
+			connecting_event_table[i].bUsing = FALSE;
+			connecting_event_table[i].nID = -1;
+			continue;
+		}
 		if (memcmp(connecting_event_table[i].viewer_owner_node_id, node_id, 6) == 0) {
 			return i;
 		}
@@ -1671,8 +1688,18 @@ int CShiyong::FindConnectingItemViewerOwnerNode(BYTE *node_id)
 // -1: Not exist
 int CShiyong::FindConnectingItemViewerNode(BYTE *node_id)
 {
+	DWORD now = time(NULL);
+
 	for (int i = 0; i < MAX_CONNECTING_EVENT_NUM; i++)
 	{
+		if (FALSE == connecting_event_table[i].bUsing) {
+			continue;
+		}
+		if (now - connecting_event_table[i].create_time > 60) {
+			connecting_event_table[i].bUsing = FALSE;
+			connecting_event_table[i].nID = -1;
+			continue;
+		}
 		if (memcmp(connecting_event_table[i].viewer_node_id, node_id, 6) == 0) {
 			return i;
 		}
@@ -1683,8 +1710,18 @@ int CShiyong::FindConnectingItemViewerNode(BYTE *node_id)
 // -1: Not exist
 int CShiyong::FindConnectingItemGuajiNode(BYTE *node_id)
 {
+	DWORD now = time(NULL);
+
 	for (int i = 0; i < MAX_CONNECTING_EVENT_NUM; i++)
 	{
+		if (FALSE == connecting_event_table[i].bUsing) {
+			continue;
+		}
+		if (now - connecting_event_table[i].create_time > 60) {
+			connecting_event_table[i].bUsing = FALSE;
+			connecting_event_table[i].nID = -1;
+			continue;
+		}
 		if (memcmp(connecting_event_table[i].guaji_node_id, node_id, 6) == 0) {
 			return i;
 		}
@@ -2494,20 +2531,7 @@ int CShiyong::DeviceTopoReport()
 
 	for (i = 0; i < MAX_SERVER_NUM; i++)
 	{
-		snprintf(szTemp, sizeof(szTemp), 
-			"%d"//"node_type=%d"
-			"|%d"//"&topo_level=%d"
-			"|%02X-%02X-%02X-%02X-%02X-%02X"//"owner_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
-			"|%s"
-			,
-			ROUTE_ITEM_TYPE_GUAJINODE,
-			device_topo_level,
-			device_node_id[0],device_node_id[1],device_node_id[2],device_node_id[3],device_node_id[4],device_node_id[5],
-			arrServerProcesses[i].m_ipcReport);
-
-		strcat(report_string, "row=");
-		strcat(report_string, szTemp);
-		strcat(report_string, "\n");
+		strcat(report_string, arrServerProcesses[i].m_szReport);
 	}
 
 	for (i = 0; i < MAX_VIEWER_NUM; i++)
@@ -2589,6 +2613,54 @@ const char * CShiyong::get_node_array()
 
 	strcpy(s_node_array, "");
 
+	//首先处理本DeviceNode的ViewerNode。。。
+	for (int i = 0; i < MAX_VIEWER_NUM; i++)
+	{
+		if (viewerArray[i].bConnecting || viewerArray[i].bConnected) {
+			continue;
+		}
+		if (FindConnectingItemViewerNode(viewerArray[i].httpOP.m0_node_id) != -1) {
+			continue;
+		}
+		char szTemp[1024*2];
+		snprintf(szTemp, sizeof(szTemp), 
+			"%d"//"&topo_level=%d"
+			"|%d"//"&device_free_streams=%d"
+			"|%02X-%02X-%02X-%02X-%02X-%02X"//"      node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+			"|%d"//"&is_admin=%d"
+			"|%d"//"&is_busy=%d"
+			"|%s"//"&ip=%s"
+			"|%d"//"&port=%d"
+			"|%s"//"&pub_ip=%s"
+			"|%d"//"&pub_port=%d"
+			"|%d"//"&no_nat=%d"
+			"|%d"//"&nat_type=%d"
+			"|%s"//"&device_uuid=%s"
+			"|%s"//"&node_name=%s"
+			"|%ld"//"&version=%ld"
+			"|%s"//"&os_info=%s"
+			,
+			device_topo_level,
+			GetDeviceFreeStreams(),
+			viewerArray[i].httpOP.m0_node_id[0], viewerArray[i].httpOP.m0_node_id[1], viewerArray[i].httpOP.m0_node_id[2], viewerArray[i].httpOP.m0_node_id[3], viewerArray[i].httpOP.m0_node_id[4], viewerArray[i].httpOP.m0_node_id[5], 
+			1, 0,
+			viewerArray[i].httpOP.MakeIpStr(), viewerArray[i].httpOP.m0_port, viewerArray[i].httpOP.MakePubIpStr(), viewerArray[i].httpOP.m0_pub_port, 
+			(viewerArray[i].httpOP.m0_no_nat ? 1 : 0),
+			viewerArray[i].httpOP.m0_nat_type,
+			g0_device_uuid, UrlEncode(g0_node_name).c_str(), g0_version, g0_os_info);
+
+		if (s_node_array[0] !=  '\0') {
+			strcat(s_node_array, ";");
+		}
+		if (strlen(s_node_array) + strlen(szTemp) < sizeof(s_node_array)) {
+			strcat(s_node_array, szTemp);
+		}
+		else {
+			log_msg_f(LOG_LEVEL_ERROR, "s_node_array string buff overflow!!!\n");
+			break;
+		}
+	}
+
 	pthread_mutex_lock(&route_table_csec);////////
 
 	for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
@@ -2611,8 +2683,32 @@ const char * CShiyong::get_node_array()
 		}
 
 		int is_admin = (device_route_table[i].route_item_type == ROUTE_ITEM_TYPE_VIEWERNODE) ? 1 : 0;
+		int device_free_streams;
+		char szDeviceInfo[200];
 		int device_node_index = FindRouteNode_NoLock(device_route_table[i].owner_node_id);
-		int device_free_streams = device_node_index == -1 ? 0 : device_route_table[device_node_index].u.device_info.device_free_streams;
+		if (device_node_index == -1)
+		{
+			if (memcmp(device_route_table[i].owner_node_id, device_node_id, 6) == 0)
+			{
+				device_free_streams = this->GetDeviceFreeStreams();
+
+				snprintf(szDeviceInfo, sizeof(szDeviceInfo), 
+					"%s"//"&device_uuid=%s"
+					"|%s"//"&node_name=%s"
+					"|%ld"//"&version=%ld"
+					"|%s"//"&os_info=%s"
+					,
+					g0_device_uuid, UrlEncode(g0_node_name).c_str(), g0_version, g0_os_info);
+			} 
+			else {
+				device_free_streams = 0;
+				strcpy(szDeviceInfo, "");
+			}
+		}
+		else {
+			device_free_streams = device_route_table[device_node_index].u.device_info.device_free_streams;
+			strncpy(szDeviceInfo, device_route_table[device_node_index].u.device_info.device_node_str, sizeof(szDeviceInfo));
+		}
 
 		char szTemp[1024*2];
 		snprintf(szTemp, sizeof(szTemp), 
@@ -2638,16 +2734,16 @@ const char * CShiyong::get_node_array()
 			device_route_table[i].u.node_nat_info.pub_ip_str, device_route_table[i].u.node_nat_info.pub_port_str, 
 			(device_route_table[i].u.node_nat_info.no_nat ? 1 : 0),
 			device_route_table[i].u.node_nat_info.nat_type,
-			(device_node_index == -1 ? "" : device_route_table[device_node_index].u.device_info.device_node_str));
+			szDeviceInfo);
 
-		if (strlen(s_node_array) > 0) {
+		if (s_node_array[0] !=  '\0') {
 			strcat(s_node_array, ";");
 		}
 		if (strlen(s_node_array) + strlen(szTemp) < sizeof(s_node_array)) {
 			strcat(s_node_array, szTemp);
 		}
 		else {
-			printf("s_node_array string buff overflow!!!\n");
+			log_msg_f(LOG_LEVEL_ERROR, "s_node_array string buff overflow!!!\n");
 			break;
 		}
 	}

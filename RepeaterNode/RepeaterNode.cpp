@@ -221,13 +221,22 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	g_fhandle = fhandle;
 
 
-	StartAnyPC();
-
-
+/*
+	BYTE bZeroID[6] = {0, 0, 0, 0, 0, 0};
 	DWORD server_version;
 	BYTE func_flags;
 	WORD result_code;
-	CtrlCmd_HELLO(SOCKET_TYPE_TCP, g_fhandle, g_pServerNode->myHttpOperate.m0_node_id, g0_version, 1, "password", g_device_node_id, &server_version, &func_flags, &g_device_topo_level, &result_code);
+	ret = CtrlCmd_HELLO(SOCKET_TYPE_TCP, g_fhandle, bZeroID, g0_version, 1, "password", g_device_node_id, &server_version, &func_flags, &g_device_topo_level, &result_code);
+	log_msg_f(LOG_LEVEL_DEBUG, "CtrlCmd_HELLO: ret=%d, device_topo_level=%d, result_code=%d", ret, g_device_topo_level, result_code);
+	if (ret < 0)
+	{
+		closesocket(g_fhandle);
+		g_fhandle = INVALID_SOCKET;
+		goto _OUT;
+	}
+*/
+
+	StartAnyPC();
 
 
 	while (true)
@@ -246,9 +255,12 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 
 		wCmd = ntohs(pf_get_word(buf + 0));
 		copy_len = ntohl(pf_get_dword(buf + 2));
+		log_msg_f(LOG_LEVEL_DEBUG, "IPC Recv: wCmd=0x%x, dwDataLength=%d...", wCmd, copy_len);
+
 		if (wCmd == CMD_CODE_END)
 		{
 			log_msg("wCmd == CMD_CODE_END...", LOG_LEVEL_INFO);
+			break;
 		}
 		else if (wCmd == CMD_CODE_FAKERTP_RESP && copy_len != 0)
 		{
