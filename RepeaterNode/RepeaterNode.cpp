@@ -22,7 +22,7 @@ typedef enum _tag_audio_codec_type {
 
 
 
-TCHAR gszProgramName[MAX_PATH] = "WL_REPEATER";
+TCHAR gszProgramName[MAX_PATH] = "LSN_REPEATER";
 TCHAR gszProgramDir[MAX_PATH] = "";
 
 
@@ -31,7 +31,7 @@ void GetSoftwareKeyName(LPTSTR szKey, DWORD dwLen)
 	if(NULL == szKey || 0 == dwLen)
 		return;
 
-	_snprintf(szKey,dwLen,"Software\\%s", "WL_REPEATER");
+	_snprintf(szKey,dwLen,"Software\\%s", "LSN_REPEATER");
 }
 
 static void GetProgramDir(LPTSTR szDirectory, int nMaxChars)

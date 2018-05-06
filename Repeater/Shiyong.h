@@ -148,7 +148,7 @@ public:
 	int FindLevelHeaviestStreamDeviceNode_NoLock(int topo_level);
 	int FindTheOtherViewerFatherDevieFreeStreams_NoLock(BYTE *viewer_node_id);
 	void OptimizeStreamPath();////
-	int UpdateRouteTable(int guajiIndex, char *report_string);
+	int UpdateRouteTable(int guajiIndex, const char *report_string);
 	int GetConnectedViewerNodes();
 	int GetUnconnectedGuajiNodes();
 	int GetDeviceFreeStreams();
@@ -159,6 +159,8 @@ public:
 
 	int get_route_item_num();
 
+	int last_viewer_num_time;
+	int last_viewer_num;
 	int get_viewer_grow_rate();
 
 	int get_level_device_num(int topo_level);

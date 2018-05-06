@@ -203,6 +203,8 @@ HttpOperate::HttpOperate(BOOL is_admin, WORD p2p_port)
 	//每个HttpOperate实例有不一样的node_id
 	generate_nodeid(m0_node_id, sizeof(m0_node_id));
 
+	memset(m1_peer_node_id, 0, 6);
+
 	m0_pub_ip = 0;
 	m0_pub_port = 0;
 	m0_no_nat = FALSE;

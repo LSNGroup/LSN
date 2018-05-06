@@ -19,7 +19,7 @@
 
 
 
-TCHAR gszProgramName[MAX_PATH] = "WL_REPEATER";
+TCHAR gszProgramName[MAX_PATH] = "LSN_REPEATER";
 TCHAR gszProgramDir[MAX_PATH] = "";
 
 
@@ -28,7 +28,7 @@ void GetSoftwareKeyName(LPTSTR szKey, DWORD dwLen)
 	if(NULL == szKey || 0 == dwLen)
 		return;
 
-	_snprintf(szKey,dwLen,"Software\\%s", "WL_REPEATER");
+	_snprintf(szKey,dwLen,"Software\\%s", "LSN_REPEATER");
 }
 
 static void GetProgramDir(LPTSTR szDirectory, int nMaxChars)
@@ -91,13 +91,14 @@ static void UiLoop(void)
 			printf("Current source index: %d \n", g_pShiyong->currentSourceIndex);
 			printf("Joined channel id: %ld \n", g_pShiyong->joined_channel_id);
 			printf("Device topo level: %d \n", g_pShiyong->device_topo_level);
-			printf("-------------------------------------------------------------------------\n");
+			printf("----------------- Viewer Nodes --------------------------------------------\n");
 			for (int i = 0; i < MAX_VIEWER_NUM; i++)
 			{
 				printf("  ViewerNode %d(port%d), bUsing=%d  bConnecting=%d  bConnected=%d  bTopoPrimary=%d  \n", i, g_pShiyong->viewerArray[i].httpOP.m0_p2p_port, (g_pShiyong->viewerArray[i].bUsing ? 1 : 0), (g_pShiyong->viewerArray[i].bConnecting ? 1 : 0), (g_pShiyong->viewerArray[i].bConnected ? 1 : 0), (g_pShiyong->viewerArray[i].bTopoPrimary ? 1 : 0));
 			}
-			printf("-------------------------------------------------------------------------\n");
-			printf("\n max_connections=%d  current_connections=%d  max_streams=%d  current_streams=%d\n", MAX_SERVER_NUM, MAX_SERVER_NUM - g_pShiyong->GetUnconnectedGuajiNodes(), g_pShiyong->device_max_streams, GetAvClientsCount());
+			printf("\n");
+			printf("----------------- Guaji Nodes ---------------------------------------------\n");
+			printf(" max_connections=%d  current_connections=%d  max_streams=%d  current_streams=%d\n", MAX_SERVER_NUM, MAX_SERVER_NUM - g_pShiyong->GetUnconnectedGuajiNodes(), g_pShiyong->device_max_streams, GetAvClientsCount());
 		}
 		else if (strncmp(cmd, "s ", 2) == 0)
 		{
@@ -124,8 +125,9 @@ static void UiLoop(void)
 			{
 				g_pShiyong->DisconnectNode(&(g_pShiyong->viewerArray[i]));
 			}
-			usleep(15000*1000);
 			g_pShiyong->DoExit();
+			printf("Waiting...\n");
+			usleep(5000*1000);
 
 			printf("Stop ServerProcesses...\n");
 			for (int i = 0; i < MAX_SERVER_NUM; i++)
@@ -204,7 +206,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 #else
 				strncpy(SERVER_TYPE, "TREE", sizeof(SERVER_TYPE));
 #endif
-				UUID_EXT = 1;
+				UUID_EXT = 0;//TREE ROOT MARK
 				strncpy(NODE_NAME, "GuajiNodeName", sizeof(NODE_NAME));
 				strncpy(CONNECT_PASSWORD, "123456", sizeof(CONNECT_PASSWORD));
 				strncpy(g_tcp_address, "127.0.0.1", sizeof(g_tcp_address));

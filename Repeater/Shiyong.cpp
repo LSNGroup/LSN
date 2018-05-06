@@ -382,9 +382,16 @@ void OnReportEvent(char *event_str)
 	BYTE dest_node_id[6];
 	char *pRecvData = event_str;
 
+	log_msg_f(LOG_LEVEL_INFO, "OnReportEvent: event=%s\n", event_str);
+
 	strncpy(szDestNodeId, event_str, 17);
 	szDestNodeId[17] = '\0';
 	mac_addr(szDestNodeId, dest_node_id, NULL);
+
+	if (-1 != g_pShiyong->FindConnectingItemViewerNode(dest_node_id) || -1 != g_pShiyong->FindConnectingItemGuajiNode(dest_node_id)) {
+		log_msg_f(LOG_LEVEL_INFO, "OnReportEvent: in connecting_event_table, skip! dest_node_id=%02X-%02X-%02X-%02X-%02X-%02X\n", dest_node_id[0], dest_node_id[1], dest_node_id[2], dest_node_id[3], dest_node_id[4], dest_node_id[5]);
+		return;
+	}
 
 	int index = g_pShiyong->FindViewerNode(dest_node_id);
 	if (-1 != index)
@@ -577,7 +584,7 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 					}
 				}
 			}
-			else if (-1 == g_pShiyong->FindConnectingItemViewerNode(dest_node_id) && -1 == g_pShiyong->FindConnectingItemGuajiNode(dest_node_id)) {
+			else {
 				index = g_pShiyong->FindTopoRouteItem(dest_node_id);
 				if (-1 != index)
 				{
@@ -1310,6 +1317,7 @@ CShiyong::CShiyong()
 		viewerArray[i].bFirstCheckStun = TRUE;
 		pthread_mutex_init(&(viewerArray[i].localbind_csec), NULL);
 		
+		viewerArray[i].bTopoPrimary = FALSE;
 		viewerArray[i].bConnecting = FALSE;
 		viewerArray[i].bConnected = FALSE;
 		viewerArray[i].httpOP.m0_is_admin = TRUE;
@@ -1333,11 +1341,16 @@ CShiyong::CShiyong()
 	joined_channel_id = 0;
 	memset(joined_node_id, 0, 6);
 
+	last_viewer_num_time = 0;
+	last_viewer_num = 0;
+
 #if FIRST_LEVEL_REPEATER
 	device_topo_level = 0;
 #else
 	device_topo_level = 1;
 #endif
+	//确保device_node_id与前面的viewer_node_id不一样！！！
+	usleep(300*1000);
 	generate_nodeid(device_node_id, sizeof(device_node_id));
 
 	pthread_mutex_init(&route_table_csec, NULL);
@@ -1391,7 +1404,7 @@ BOOL CShiyong::OnInit()
 		m_hThread = hThread;
 	}
 	else {
-		printf("WorkingThreadFn子线程创建失败！\n");
+		log_msg_f(LOG_LEVEL_ERROR, "WorkingThreadFn子线程创建失败！\n");
 	}
 
 	return TRUE;  // return TRUE unless you set the focus to a control
@@ -1400,6 +1413,11 @@ BOOL CShiyong::OnInit()
 
 void CShiyong::ConnectNode(int i, char *password)
 {
+	log_msg_f(LOG_LEVEL_DEBUG, "ConnectNode(%d)...\n", i);
+	if (m_bQuit) {
+		return;
+	}
+
 	if (i < 0 || i >= MAX_VIEWER_NUM) {
 		return;
 	}
@@ -1450,6 +1468,11 @@ void CShiyong::ConnectNode(int i, char *password)
 
 void CShiyong::ConnectRevNode(int i, char *password)
 {
+	log_msg_f(LOG_LEVEL_DEBUG, "ConnectRevNode(%d)...\n", i);
+	if (m_bQuit) {
+		return;
+	}
+
 	if (i < 0 || i >= MAX_VIEWER_NUM) {
 		return;
 	}
@@ -1492,6 +1515,8 @@ void CShiyong::ConnectRevNode(int i, char *password)
 
 void CShiyong::DisconnectNode(VIEWER_NODE *pViewerNode)
 {
+	log_msg_f(LOG_LEVEL_DEBUG, "DisconnectNode(%d)...\n", pViewerNode->nID);
+
 	if (pViewerNode->bUsing == FALSE) {
 		return;
 	}
@@ -1527,6 +1552,8 @@ void CShiyong::ReturnViewerNode(VIEWER_NODE *pViewerNode)
 {
 	if (NULL != pViewerNode)
 	{
+		pViewerNode->bTopoPrimary = FALSE;
+		pViewerNode->bConnected = FALSE;
 		pViewerNode->bConnecting = FALSE;
 		pViewerNode->bUsing = FALSE;
 		pViewerNode->nID = -1;
@@ -1551,6 +1578,8 @@ void CShiyong::CalculateTimeoutMedia()
 
 void CShiyong::SwitchMediaSource(int oldIndex, int newIndex)
 {
+	log_msg_f(LOG_LEVEL_DEBUG, "SwitchMediaSource(%d => %d)...\n", oldIndex, newIndex);
+
 	if (oldIndex < 0 || oldIndex >= MAX_VIEWER_NUM)	{
 		return;
 	}
@@ -2332,9 +2361,9 @@ static BOOL ParseReportNode(char *value, TOPO_ROUTE_ITEM *pRouteItem)
 		/* device_uuid ... os_info */
 		value = p + 1;
 		p = strchr(value, '|');
-		if (p != NULL) {
-			*p = '\0';  /* Last field */
-		}
+		//if (p != NULL) {
+		//	*p = '\0';  /* Last field */
+		//}
 #if 0//不要把联合体u里面的node_nat_info覆盖了！！！
 		strncpy(pRouteItem->u.device_info.device_node_str, value, sizeof(pRouteItem->u.device_info.device_node_str));
 #endif
@@ -2389,27 +2418,33 @@ static BOOL ParseReportNode(char *value, TOPO_ROUTE_ITEM *pRouteItem)
 		/* device_uuid ... os_info */
 		value = p + 1;
 		p = strchr(value, '|');
-		if (p != NULL) {
-			*p = '\0';  /* Last field */
-		}
+		//if (p != NULL) {
+		//	*p = '\0';  /* Last field */
+		//}
 		strncpy(pRouteItem->u.device_info.device_node_str, value, sizeof(pRouteItem->u.device_info.device_node_str));
 	}
 
 	return TRUE;
 }
 
-int CShiyong::UpdateRouteTable(int guajiIndex, char *report_string)
+int CShiyong::UpdateRouteTable(int guajiIndex, const char *report_string)
 {
-	char *start = report_string;
+	char *tmp_string;
+	char *start;
 	char name[32];
 	char value[1024];
 	char *next_start = NULL;
 	TOPO_ROUTE_ITEM temp_route_item;
 	int ret = -1;
 
+	tmp_string = (char *)malloc(strlen(report_string) + 1);
+	strcpy(tmp_string, report_string);
+	start = tmp_string;
+
 	while(TRUE) {
 
 		if (ParseLine(start, name, sizeof(name), value, sizeof(value), &next_start) == FALSE) {
+			free(tmp_string);
 			return -1;
 		}
 
@@ -2434,7 +2469,7 @@ int CShiyong::UpdateRouteTable(int guajiIndex, char *report_string)
 					device_route_table[i].nID = i;
 				}
 				else {
-					printf("对不起，没有空闲的TOPO_ROUTE_ITEM!\n");
+					log_msg_f(LOG_LEVEL_ERROR, "对不起，没有空闲的TOPO_ROUTE_ITEM!\n");
 				}
 			}
 			else {
@@ -2451,6 +2486,7 @@ int CShiyong::UpdateRouteTable(int guajiIndex, char *report_string)
 		start = next_start;
 	}
 
+	free(tmp_string);
 	return ret;
 }
 
@@ -2776,8 +2812,18 @@ int CShiyong::get_route_item_num()
 //获取当前树的Viewer连接数变化率
 int CShiyong::get_viewer_grow_rate()
 {
-	//To do...
-	return 0;
+	int ret;
+	int now = time(NULL);
+	int current_viewer_num = get_level_current_streams(4);
+	if (last_viewer_num_time != 0) {
+		ret = (current_viewer_num - last_viewer_num)*10000/(now - last_viewer_num_time);
+	}
+	else {
+		ret = 0;
+	}
+	last_viewer_num_time = now;
+	last_viewer_num = current_viewer_num;
+	return ret;
 }
 
 //获取树中指定topo级别的设备总数

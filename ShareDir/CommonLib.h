@@ -25,7 +25,7 @@
 #define ADB_SERVER_PORT			5555
 #define LOCAL_PORT_BASE			10000
 
-#define REPEATER_PASSWORD		"repeaterpassword"
+#define REPEATER_PASSWORD		"123456"
 
 
 typedef struct _tag_anypc_node {

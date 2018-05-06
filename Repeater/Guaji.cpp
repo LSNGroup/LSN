@@ -509,6 +509,8 @@ void StartServerProcesses()
 		arrServerProcesses[i].m_nIndex = i;
 
 		arrServerProcesses[i].m_fhandle = INVALID_SOCKET;
+		memset(arrServerProcesses[i].m_node_id, 0, 6);
+		strcpy(arrServerProcesses[i].m_szReport, "");
 
 		arrServerProcesses[i].m_bConnected = FALSE;
 		arrServerProcesses[i].m_bAVStarted = FALSE;

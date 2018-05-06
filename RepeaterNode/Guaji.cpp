@@ -144,13 +144,13 @@ int if_get_device_uuid(char *buff, int size)
 	IP_ADAPTER_INFO *pAdapterInfo = NULL, *pLoopAdapter = NULL;
 
 ////////
-//	TCHAR szValueData[_MAX_PATH];
-//	DWORD dwDataLen = _MAX_PATH;
-//	if (GetSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID,(LPBYTE)szValueData,&dwDataLen) && strlen(szValueData) > 0)
-//	{
-//		strncpy(buff, szValueData, size);
-//		return 0;
-//	}
+	TCHAR szValueData[_MAX_PATH];
+	DWORD dwDataLen = _MAX_PATH;
+	if (GetSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID,(LPBYTE)szValueData,&dwDataLen) && strlen(szValueData) > 0)
+	{
+		strncpy(buff, szValueData, size);
+		return 0;
+	}
 ////////
 
 	dwRet = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen);
