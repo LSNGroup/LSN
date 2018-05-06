@@ -252,6 +252,10 @@
 				RelativePath="..\ShareDir\udp.cxx"
 				>
 			</File>
+			<File
+				RelativePath="..\ShareDir\UPnP.cpp"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="Í·ÎÄ¼þ"
@@ -316,6 +320,10 @@
 			</File>
 			<File
 				RelativePath="..\ShareDir\udp.h"
+				>
+			</File>
+			<File
+				RelativePath="..\ShareDir\UPnP.h"
 				>
 			</File>
 		</Filter>

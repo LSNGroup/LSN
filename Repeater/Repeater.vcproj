@@ -299,6 +299,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\ShareDir\UPnP.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\wps_queue.cpp"
 				>
 				<FileConfiguration
@@ -398,6 +402,10 @@
 			</File>
 			<File
 				RelativePath="..\ShareDir\udp.h"
+				>
+			</File>
+			<File
+				RelativePath="..\ShareDir\UPnP.h"
 				>
 			</File>
 			<File

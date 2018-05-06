@@ -4,6 +4,7 @@
 #include "CommonLib.h"
 #include "ControlCmd.h"
 #include "HttpOperate.h"
+#include "UPnP.h"
 
 #include "avrtp_def.h"
 
@@ -67,6 +68,7 @@ typedef struct _tag_viewer_node {
 	BOOL bFirstCheckStun;
 	pthread_mutex_t localbind_csec;
 	HttpOperate httpOP;
+	UPNPNAT_MAPPING mapping;
 	BOOL bConnecting;
 	BOOL bConnected;
 	BOOL bTopoPrimary;

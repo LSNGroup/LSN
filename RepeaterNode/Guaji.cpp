@@ -14,6 +14,8 @@
 
 
 
+MyUPnP  myUPnP;
+
 SOCKET g_fhandle = INVALID_SOCKET;
 
 SERVER_NODE *g_pServerNode = NULL;
@@ -82,6 +84,22 @@ void StartAnyPC()
 		g_pServerNode->m_bDoConnection2 = TRUE;
 		g_pServerNode->m_InConnection1 = FALSE;
 		g_pServerNode->m_InConnection2 = FALSE;
+
+
+		BOOL bMappingExists = FALSE;
+		g_pServerNode->mapping.description = "";
+		g_pServerNode->mapping.protocol = UNAT_UDP;
+		g_pServerNode->mapping.externalPort = ((myUPnP.GetLocalIP() & 0xff000000) >> 24) | ((2049 + (65535 - 2049) * (WORD)rand() / (65536)) & 0xffffff00);
+		while (UNAT_OK == myUPnP.GetNATSpecificEntry(&(g_pServerNode->mapping), &bMappingExists) && bMappingExists)
+		{
+			log_msg_f(LOG_LEVEL_INFO, "Find NATPortMapping(%d, rand=%d), retry...\n", g_pServerNode->mapping.externalPort, rand());
+
+			bMappingExists = FALSE;
+			g_pServerNode->mapping.description = "";
+			g_pServerNode->mapping.protocol = UNAT_UDP;
+			g_pServerNode->mapping.externalPort = ((myUPnP.GetLocalIP() & 0xff000000) >> 24) | ((2049 + (65535 - 2049) * (WORD)rand() / (65536)) & 0xffffff00);
+		}//找到一个未被占用的外部端口映射，或者路由器UPnP功能不可用
+
 
 		InitVar();
 
@@ -592,8 +610,63 @@ void *WinMainThreadFn(void *pvThreadParam)
 					log_msg(msg, LOG_LEVEL_DEBUG);
 				}
 			}
-
 			
+			
+			/* 本地路由器UPnP处理*/
+			if (FALSE == bNoNAT)
+			{
+				std::string extIp = "";
+				myUPnP.GetNATExternalIp(extIp);
+				if (false == extIp.empty() && 0 != pServerNode->myHttpOperate.m0_pub_ip && inet_addr(extIp.c_str()) == pServerNode->myHttpOperate.m0_pub_ip)
+				{
+					g_pServerNode->mapping.description = "UP2P";
+					//g_pServerNode->mapping.protocol = ;
+					//g_pServerNode->mapping.externalPort = ;
+					g_pServerNode->mapping.internalPort = pServerNode->myHttpOperate.m0_p2p_port - 2;//SECOND_CONNECT_PORT;
+					if (UNAT_OK == myUPnP.AddNATPortMapping(&(g_pServerNode->mapping), false))
+					{
+						pServerNode->m_bFirstCheckStun = FALSE;
+
+						pServerNode->myHttpOperate.m0_pub_ip = inet_addr(extIp.c_str());
+						pServerNode->myHttpOperate.m0_pub_port = g_pServerNode->mapping.externalPort;
+						pServerNode->myHttpOperate.m0_no_nat = TRUE;
+						pServerNode->myHttpOperate.m0_nat_type = StunTypeOpen;
+
+						log_msg_f(LOG_LEVEL_INFO, "UPnP AddPortMapping OK: %s[%d] --> %s[%d]", extIp.c_str(), g_pServerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), g_pServerNode->mapping.internalPort);
+					}
+					else
+					{
+						BOOL bTempExists = FALSE;
+						myUPnP.GetNATSpecificEntry(&(g_pServerNode->mapping), &bTempExists);
+						if (bTempExists)
+						{
+							pServerNode->m_bFirstCheckStun = FALSE;
+
+							pServerNode->myHttpOperate.m0_pub_ip = inet_addr(extIp.c_str());
+							pServerNode->myHttpOperate.m0_pub_port = g_pServerNode->mapping.externalPort;
+							pServerNode->myHttpOperate.m0_no_nat = TRUE;
+							pServerNode->myHttpOperate.m0_nat_type = StunTypeOpen;
+
+							log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Exists: %s[%d] --> %s[%d]", extIp.c_str(), g_pServerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), g_pServerNode->mapping.internalPort);
+						}
+						else {
+							pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
+							pServerNode->myHttpOperate.m0_pub_port = mapped.port;
+							pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
+							pServerNode->myHttpOperate.m0_nat_type = nNatType;
+						}
+					}
+				}
+				else {
+					log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Skipped: %s --> %s", extIp.c_str(), myUPnP.GetLocalIPStr().c_str());
+					pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
+					pServerNode->myHttpOperate.m0_pub_port = mapped.port;
+					pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
+					pServerNode->myHttpOperate.m0_nat_type = nNatType;
+				}
+			}
+
+
 			//修正公网IP受控端的连接端口问题,2014-6-15
 			if (bNoNAT) {
 				pServerNode->myHttpOperate.m0_pub_port = pServerNode->myHttpOperate.m0_p2p_port - 2;//SECOND_CONNECT_PORT;

@@ -4,6 +4,7 @@
 #include "CommonLib.h"
 #include "ControlCmd.h"
 #include "HttpOperate.h"
+#include "UPnP.h"
 
 #include "FakeRtpSend.h"
 
@@ -14,6 +15,7 @@ typedef struct _tag_server_node {
 	BOOL m_bExit;
 
 	HttpOperate myHttpOperate;
+	UPNPNAT_MAPPING mapping;
 	
 	BOOL m_bConnected;
 
@@ -38,6 +40,7 @@ typedef struct _tag_server_node {
 } SERVER_NODE;
 
 
+extern MyUPnP  myUPnP;
 
 extern SOCKET g_fhandle;
 

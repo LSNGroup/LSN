@@ -10,6 +10,7 @@
 #include "../ShareDir/CommonLib.h"
 #include "../ShareDir/ControlCmd.h"
 #include "../ShareDir/HttpOperate.h"
+#include "../ShareDir/UPnP.h"
 #include "../ShareDir/LogMsg.h"
 
 
@@ -368,6 +369,7 @@ _OUT:
 		if (NULL != fp_record)  fclose(fp_record);
 	}
 
+	myUPnP.RemoveNATPortMapping(g_pServerNode->mapping);
 
 	CtrlCmd_Uninit();
 

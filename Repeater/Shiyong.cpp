@@ -3,17 +3,18 @@
 
 #include "stdafx.h"
 #include "Repeater.h"
-#include "Shiyong.h"
 
 #include "platform.h"
 #include "CommonLib.h"
 #include "HttpOperate.h"
 #include "phpMd5.h"
+#include "UPnP.h"
 #include "base64.h"
 #include "Discovery.h"
 #include "Eloop.h"
 #include "LogMsg.h"
 #include "PacketRepeater.h"
+#include "Shiyong.h"
 
 
 #define LOG_MSG  1
@@ -25,6 +26,8 @@ int g_video_fps = 25;
 
 
 CShiyong* g_pShiyong = NULL;
+
+static MyUPnP  myUPnP;
 
 #ifdef WIN32
 DWORD WINAPI ConnectThreadFn(LPVOID lpParameter);
@@ -163,9 +166,8 @@ static void HandleDoUnregister(void *eloop_ctx, void *timeout_ctx)
 	}
 }
 
-static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
+static void StunRegister(VIEWER_NODE *pViewerNode)
 {
-	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)eloop_ctx;
 	int ret;
 	StunAddress4 mapped;
 	static BOOL bNoNAT;
@@ -304,6 +306,61 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 	}
 
 
+	/* 本地路由器UPnP处理*/
+	if (FALSE == bNoNAT)
+	{
+		std::string extIp = "";
+		myUPnP.GetNATExternalIp(extIp);
+		if (false == extIp.empty() && 0 != pViewerNode->httpOP.m0_pub_ip && inet_addr(extIp.c_str()) == pViewerNode->httpOP.m0_pub_ip)
+		{
+			pViewerNode->mapping.description = "UP2P";
+			//pViewerNode->mapping.protocol = ;
+			//pViewerNode->mapping.externalPort = ;
+			pViewerNode->mapping.internalPort = pViewerNode->httpOP.m0_p2p_port - 2;//SECOND_CONNECT_PORT
+			if (UNAT_OK == myUPnP.AddNATPortMapping(&(pViewerNode->mapping), false))
+			{
+				pViewerNode->bFirstCheckStun = FALSE;
+				
+				pViewerNode->httpOP.m0_pub_ip = inet_addr(extIp.c_str());
+				pViewerNode->httpOP.m0_pub_port = pViewerNode->mapping.externalPort;
+				pViewerNode->httpOP.m0_no_nat = TRUE;
+				pViewerNode->httpOP.m0_nat_type = StunTypeOpen;
+				
+				log_msg_f(LOG_LEVEL_INFO, "UPnP AddPortMapping OK: %s[%d] --> %s[%d]", extIp.c_str(), pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
+			}
+			else
+			{
+				BOOL bTempExists = FALSE;
+				myUPnP.GetNATSpecificEntry(&(pViewerNode->mapping), &bTempExists);
+				if (bTempExists)
+				{
+					pViewerNode->bFirstCheckStun = FALSE;
+					
+					pViewerNode->httpOP.m0_pub_ip = inet_addr(extIp.c_str());
+					pViewerNode->httpOP.m0_pub_port = pViewerNode->mapping.externalPort;
+					pViewerNode->httpOP.m0_no_nat = TRUE;
+					pViewerNode->httpOP.m0_nat_type = StunTypeOpen;
+					
+					log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Exists: %s[%d] --> %s[%d]", extIp.c_str(), pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
+				}
+				else {
+					pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
+					pViewerNode->httpOP.m0_pub_port = mapped.port;
+					pViewerNode->httpOP.m0_no_nat = bNoNAT;
+					pViewerNode->httpOP.m0_nat_type = nNatType;
+				}
+			}
+		}
+		else {
+			log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Skipped: %s --> %s", extIp.c_str(), myUPnP.GetLocalIPStr().c_str());
+			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
+			pViewerNode->httpOP.m0_pub_port = mapped.port;
+			pViewerNode->httpOP.m0_no_nat = bNoNAT;
+			pViewerNode->httpOP.m0_nat_type = nNatType;
+		}
+	}
+
+
 	//修正公网IP受控端的连接端口问题,2014-6-15
 	if (bNoNAT) {
 		pViewerNode->httpOP.m0_pub_port = pViewerNode->httpOP.m0_p2p_port - 2;//SECOND_CONNECT_PORT
@@ -327,9 +384,24 @@ static void HandleRegister(void *eloop_ctx, void *timeout_ctx)
 
 _OUT:
 	pthread_mutex_unlock(&(pViewerNode->localbind_csec));////////
+}
 
+#ifdef WIN32
+DWORD WINAPI StunRegisterThreadFn(LPVOID pvThreadParam)
+#else
+void *StunRegisterThreadFn(void *pvThreadParam)
+#endif
+{
+	while(g_pShiyong->m_bQuit == FALSE)
+	{
+		for (int i = 0; i < MAX_VIEWER_NUM; i++)
+		{
+			StunRegister(&(g_pShiyong->viewerArray[i]));
+		}
 
-	eloop_register_timeout(g1_register_period, 0, HandleRegister, pViewerNode, NULL);
+		usleep(g1_register_period * 1000 * 1000);
+	}
+	return 0;
 }
 
 #ifdef WIN32
@@ -343,11 +415,6 @@ void *WorkingThreadFn(void *pvThreadParam)
 	eloop_register_timeout(1, 0, HandleKeepLoop, NULL, NULL);
 
 	eloop_register_timeout(0, 50000, HandleMediaStreamingChech, NULL, NULL);
-
-	for (int i = 0; i < MAX_VIEWER_NUM; i++)
-	{
-		eloop_register_timeout(1 + i * 2, 0, HandleRegister, &(g_pShiyong->viewerArray[i]), NULL);
-	}
 
 	/* Loop... */
 	eloop_run();
@@ -639,6 +706,7 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 			{
 				//随机延迟，避免同一时刻大量TopoReport涌向树根
 				srand(timeGetTime());
+				eloop_cancel_timeout(HandleTopoReport, NULL, NULL);
 				eloop_register_timeout(0, (rand() % 800 + 200)*1000, HandleTopoReport, NULL, NULL);
 			}
 
@@ -1310,6 +1378,8 @@ CShiyong::CShiyong()
 	m_bQuit = FALSE;
 	m_hThread = NULL;
 
+	bool hasUPnP = myUPnP.Search();
+
 	for (int i = 0; i < MAX_VIEWER_NUM; i++ )
 	{
 		viewerArray[i].bUsing = FALSE;
@@ -1332,6 +1402,20 @@ CShiyong::CShiyong()
 
 		viewerArray[i].m_sps_len = 0;
 		viewerArray[i].m_pps_len = 0;
+
+
+		BOOL bMappingExists = FALSE;
+		viewerArray[i].mapping.description = "";
+		viewerArray[i].mapping.protocol = UNAT_UDP;
+		viewerArray[i].mapping.externalPort = ((myUPnP.GetLocalIP() & 0xff000000) >> 24) | ((2049 + (65535 - 2049) * (WORD)rand() / (65536)) & 0xffffff00);
+		while (hasUPnP && UNAT_OK == myUPnP.GetNATSpecificEntry(&(viewerArray[i].mapping), &bMappingExists) && bMappingExists)
+		{
+			//printf("Find NATPortMapping(%s), retry...\n", mapping.description.c_str());
+			bMappingExists = FALSE;
+			viewerArray[i].mapping.description = "";
+			viewerArray[i].mapping.protocol = UNAT_UDP;
+			viewerArray[i].mapping.externalPort = ((myUPnP.GetLocalIP() & 0xff000000) >> 24) | ((2049 + (65535 - 2049) * (WORD)rand() / (65536)) & 0xffffff00);
+		}//找到一个未被占用的外部端口映射，或者路由器UPnP功能不可用
 	}
 	
 	currentSourceIndex = -1;
@@ -1349,7 +1433,7 @@ CShiyong::CShiyong()
 #else
 	device_topo_level = 1;
 #endif
-	//确保device_node_id与前面的viewer_node_id不一样！！！
+	//确保device_node_id与前面的最后一个viewer_node_id不雷同！！！
 	usleep(300*1000);
 	generate_nodeid(device_node_id, sizeof(device_node_id));
 
@@ -1377,6 +1461,8 @@ CShiyong::~CShiyong()
 	for (int i = 0; i < MAX_VIEWER_NUM; i++ )
 	{
 		pthread_mutex_destroy(&(viewerArray[i].localbind_csec));
+
+		myUPnP.RemoveNATPortMapping(viewerArray[i].mapping);
 	}
 
 	pthread_mutex_destroy(&route_table_csec);
@@ -1405,6 +1491,19 @@ BOOL CShiyong::OnInit()
 	}
 	else {
 		log_msg_f(LOG_LEVEL_ERROR, "WorkingThreadFn子线程创建失败！\n");
+	}
+
+#ifdef WIN32
+	hThread = ::CreateThread(NULL,0,StunRegisterThreadFn,(void *)this,0,&dwThreadID);
+	if (hThread != NULL)
+#else
+	err = pthread_create(&hThread, NULL, StunRegisterThreadFn, this);
+	if (0 == err)
+#endif
+	{
+	}
+	else {
+		log_msg_f(LOG_LEVEL_ERROR, "StunRegisterThreadFn子线程创建失败！\n");
 	}
 
 	return TRUE;  // return TRUE unless you set the focus to a control
@@ -2632,13 +2731,17 @@ const char * CShiyong::get_public_ip()
 
 	strcpy(s_public_ip, "");
 
-	for (int i = 0; i < MAX_VIEWER_NUM; i++)
+	int i;
+	for (i = 0; i < MAX_VIEWER_NUM; i++)
 	{
 		if (viewerArray[i].httpOP.m0_pub_ip != 0) {
 			inaddr.s_addr = viewerArray[i].httpOP.m0_pub_ip;
 			strcpy(s_public_ip, inet_ntoa(inaddr));
 			break;
 		}
+	}
+	if (i == MAX_VIEWER_NUM) {
+		log_msg_f(LOG_LEVEL_ERROR, "get_public_ip: No viewer has valid m0_pub_ip!\n");
 	}
 	return s_public_ip;
 }
@@ -2831,6 +2934,11 @@ int CShiyong::get_level_device_num(int topo_level)
 {
 	time_t now = time(NULL);
 	int count = 0;
+
+	//本device node并不在device_route_table中！！！
+	if (topo_level == 1) {
+		return 1;
+	}
 
 	pthread_mutex_lock(&route_table_csec);////////
 
