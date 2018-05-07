@@ -99,15 +99,15 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				break;
 
 			case CMD_CODE_ARM_REQ:
-				printf("if_mc_arm() fd=%ld \n", fhandle);
 				//if_mc_arm();
 				pServerPorcess->m_bConnected = TRUE;//½èÓÃ
+				printf("GuajiNodes[%d] Connected!\n", pServerPorcess->m_nIndex);
 				break;
 				
 			case CMD_CODE_DISARM_REQ:
-				printf("if_mc_disarm() fd=%ld \n", fhandle);
 				//if_mc_disarm();
 				pServerPorcess->m_bConnected = FALSE;//½èÓÃ
+				printf("GuajiNodes[%d] Disconnected!\n", pServerPorcess->m_nIndex);
 				break;
 
 			case CMD_CODE_AV_START_REQ:

@@ -412,9 +412,10 @@ void *WorkingThreadFn(void *pvThreadParam)
 {
 	eloop_init(NULL);
 
-	eloop_register_timeout(1, 0, HandleKeepLoop, NULL, NULL);
+	//8秒钟，等待所有ViewerNode完成Stun探测
+	eloop_register_timeout(8, 0, HandleKeepLoop, NULL, NULL);
 
-	eloop_register_timeout(0, 50000, HandleMediaStreamingChech, NULL, NULL);
+	eloop_register_timeout(8, 50000, HandleMediaStreamingChech, NULL, NULL);
 
 	/* Loop... */
 	eloop_run();
@@ -425,9 +426,9 @@ void *WorkingThreadFn(void *pvThreadParam)
 
 void OnReportSettings(char *settings_str)
 {
-	if (MAX_VIEWER_NUM > 0)
+	for (int i = 0; i < MAX_VIEWER_NUM; i++)
 	{
-		g_pShiyong->viewerArray[0].httpOP.ParseTopoSettings((const char *)settings_str);
+		g_pShiyong->viewerArray[i].httpOP.ParseTopoSettings((const char *)settings_str);
 	}
 
 	for (int i = 0; i < MAX_SERVER_NUM; i++)
@@ -563,6 +564,7 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 		BYTE dest_node_id[6];
 		int index;
 		unsigned char *pRecvData;
+		char *pTemp;
 		int ret;
 
 
@@ -690,6 +692,14 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 				return;
 			}
 
+			//通过rudp传递来CMD_CODE_TOPO_SETTINGS，"http_client_ip"已经失效了！！！
+			pTemp = strstr((char *)pRecvData, "http_client_ip"); 
+			if (pTemp) {
+				pTemp[0] = 'f';
+				pTemp[1] = 'a';
+				pTemp[2] = 'k';
+				pTemp[3] = 'e';
+			}
 			pViewerNode->httpOP.ParseTopoSettings((const char *)pRecvData);
 
 			g_pShiyong->CalculateTimeoutMedia();
@@ -820,7 +830,7 @@ void *ConnectThreadFn(void *lpParameter)
 
 
 	for (i = pViewerNode->httpOP.m1_wait_time; i > 0; i--) {
-		_snprintf(szStatusStr, sizeof(szStatusStr), "正在排队等待服务响应，%d秒。。。", i);
+		_snprintf(szStatusStr, sizeof(szStatusStr), "正在同Peer端同步时间，%d秒。。。", i);
 		SetStatusInfo(pDlg->m_hWnd, szStatusStr);
 		usleep(1000*1000);
 	}
@@ -912,7 +922,7 @@ void *ConnectThreadFn(void *lpParameter)
 	ret = UDT::select(fhandle + 1, fhandle, NULL, NULL, &waitval);
 	if (ret == UDT::ERROR || ret == 0) {
 		pthread_mutex_unlock(&(pViewerNode->localbind_csec));////////
-		SetStatusInfo(pDlg->m_hWnd, "暂时性网络状况不好，直连有点小困难，请稍后重试或者采用TCP连接！");
+		SetStatusInfo(pDlg->m_hWnd, "暂时性网络状况不好，P2P直连有点小困难，稍后重试。。。");
 		UDT::close(fhandle);
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
@@ -928,7 +938,7 @@ void *ConnectThreadFn(void *lpParameter)
 	UDTSOCKET fhandle2;
 	if ((fhandle2 = UDT::accept(fhandle, (sockaddr*)&their_addr, &namelen)) == UDT::INVALID_SOCK) {
 		pthread_mutex_unlock(&(pViewerNode->localbind_csec));////////
-		SetStatusInfo(pDlg->m_hWnd, "暂时性网络状况不好，直连有点小困难，请稍后重试或者采用TCP连接！");
+		SetStatusInfo(pDlg->m_hWnd, "暂时性网络状况不好，P2P直连有点小困难，稍后重试。。。");
 		UDT::close(fhandle);
 		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
 		pViewerNode->httpOP.m1_use_udp_sock = INVALID_SOCKET;
@@ -1138,7 +1148,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 	}
 
 	for (i = pViewerNode->httpOP.m1_wait_time; i > 0; i--) {
-		_snprintf(szStatusStr, sizeof(szStatusStr), "正在排队等待服务响应，%d秒。。。", i);
+		_snprintf(szStatusStr, sizeof(szStatusStr), "正在同Peer端同步时间，%d秒。。。", i);
 		SetStatusInfo(pDlg->m_hWnd, szStatusStr);
 		usleep(1000*1000);
 	}
@@ -1205,7 +1215,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 	waitval.tv_usec = 0;
 	ret = UDT::select(serv + 1, serv, NULL, NULL, &waitval);
 	if (ret == UDT::ERROR || ret == 0) {
-		SetStatusInfo(pDlg->m_hWnd, "暂时性网络状况不好，直连有点小困难，请稍后重试或者采用TCP连接");
+		SetStatusInfo(pDlg->m_hWnd, "暂时性网络状况不好，P2P直连有点小困难，稍后重试。。。");
 		UDT::close(serv);
 		closesocket(udp_sock);
 		CloseHandle(pViewerNode->hConnectThreadRev);
@@ -1218,7 +1228,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 	
 	
 	if ((fhandle = UDT::accept(serv, (sockaddr*)&their_addr, &namelen)) == UDT::INVALID_SOCK) {
-		SetStatusInfo(pDlg->m_hWnd, "暂时性网络状况不好，直连有点小困难，请稍后重试或者采用TCP连接");
+		SetStatusInfo(pDlg->m_hWnd, "暂时性网络状况不好，P2P直连有点小困难，稍后重试。。。");
 		UDT::close(serv);
 		closesocket(udp_sock);
 		CloseHandle(pViewerNode->hConnectThreadRev);
@@ -2715,6 +2725,7 @@ int CShiyong::DeviceTopoReport()
 		}
 		if (viewerArray[i].bTopoPrimary == TRUE)
 		{
+			log_msg_f(LOG_LEVEL_DEBUG, "CtrlCmd_TOPO_REPORT ==> viewerArray[%d], report_string=\n%s\n", i, report_string);
 			CtrlCmd_TOPO_REPORT(viewerArray[i].httpOP.m1_use_sock_type, viewerArray[i].httpOP.m1_use_udt_sock, device_node_id, report_string);
 			break;
 		}
@@ -2889,6 +2900,7 @@ const char * CShiyong::get_node_array()
 
 	pthread_mutex_unlock(&route_table_csec);////////
 
+	log_msg_f(LOG_LEVEL_DEBUG, "s_node_array=%s\n", s_node_array);
 	return s_node_array;
 }
 

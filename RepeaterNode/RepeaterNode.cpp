@@ -300,6 +300,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 			// buf: dest_node_id
 			if (memcmp(buf, g_pServerNode->myHttpOperate.m0_node_id, 6) == 0)
 			{
+				log_msg_f(LOG_LEVEL_DEBUG, "GuajiNode event=%s\n", (char *)pRecvData);
 				g_pServerNode->myHttpOperate.ParseEventValue((char *)pRecvData);
 			}
 			else {

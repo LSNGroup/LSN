@@ -692,8 +692,6 @@ int HttpOperate::ParseTopoSettings(const char *settings_string)
 			if (strcmp(name, "is_active") == 0) {
 				if (strcmp(value, "0") == 0) {
 					g1_is_active = FALSE;
-					result = 0;  /* Exit */
-					break;
 				}
 				else {
 					g1_is_active = TRUE;
@@ -703,6 +701,7 @@ int HttpOperate::ParseTopoSettings(const char *settings_string)
 				g1_lowest_version = atol(value);
 				if (g1_lowest_version > g0_version) {
 					bUpgradeVersion = TRUE;
+					printf("\nPlease upgrade the software to new version 0x%08lx ...\n", g1_lowest_version);
 				}
 			}
 			else if (strcmp(name, "http_server") == 0) {

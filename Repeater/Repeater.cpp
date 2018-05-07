@@ -226,7 +226,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 				if (g1_bandwidth_per_stream == BANDWIDTH_PER_STREAM_UNKNOWN) {
 					g1_bandwidth_per_stream = BANDWIDTH_PER_STREAM_DEFAULT;
 				}
-				g_pShiyong->device_max_streams = 3;//测速。。。
+				g_pShiyong->device_max_streams = 2;//测速。。。
 				MAX_SERVER_NUM = g_pShiyong->device_max_streams * 2;
 				
 				//字符串参数，如NODE_NAME，不能包含空格！！！因为RepeaterNode用sscanf()解析参数。

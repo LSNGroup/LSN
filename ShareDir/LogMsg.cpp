@@ -92,7 +92,7 @@ int log_msg_f(int level, const char *format, ...)
 	va_list   arg;
 	FILE *f;
 	char log_time[MAX_PATH];
-	char pbString[1024];
+	char pbString[1024*32];
 
 
 	if (level < LOG_MSG_LEVEL) {

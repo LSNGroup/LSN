@@ -12,7 +12,7 @@
 
 
 
-#define MYSELF_VERSION			0x02050400  /* x.x.x.0 */
+#define MYSELF_VERSION			0x02050600  /* x.x.x.0 */
 #define NODES_PER_PAGE			34
 #define MAX_NOTIFICATION_NUM	15
 #define UDT_CONNECT_TIMES		1

@@ -874,7 +874,7 @@ void *WorkingThreadFn1(void *pvThreadParam)
 
 
 	for (i = pServerNode->myHttpOperate.m1_wait_time; i > 0; i--) {
-		_snprintf(msg, sizeof(msg), "正在排队等待服务响应，%d秒。。。\n", i);
+		_snprintf(msg, sizeof(msg), "正在与Peer端同步时间，%d秒。。。\n", i);
 		log_msg(msg, LOG_LEVEL_INFO);
 		usleep(1000*1000);
 	}
@@ -1009,7 +1009,7 @@ void *WorkingThreadFnRev(void *pvThreadParam)
 	log_msg("WorkingThreadFnRev()...", LOG_LEVEL_INFO);
 
 	for (i = pServerNode->myHttpOperate.m1_wait_time; i > 0; i--) {
-		_snprintf(msg, sizeof(msg), "正在排队等待服务响应，%d秒。。。", i);
+		_snprintf(msg, sizeof(msg), "正在与Peer端同步时间，%d秒。。。", i);
 		log_msg(msg, LOG_LEVEL_INFO);
 		usleep(1000*1000);
 	}
