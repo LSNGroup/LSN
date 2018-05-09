@@ -1213,6 +1213,13 @@ int CheckStun(LPTSTR lpStunServer, WORD wSrcPort, StunAddress4 *lpMappedResult, 
 	*lpNoNAT = FALSE;
 	*lpNatType = stype;
 
+	DWORD dwForceNoNAT = 0;
+	if (GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT) && dwForceNoNAT == 1) {
+		stype = StunTypeOpen;
+		*lpNoNAT = TRUE;
+		*lpNatType = stype;
+	}
+
 	 switch (stype)
 	 {
 		case StunTypeFailure:
@@ -1376,6 +1383,12 @@ int CheckStunMyself(LPTSTR lpStunServer, WORD wSrcPort, StunAddress4 *lpMappedRe
 					*lpNatType = StunTypeIndependentFilter;
 				}
 				
+				DWORD dwForceNoNAT = 0;
+				if (GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT) && dwForceNoNAT == 1) {
+					*lpNoNAT = TRUE;
+					*lpNatType = StunTypeOpen;
+				}
+
 				return 0;
 			}
 		}

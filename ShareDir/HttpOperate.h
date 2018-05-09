@@ -48,6 +48,7 @@ extern DWORD g1_system_debug_flags;
 //#ifdef JNI_FOR_MOBILECAMERA
 extern BOOL g1_is_activated;
 extern DWORD g1_comments_id;
+extern DWORD g1_joined_channel_id;
 //#endif
 
 
@@ -167,7 +168,7 @@ public:
 	//  2: settings
 	//  3: settings,event
 	static int DoReport2(const char *client_charset, const char *client_lang, 
-		DWORD joined_channel_id, BYTE joined_node_id[6], int device_node_num, int viewer_grow_rate,
+		BOOL joined_channel, int device_node_num, int viewer_grow_rate,
 		const char *root_device_uuid, const char *root_public_ip, BYTE device_node_id[6],
 		int route_item_num, int route_item_max,
 		int level_1_max_connections, int level_1_current_connections, int level_1_max_streams, int level_1_current_streams,

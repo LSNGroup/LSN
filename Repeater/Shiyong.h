@@ -122,8 +122,6 @@ public:
 	void DisconnectNode(VIEWER_NODE *pViewerNode);
 	void UnregisterNode(VIEWER_NODE *pViewerNode);
 
-	DWORD joined_channel_id;
-	BYTE joined_node_id[6];
 	BYTE device_topo_level;
 	BYTE device_node_id[6];
 	int device_max_streams;
@@ -156,6 +154,7 @@ public:
 	int GetDeviceFreeStreams();
 	int DeviceTopoReport();
 
+	int get_joined_channel_id();
 	const char *get_public_ip();
 	const char *get_node_array();
 

@@ -89,7 +89,7 @@ static void UiLoop(void)
 		{
 			printf("Current video format: %dx%d fps(%d) \n", g_video_width, g_video_height, g_video_fps);
 			printf("Current source index: %d \n", g_pShiyong->currentSourceIndex);
-			printf("Joined channel id: %ld \n", g_pShiyong->joined_channel_id);
+			printf("Joined channel id: %ld \n", g_pShiyong->get_joined_channel_id());
 			printf("Device topo level: %d \n", g_pShiyong->device_topo_level);
 			printf("----------------- Viewer Nodes --------------------------------------------\n");
 			for (int i = 0; i < MAX_VIEWER_NUM; i++)
@@ -196,6 +196,11 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 		RunExeNoWait("sc config mpssvc start= disabled", FALSE);
 
 
+		DWORD dwForceNoNAT = 0;
+		if (FALSE == GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT)) {
+			SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, (DWORD)0);
+		}
+
 		{//////////////////////////////////////////////////////////////
 			if (arrServerProcesses != NULL) {
 				printf("不能重复上线！\n");
@@ -227,7 +232,12 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 					g1_bandwidth_per_stream = BANDWIDTH_PER_STREAM_DEFAULT;
 				}
 				g_pShiyong->device_max_streams = 2;//测速。。。
-				MAX_SERVER_NUM = g_pShiyong->device_max_streams * 2;
+				if (1 == UUID_EXT) {
+					MAX_SERVER_NUM = g_pShiyong->device_max_streams;
+				}
+				else {
+					MAX_SERVER_NUM = g_pShiyong->device_max_streams * 2;
+				}
 				
 				//字符串参数，如NODE_NAME，不能包含空格！！！因为RepeaterNode用sscanf()解析参数。
 				printf("Online type(%s)-%d num(%d) name(%s) pass(%s) tcp_addr(%s)...\n", SERVER_TYPE, UUID_EXT, MAX_SERVER_NUM, NODE_NAME, CONNECT_PASSWORD, g_tcp_address);

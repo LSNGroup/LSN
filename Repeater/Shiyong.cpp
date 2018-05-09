@@ -80,7 +80,7 @@ static void HandleKeepLoop(void *eloop_ctx, void *timeout_ctx)
 		if (now - lastDoReportTime >= g1_register_period)
 		{
 			lastDoReportTime = now;
-			int ret = HttpOperate::DoReport2("gbk", "zh", g_pShiyong->joined_channel_id, g_pShiyong->joined_node_id, 
+			int ret = HttpOperate::DoReport2("gbk", "zh", g_pShiyong->GetConnectedViewerNodes() > 0, 
 				g_pShiyong->get_level_device_num(1) + g_pShiyong->get_level_device_num(2) + g_pShiyong->get_level_device_num(3) + g_pShiyong->get_level_device_num(4),
 				g_pShiyong->get_viewer_grow_rate(),
 				g0_device_uuid, g_pShiyong->get_public_ip(), g_pShiyong->device_node_id, 
@@ -200,6 +200,12 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 		      bNoNAT = FALSE;
 		      nNatType = StunTypeIndependentFilter;
 		   }
+			DWORD dwForceNoNAT = 0;
+			if (GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT) && dwForceNoNAT == 1) {
+				  bNoNAT = TRUE;
+				  nNatType = StunTypeOpen;
+			}
+
 		   
 			log_msg_f(LOG_LEVEL_INFO, "本端NAT探测成功! - CheckStunHttp");
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
@@ -219,12 +225,13 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
 			pViewerNode->httpOP.m0_nat_type = nNatType;
-			log_msg_f(LOG_LEVEL_DEBUG, "CheckStunMyself: %d.%d.%d.%d[%d]\n", 
+			log_msg_f(LOG_LEVEL_DEBUG, "CheckStunMyself: %d.%d.%d.%d[%d], NoNAT=%d\n", 
 				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
 				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
 				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
 				(pViewerNode->httpOP.m0_pub_ip & 0xff000000) >> 24,
-				pViewerNode->httpOP.m0_pub_port);
+				pViewerNode->httpOP.m0_pub_port,
+				(bNoNAT ? 1 : 0));
 		}
 	}
 	else if (pViewerNode->bFirstCheckStun)
@@ -248,7 +255,12 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 		      bNoNAT = FALSE;
 		      nNatType = StunTypeIndependentFilter;
 		   }
-		   
+			DWORD dwForceNoNAT = 0;
+			if (GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT) && dwForceNoNAT == 1) {
+				  bNoNAT = TRUE;
+				  nNatType = StunTypeOpen;
+			}
+
 			log_msg_f(LOG_LEVEL_INFO, "本端NAT探测成功! - CheckStunHttp");
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
@@ -275,12 +287,13 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
 			pViewerNode->httpOP.m0_nat_type = nNatType;
-			log_msg_f(LOG_LEVEL_DEBUG, "CheckStun: %d.%d.%d.%d[%d]\n", 
+			log_msg_f(LOG_LEVEL_DEBUG, "CheckStun: %d.%d.%d.%d[%d] NoNAT=%d\n", 
 				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
 				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
 				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
 				(pViewerNode->httpOP.m0_pub_ip & 0xff000000) >> 24,
-				pViewerNode->httpOP.m0_pub_port);
+				pViewerNode->httpOP.m0_pub_port,
+				(bNoNAT ? 1 : 0));
 		}
 	}
 	else {
@@ -326,7 +339,7 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 				pViewerNode->httpOP.m0_no_nat = TRUE;
 				pViewerNode->httpOP.m0_nat_type = StunTypeOpen;
 				
-				log_msg_f(LOG_LEVEL_INFO, "UPnP AddPortMapping OK: %s[%d] --> %s[%d]", extIp.c_str(), pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
+				log_msg_f(LOG_LEVEL_INFO, "UPnP AddPortMapping OK: %s[%d] --> %s[%d]\n", extIp.c_str(), pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
 			}
 			else
 			{
@@ -341,7 +354,7 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 					pViewerNode->httpOP.m0_no_nat = TRUE;
 					pViewerNode->httpOP.m0_nat_type = StunTypeOpen;
 					
-					log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Exists: %s[%d] --> %s[%d]", extIp.c_str(), pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
+					log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Exists: %s[%d] --> %s[%d]\n", extIp.c_str(), pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
 				}
 				else {
 					pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
@@ -352,7 +365,7 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 			}
 		}
 		else {
-			log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Skipped: %s --> %s", extIp.c_str(), myUPnP.GetLocalIPStr().c_str());
+			log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Skipped: %s --> %s \n", extIp.c_str(), myUPnP.GetLocalIPStr().c_str());
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
@@ -431,6 +444,19 @@ void OnReportSettings(char *settings_str)
 		g_pShiyong->viewerArray[i].httpOP.ParseTopoSettings((const char *)settings_str);
 	}
 
+	if (NULL != strstr(g0_device_uuid, "STAR") || NULL != strstr(g0_device_uuid, "-1@1"))//STAR或者TREE Root
+	{
+		if (g_pShiyong->get_joined_channel_id() == 0)
+		{
+			log_msg_f(LOG_LEVEL_WARNING, "OnReportSettings: joined_channel_id => 0 , Disconnect all viewer nodes...\n");
+			g_pShiyong->currentSourceIndex = -1;//避免DisconnectNode时切换
+			for (int i = 0; i < MAX_VIEWER_NUM; i++)
+			{
+				g_pShiyong->DisconnectNode(&(g_pShiyong->viewerArray[i]));
+			}
+		}
+	}
+
 	for (int i = 0; i < MAX_SERVER_NUM; i++)
 	{
 		if (arrServerProcesses == NULL) {
@@ -450,6 +476,7 @@ void OnReportEvent(char *event_str)
 	BYTE dest_node_id[6];
 	char *pRecvData = event_str;
 
+	printf(                   "OnReportEvent: event=%s\n", event_str);
 	log_msg_f(LOG_LEVEL_INFO, "OnReportEvent: event=%s\n", event_str);
 
 	strncpy(szDestNodeId, event_str, 17);
@@ -629,6 +656,8 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 			index = g_pShiyong->FindViewerNode(dest_node_id);
 			if (-1 != index)
 			{
+				printf(                   "CMD_CODE_TOPO_EVENT: event=%s\n", (char *)pRecvData);
+				log_msg_f(LOG_LEVEL_INFO, "CMD_CODE_TOPO_EVENT: event=%s\n", (char *)pRecvData);
 				g_pShiyong->viewerArray[index].httpOP.ParseEventValue((char *)pRecvData);
 				if (stricmp(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "Connect") == 0)
 				{
@@ -1432,9 +1461,6 @@ CShiyong::CShiyong()
 	currentLastMediaTime = 0;
 	timeoutMedia = 0;
 
-	joined_channel_id = 0;
-	memset(joined_node_id, 0, 6);
-
 	last_viewer_num_time = 0;
 	last_viewer_num = 0;
 
@@ -1754,8 +1780,6 @@ BOOL CShiyong::ShouldDoHttpOP()
 	}
 	if (bConnected == FALSE)
 	{
-		joined_channel_id = 0;
-		memset(joined_node_id, 0, 6);
 		device_topo_level = 1;
 		return TRUE;
 	}
@@ -1786,8 +1810,6 @@ BOOL CShiyong::ShouldDoAdjustAndOptimize()
 	}
 	if (bConnected == FALSE)
 	{
-		joined_channel_id = 0;
-		memset(joined_node_id, 0, 6);
 		device_topo_level = 1;
 		return TRUE;
 	}
@@ -2733,6 +2755,11 @@ int CShiyong::DeviceTopoReport()
 
 	free(report_string);
 	return 0;
+}
+
+int CShiyong::get_joined_channel_id()
+{
+	return g1_joined_channel_id;
 }
 
 const char * CShiyong::get_public_ip()

@@ -62,6 +62,7 @@ DWORD g1_system_debug_flags = 0;
 //#ifdef JNI_FOR_MOBILECAMERA
 BOOL g1_is_activated = TRUE;
 DWORD g1_comments_id = 0;
+DWORD g1_joined_channel_id = 0;
 //#endif
 
 
@@ -758,6 +759,9 @@ int HttpOperate::ParseTopoSettings(const char *settings_string)
 			else if (strcmp(name, "system_debug_flags") == 0) {
 				g1_system_debug_flags = atol(value);
 			}
+			else if (strcmp(name, "joined_channel_id") == 0) {
+				g1_joined_channel_id = atol(value);
+			}
 		}
 
 
@@ -928,7 +932,6 @@ int HttpOperate::DoRegister1(const char *client_charset, const char *client_lang
 			else if (strcmp(name, "system_debug_flags") == 0) {
 				g1_system_debug_flags = atol(value);
 			}
-
 		}
 
 
@@ -1622,6 +1625,12 @@ int HttpOperate::DoReport1(const char *client_charset, const char *client_lang, 
 				strcat(szPostBody, value);
 				strcat(szPostBody, "\n");
 			}
+			else if (strcmp(name, "joined_channel_id") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
 		}
 
 
@@ -1663,7 +1672,7 @@ int HttpOperate::DoReport1(const char *client_charset, const char *client_lang, 
 //  2: settings
 //  3: settings,event
 int HttpOperate::DoReport2(const char *client_charset, const char *client_lang, 
-	DWORD joined_channel_id, BYTE joined_node_id[6], int device_node_num, int viewer_grow_rate,
+	BOOL joined_channel, int device_node_num, int viewer_grow_rate,
 	const char *root_device_uuid, const char *root_public_ip, BYTE device_node_id[6],
 	int route_item_num, int route_item_max,
 	int level_1_max_connections, int level_1_current_connections, int level_1_max_streams, int level_1_current_streams,
@@ -1710,8 +1719,7 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 
 	snprintf(szPostBody, sizeof(szPostBody), 
 			 "settings_only=0"
-			 "&joined_channel_id=%ld"
-			 "&joined_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+			 "&joined_channel=%d"
 			 "&device_node_num=%d"
 			 "&viewer_grow_rate=%d"
 			 "&root_device_uuid=%s"
@@ -1738,8 +1746,7 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 			 "&node_array=%s"
 			 "&client_charset=%s"
 			 "&client_lang=%s",
-			joined_channel_id, 
-			joined_node_id[0],joined_node_id[1],joined_node_id[2],joined_node_id[3],joined_node_id[4],joined_node_id[5],
+			 (joined_channel ? 1 : 0), 
 			device_node_num, viewer_grow_rate,
 			root_device_uuid, root_public_ip, 
 			device_node_id[0],device_node_id[1],device_node_id[2],device_node_id[3],device_node_id[4],device_node_id[5],
@@ -1877,6 +1884,12 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 			}
 			else if (strcmp(name, "comments_id") == 0) {
 
+			}
+			else if (strcmp(name, "joined_channel_id") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
 			}
 			else if (strcmp(name, "event") == 0) {
 				if (NULL != on_event_fn)

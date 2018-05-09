@@ -451,6 +451,12 @@ void *WinMainThreadFn(void *pvThreadParam)
 	SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_VERSION, (DWORD)MYSELF_VERSION);
 	SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_STOPFLAG, (DWORD)0);
 
+	DWORD dwForceNoNAT = 0;
+	if (FALSE == GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT)) {
+		SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, (DWORD)0);
+	}
+
+
 #ifdef WIN32
 	hThread2 = ::CreateThread(NULL,0,WorkingThreadFn2,(void *)pServerNode,0,&dwThreadID2);
 	if (hThread2 == NULL)
@@ -506,6 +512,12 @@ void *WinMainThreadFn(void *pvThreadParam)
 				      bNoNAT = FALSE;
 				      nNatType = StunTypeIndependentFilter;
 				   }
+					dwForceNoNAT = 0;
+					if (GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT) && dwForceNoNAT == 1) {
+						  bNoNAT = TRUE;
+						  nNatType = StunTypeOpen;
+					}
+
 				   
 					pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
 					pServerNode->myHttpOperate.m0_pub_port = mapped.port;
@@ -524,12 +536,12 @@ void *WinMainThreadFn(void *pvThreadParam)
 					pServerNode->myHttpOperate.m0_pub_port = mapped.port;
 					pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
 					pServerNode->myHttpOperate.m0_nat_type = nNatType;
-					sprintf(msg, "CheckStunMyself: %d.%d.%d.%d[%d]\n", 
+					sprintf(msg, "CheckStunMyself: %d.%d.%d.%d[%d] NoNAT=%d\n", 
 						(pServerNode->myHttpOperate.m0_pub_ip & 0x000000ff) >> 0,
 						(pServerNode->myHttpOperate.m0_pub_ip & 0x0000ff00) >> 8,
 						(pServerNode->myHttpOperate.m0_pub_ip & 0x00ff0000) >> 16,
 						(pServerNode->myHttpOperate.m0_pub_ip & 0xff000000) >> 24,
-						pServerNode->myHttpOperate.m0_pub_port);
+						pServerNode->myHttpOperate.m0_pub_port,  pServerNode->myHttpOperate.m0_no_nat ? 1 : 0);
 					log_msg(msg, LOG_LEVEL_DEBUG);
 				}
 			}
@@ -553,6 +565,12 @@ void *WinMainThreadFn(void *pvThreadParam)
 				      bNoNAT = FALSE;
 				      nNatType = StunTypeIndependentFilter;
 				   }
+					dwForceNoNAT = 0;
+					if (GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT) && dwForceNoNAT == 1) {
+						  bNoNAT = TRUE;
+						  nNatType = StunTypeOpen;
+					}
+
 				   
 					pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
 					pServerNode->myHttpOperate.m0_pub_port = mapped.port;
@@ -579,12 +597,12 @@ void *WinMainThreadFn(void *pvThreadParam)
 					pServerNode->myHttpOperate.m0_pub_port = mapped.port;
 					pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
 					pServerNode->myHttpOperate.m0_nat_type = nNatType;
-					sprintf(msg, "CheckStun: %d.%d.%d.%d[%d]", 
+					sprintf(msg, "CheckStun: %d.%d.%d.%d[%d] NoNAT=%d\n", 
 						(pServerNode->myHttpOperate.m0_pub_ip & 0x000000ff) >> 0,
 						(pServerNode->myHttpOperate.m0_pub_ip & 0x0000ff00) >> 8,
 						(pServerNode->myHttpOperate.m0_pub_ip & 0x00ff0000) >> 16,
 						(pServerNode->myHttpOperate.m0_pub_ip & 0xff000000) >> 24,
-						pServerNode->myHttpOperate.m0_pub_port);
+						pServerNode->myHttpOperate.m0_pub_port,  pServerNode->myHttpOperate.m0_no_nat ? 1 : 0);
 					log_msg(msg, LOG_LEVEL_DEBUG);
 				}
 			}
