@@ -281,6 +281,8 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 							snprintf(szEvent, sizeof(szEvent), "%02X-%02X-%02X-%02X-%02X-%02X|0|Switch|00-00-00-00-00-00", 
 										object_node_id[0],object_node_id[1],object_node_id[2],object_node_id[3],object_node_id[4],object_node_id[5]);
 
+							log_msg_f(LOG_LEVEL_INFO, "OnIpcMsg: CMD_CODE_TOPO_DROP and Switch, szEvent=%s\n", szEvent);
+
 							int guaji_index = g_pShiyong->device_route_table[ret_index].guaji_index;
 							CtrlCmd_TOPO_EVENT(SOCKET_TYPE_TCP, arrServerProcesses[guaji_index].m_fhandle, object_node_id, (const char *)szEvent);
 						}

@@ -87,6 +87,7 @@ static void UiLoop(void)
 		}
 		else if (strcmp(cmd, "l") == 0)
 		{
+			printf("Software Version: 0x%08lx\n", MYSELF_VERSION); 
 			printf("Current video format: %dx%d fps(%d) \n", g_video_width, g_video_height, g_video_fps);
 			printf("Current source index: %d \n", g_pShiyong->currentSourceIndex);
 			printf("Joined channel id: %ld \n", g_pShiyong->get_joined_channel_id());
@@ -195,6 +196,8 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 		RunExeNoWait("net stop mpssvc",                  FALSE);
 		RunExeNoWait("sc config mpssvc start= disabled", FALSE);
 
+
+		printf("\nLSN Repeater \nSoftware Version: 0x%08lx\n", MYSELF_VERSION); 
 
 		DWORD dwForceNoNAT = 0;
 		if (FALSE == GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT)) {

@@ -12,12 +12,12 @@
 
 
 
-static BYTE CheckNALUType(BYTE bNALUHdr)
+BYTE CheckNALUType(BYTE bNALUHdr)
 {
 	return ((bNALUHdr & 0x1f) >> 0);
 }
 
-static BYTE CheckNALUNri(BYTE bNALUHdr)
+BYTE CheckNALUNri(BYTE bNALUHdr)
 {
 	return ((bNALUHdr & 0x60) >> 5);
 }

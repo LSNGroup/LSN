@@ -123,6 +123,8 @@ static void HandleMediaStreamingChech(void *eloop_ctx, void *timeout_ctx)
 			}
 			if (i < MAX_VIEWER_NUM)//找到一个！切换。。。
 			{
+				printf(                   "HandleMediaStreamingChech: SwitchMediaSource(%d => %d)\n", g_pShiyong->currentSourceIndex, i);
+				log_msg_f(LOG_LEVEL_INFO, "HandleMediaStreamingChech: SwitchMediaSource(%d => %d)\n", g_pShiyong->currentSourceIndex, i);
 				int oldIndex = g_pShiyong->currentSourceIndex;
 				g_pShiyong->SwitchMediaSource(g_pShiyong->currentSourceIndex, i);
 				g_pShiyong->DisconnectNode(&(g_pShiyong->viewerArray[oldIndex]));
@@ -619,7 +621,10 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 
 			ret = RecvStream(ftype, fhandle, (char *)pRecvData, copy_len);
 			if (ret == 0) {
-				g_pShiyong->currentLastMediaTime = get_system_milliseconds();
+				BYTE bType = CheckNALUType(pRecvData[8]);
+				if (bType != 30) {//VideoSendSetMediaType
+					g_pShiyong->currentLastMediaTime = get_system_milliseconds();
+				}
 				fake_rtp_recv_fn(pViewerNode, pRecvData[0], ntohl(pf_get_dword(pRecvData + 4)), pRecvData, copy_len);
 				free(pRecvData);
 			}
@@ -714,6 +719,11 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 #endif
 			}
 			g_pShiyong->device_topo_level = topo_level + 1;
+			if (g_pShiyong->device_topo_level > MAX_TOPO_LEVEL) {
+				log_msg_f(LOG_LEVEL_ERROR, "device_topo_level(%d) > %d, disconnect...\n", g_pShiyong->device_topo_level, MAX_TOPO_LEVEL);
+				g_pShiyong->DisconnectNode(pViewerNode);
+				return;
+			}
 
 			pRecvData = (unsigned char *)malloc(copy_len - 12 -1);
 			if (RecvStream(ftype, fhandle, (char *)pRecvData, copy_len - 12 -1) != 0) {
@@ -1392,7 +1402,9 @@ static void InitVar()
 {
 	get_device_uuid(g0_device_uuid, sizeof(g0_device_uuid));
 
-	strncpy(g0_node_name,   "DeviceNodeName", sizeof(g0_node_name));
+	//strncpy(g0_node_name,   "DeviceNodeName", sizeof(g0_node_name));
+	gethostname(g0_node_name, sizeof(g0_node_name));
+
 	GetOsInfo(g0_os_info, sizeof(g0_os_info));
 
 	g0_version = MYSELF_VERSION;
@@ -2087,6 +2099,8 @@ void CShiyong::AdjustTopoStructure()
 			BYTE viewer_peer_node_id[6];
 			memset(viewer_peer_node_id, 0, 6);
 
+			log_msg_f(LOG_LEVEL_INFO, "AdjustTopoStructure: Found Level-%d device node id: %02X-%02X-%02X-%02X-%02X-%02X, connected_viewer_nodes=%d \n", device_route_table[i].topo_level, device_route_table[i].node_id[0], device_route_table[i].node_id[1], device_route_table[i].node_id[2], device_route_table[i].node_id[3], device_route_table[i].node_id[4], device_route_table[i].node_id[5], device_route_table[i].u.device_info.connected_viewer_nodes);
+
 			for (int j = 0; j < MAX_ROUTE_ITEM_NUM; j++)
 			{
 				if (FALSE == device_route_table[j].bUsing) {
@@ -2145,6 +2159,11 @@ void CShiyong::AdjustTopoStructure()
 			HttpOperate::DoDrop("gbk", "zh", device_node_id, TRUE,  connecting_event_table[ii].viewer_node_id);
 			HttpOperate::DoDrop("gbk", "zh", device_node_id, FALSE, connecting_event_table[ii].guaji_node_id);
 
+			log_msg_f(LOG_LEVEL_INFO, "AdjustTopoStructure: uncle_device_free_streams=%d\n", uncle_device_free_streams);
+			log_msg_f(LOG_LEVEL_INFO, "AdjustTopoStructure: Viewer(Level-%d %s) => Guaji(Level-%d %s)\n", 
+				device_route_table[ret_index].topo_level, device_route_table[ret_index].u.node_nat_info.pub_ip_str,
+				device_route_table[ret_index2].topo_level, device_route_table[ret_index2].u.node_nat_info.pub_ip_str);
+
 			//生成2个Event，向下发送。。。
 			BYTE *viewer = &(device_route_table[ret_index].node_id[0]);
 			BYTE *gauji = &(device_route_table[ret_index2].node_id[0]);
@@ -2161,6 +2180,7 @@ void CShiyong::AdjustTopoStructure()
 										device_route_table[ret_index2].u.node_nat_info.nat_type,
 										device_route_table[ret_index2].u.node_nat_info.ip_str,
 										device_route_table[ret_index2].u.node_nat_info.port_str);
+				log_msg_f(LOG_LEVEL_INFO, "AdjustTopoStructure: szEvent1=%s", szEvent);
 				guaji_index = device_route_table[ret_index].guaji_index;
 				CtrlCmd_TOPO_EVENT(SOCKET_TYPE_TCP, arrServerProcesses[guaji_index].m_fhandle, viewer, (const char *)szEvent);
 
@@ -2173,6 +2193,7 @@ void CShiyong::AdjustTopoStructure()
 										device_route_table[ret_index].u.node_nat_info.nat_type,
 										device_route_table[ret_index].u.node_nat_info.ip_str,
 										device_route_table[ret_index].u.node_nat_info.port_str);
+				log_msg_f(LOG_LEVEL_INFO, "AdjustTopoStructure: szEvent2=%s\n", szEvent);
 				guaji_index = device_route_table[ret_index2].guaji_index;
 				CtrlCmd_TOPO_EVENT(SOCKET_TYPE_TCP, arrServerProcesses[guaji_index].m_fhandle, gauji, (const char *)szEvent);
 			}
@@ -2186,6 +2207,7 @@ void CShiyong::AdjustTopoStructure()
 										device_route_table[ret_index2].u.node_nat_info.nat_type,
 										device_route_table[ret_index2].u.node_nat_info.ip_str,
 										device_route_table[ret_index2].u.node_nat_info.port_str);
+				log_msg_f(LOG_LEVEL_INFO, "AdjustTopoStructure: szEvent1=%s", szEvent);
 				guaji_index = device_route_table[ret_index].guaji_index;
 				CtrlCmd_TOPO_EVENT(SOCKET_TYPE_TCP, arrServerProcesses[guaji_index].m_fhandle, viewer, (const char *)szEvent);
 
@@ -2198,6 +2220,7 @@ void CShiyong::AdjustTopoStructure()
 										device_route_table[ret_index].u.node_nat_info.nat_type,
 										device_route_table[ret_index].u.node_nat_info.ip_str,
 										device_route_table[ret_index].u.node_nat_info.port_str);
+				log_msg_f(LOG_LEVEL_INFO, "AdjustTopoStructure: szEvent2=%s\n", szEvent);
 				guaji_index = device_route_table[ret_index2].guaji_index;
 				CtrlCmd_TOPO_EVENT(SOCKET_TYPE_TCP, arrServerProcesses[guaji_index].m_fhandle, gauji, (const char *)szEvent);
 			}
@@ -2304,6 +2327,8 @@ void CShiyong::OptimizeStreamPath()
 			continue;
 		}
 
+		log_msg_f(LOG_LEVEL_INFO, "OptimizeStreamPath: Level-%d HeaviestStreamDeviceNode:%s\n", level, device_route_table[device_index].u.device_info.device_node_str);
+
 		int max_device_free_streams = -10000;
 		BYTE viewer_node_id[6];
 		for (int i = 0; i < MAX_ROUTE_ITEM_NUM; i++)
@@ -2328,6 +2353,8 @@ void CShiyong::OptimizeStreamPath()
 			}
 		}
 
+		log_msg_f(LOG_LEVEL_INFO, "OptimizeStreamPath: max_device_free_streams=%d\n", max_device_free_streams);
+
 		if (max_device_free_streams >= 2) //这里根据实际测试情况来，避免超调！！！
 		{
 			int ret_index = FindTopoRouteItem(viewer_node_id);
@@ -2336,6 +2363,7 @@ void CShiyong::OptimizeStreamPath()
 				char szEvent[64];
 				snprintf(szEvent, sizeof(szEvent), "%02X-%02X-%02X-%02X-%02X-%02X|0|Switch|00-00-00-00-00-00", 
 							viewer_node_id[0],viewer_node_id[1],viewer_node_id[2],viewer_node_id[3],viewer_node_id[4],viewer_node_id[5]);
+				log_msg_f(LOG_LEVEL_INFO, "OptimizeStreamPath: szEvent=%s\n", szEvent);
 
 				int guaji_index = device_route_table[ret_index].guaji_index;
 				CtrlCmd_TOPO_EVENT(SOCKET_TYPE_TCP, arrServerProcesses[guaji_index].m_fhandle, viewer_node_id, (const char *)szEvent);
