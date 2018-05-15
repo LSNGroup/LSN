@@ -304,6 +304,13 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 				g_pServerNode->myHttpOperate.ParseEventValue((char *)pRecvData);
 			}
 			else {
+				if (strcmp(SERVER_TYPE, "STAR") == 0) {
+					;//切断向下传播！！！
+				} 
+				else if (strcmp(SERVER_TYPE, "TREE") == 0 && g_device_topo_level == 4)
+				{
+					;//切断向下传播！！！
+				} else
 				if (g_pServerNode->m_bConnected == TRUE) {
 					CtrlCmd_TOPO_EVENT(g_pServerNode->myHttpOperate.m1_use_sock_type, g_pServerNode->myHttpOperate.m1_use_udt_sock, (BYTE *)buf, (const char *)pRecvData);;
 				}
@@ -333,6 +340,13 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 
 			g_pServerNode->myHttpOperate.ParseTopoSettings((const char *)pRecvData);
 
+			if (strcmp(SERVER_TYPE, "STAR") == 0) {
+				;//切断向下传播！！！
+			}
+			else if (strcmp(SERVER_TYPE, "TREE") == 0 && g_device_topo_level == 4)
+			{
+				;//切断向下传播！！！
+			} else
 			if (g_pServerNode->m_bConnected == TRUE && g_is_topo_primary) {
 				CtrlCmd_TOPO_SETTINGS(g_pServerNode->myHttpOperate.m1_use_sock_type, g_pServerNode->myHttpOperate.m1_use_udt_sock, g_device_topo_level, (const char *)pRecvData);;
 			}

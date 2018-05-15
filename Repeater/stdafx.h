@@ -58,7 +58,7 @@
 
 // TODO: 在此处引用程序需要的其他头文件
 
-#define FIRST_LEVEL_REPEATER	0
+#define FIRST_LEVEL_REPEATER	1
 
 
 /* For Viewer */

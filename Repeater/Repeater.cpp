@@ -197,7 +197,11 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 		RunExeNoWait("sc config mpssvc start= disabled", FALSE);
 
 
-		printf("\nLSN Repeater \nSoftware Version: 0x%08lx\n", MYSELF_VERSION); 
+#if FIRST_LEVEL_REPEATER
+		printf("\nLSN Star Repeater \nSoftware Version: 0x%08lx\n", MYSELF_VERSION);
+#else
+		printf("\nLSN Repeater \nSoftware Version: 0x%08lx\n", MYSELF_VERSION);
+#endif
 
 		DWORD dwForceNoNAT = 0;
 		if (FALSE == GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT)) {
@@ -211,10 +215,11 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 			else {
 #if FIRST_LEVEL_REPEATER
 				strncpy(SERVER_TYPE, "STAR", sizeof(SERVER_TYPE));
+				UUID_EXT = 1;//TREE ROOT MARK
 #else
 				strncpy(SERVER_TYPE, "TREE", sizeof(SERVER_TYPE));
-#endif
 				UUID_EXT = 0;//TREE ROOT MARK
+#endif
 				strncpy(NODE_NAME, "GuajiNodeName", sizeof(NODE_NAME));
 				strncpy(CONNECT_PASSWORD, "123456", sizeof(CONNECT_PASSWORD));
 				strncpy(g_tcp_address, "127.0.0.1", sizeof(g_tcp_address));
@@ -235,7 +240,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 					g1_bandwidth_per_stream = BANDWIDTH_PER_STREAM_DEFAULT;
 				}
 				g_pShiyong->device_max_streams = 2;//²âËÙ¡£¡£¡£
-				if (1 == UUID_EXT) {
+				if (strstr(g0_device_uuid, "-1@1") != NULL) {
 					MAX_SERVER_NUM = g_pShiyong->device_max_streams;
 				}
 				else {

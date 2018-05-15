@@ -454,6 +454,9 @@ void OnReportSettings(char *settings_str)
 			g_pShiyong->currentSourceIndex = -1;//避免DisconnectNode时切换
 			for (int i = 0; i < MAX_VIEWER_NUM; i++)
 			{
+				if (g_pShiyong->viewerArray[i].bUsing == FALSE) {
+					continue;
+				}
 				g_pShiyong->DisconnectNode(&(g_pShiyong->viewerArray[i]));
 			}
 		}
@@ -564,7 +567,9 @@ int CheckPassword(VIEWER_NODE *pViewerNode, SOCKET_TYPE sock_type, SOCKET fhandl
 		if (wResult == CTRLCMD_RESULT_OK) {
 			//set_encdec_key((unsigned char *)szPassEnc, strlen(szPassEnc));
 			//nodeInfo->func_flags = bFuncFlags;
-			g_pShiyong->device_topo_level = bTopoLevel + 1;
+			if (strstr(g0_device_uuid, "STAR") == NULL && strstr(g0_device_uuid, "-1@1") == NULL) {
+				g_pShiyong->device_topo_level = bTopoLevel + 1;
+			}
 			return 1;
 		}
 		else {
@@ -718,7 +723,9 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 				log_msg("RecvSocketDataLoop: device_topo_level != topo_level + 1\n", LOG_LEVEL_DEBUG);
 #endif
 			}
-			g_pShiyong->device_topo_level = topo_level + 1;
+			if (strstr(g0_device_uuid, "STAR") == NULL && strstr(g0_device_uuid, "-1@1") == NULL) {
+				g_pShiyong->device_topo_level = topo_level + 1;
+			}
 			if (g_pShiyong->device_topo_level > MAX_TOPO_LEVEL) {
 				log_msg_f(LOG_LEVEL_ERROR, "device_topo_level(%d) > %d, disconnect...\n", g_pShiyong->device_topo_level, MAX_TOPO_LEVEL);
 				g_pShiyong->DisconnectNode(pViewerNode);
@@ -828,6 +835,48 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 
 	SetStatusInfo(pDlg->m_hWnd, _T("即将断开连接。。。"));
 	pViewerNode->bConnected = FALSE;
+
+
+	//检查是否没有任何ViewerNode连接了。。。
+	BOOL bConnected = FALSE;
+	for (int i = 0; i < MAX_VIEWER_NUM; i++)
+	{
+		if (g_pShiyong->viewerArray[i].bConnected) {
+			bConnected = TRUE;
+			break;
+		}
+	}
+	if (bConnected == FALSE)
+	{
+		g_pShiyong->device_topo_level = 1;
+	}
+
+
+	//异常断开rudp连接时，处理Primary Viewer问题。。。
+	if (g_pShiyong->currentSourceIndex == pViewerNode->nID)
+	{
+		SetStatusInfo(pDlg->m_hWnd, _T("需要处理Primary Viewer问题。。。"));
+
+		//尝试找到另一个已连接的ViewNode
+		int i;
+		for (i = 0; i < MAX_VIEWER_NUM; i++)
+		{
+			if (g_pShiyong->viewerArray[i].bUsing == FALSE || g_pShiyong->viewerArray[i].bConnected == FALSE) {
+				continue;
+			}
+			if (g_pShiyong->viewerArray[i].bTopoPrimary == FALSE && g_pShiyong->currentSourceIndex != i) {
+				break;
+			}
+		}
+		if (i < MAX_VIEWER_NUM)//找到一个！切换。。。
+		{
+			g_pShiyong->SwitchMediaSource(g_pShiyong->currentSourceIndex, i);
+		}
+		else {
+			g_pShiyong->currentSourceIndex = -1;
+		}
+
+	}
 }
 
 #ifdef WIN32
@@ -1476,11 +1525,8 @@ CShiyong::CShiyong()
 	last_viewer_num_time = 0;
 	last_viewer_num = 0;
 
-#if FIRST_LEVEL_REPEATER
-	device_topo_level = 0;
-#else
 	device_topo_level = 1;
-#endif
+
 	//确保device_node_id与前面的最后一个viewer_node_id不雷同！！！
 	usleep(300*1000);
 	generate_nodeid(device_node_id, sizeof(device_node_id));
@@ -1689,10 +1735,23 @@ void CShiyong::DisconnectNode(VIEWER_NODE *pViewerNode)
 		}
 		else {
 			CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+			g_pShiyong->currentSourceIndex = -1;
 		}
 	}
 
 	pViewerNode->bQuitRecvSocketLoop = TRUE;
+
+	usleep(2000*1000);
+
+	if (pViewerNode->httpOP.m1_use_sock_type == SOCKET_TYPE_UDT)
+	{
+		UDT::close(pViewerNode->httpOP.m1_use_udt_sock);
+		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
+	}
+	else if (pViewerNode->httpOP.m1_use_sock_type == SOCKET_TYPE_TCP)
+	{
+		closesocket(pViewerNode->httpOP.m1_use_udt_sock);
+	}
 }
 
 void CShiyong::ReturnViewerNode(VIEWER_NODE *pViewerNode)
@@ -1723,6 +1782,7 @@ void CShiyong::CalculateTimeoutMedia()
 	}
 }
 
+//切换Primary通道，但并不断开连接。
 void CShiyong::SwitchMediaSource(int oldIndex, int newIndex)
 {
 	log_msg_f(LOG_LEVEL_DEBUG, "SwitchMediaSource(%d => %d)...\n", oldIndex, newIndex);
@@ -1778,7 +1838,7 @@ void CShiyong::UnregisterNode(VIEWER_NODE *pViewerNode)
 BOOL CShiyong::ShouldDoHttpOP()
 {
 	//一级转发器
-	if (device_topo_level == 0) {
+	if (strstr(g0_device_uuid, "STAR") != NULL) {
 		return TRUE;
 	}
 
@@ -1808,7 +1868,7 @@ BOOL CShiyong::ShouldDoHttpOP()
 BOOL CShiyong::ShouldDoAdjustAndOptimize()
 {
 	//一级转发器
-	if (device_topo_level == 0) {
+	if (strstr(g0_device_uuid, "STAR") != NULL) {
 		return FALSE;
 	}
 
@@ -2726,7 +2786,19 @@ int CShiyong::DeviceTopoReport()
 
 	for (i = 0; i < MAX_SERVER_NUM; i++)
 	{
-		strcat(report_string, arrServerProcesses[i].m_szReport);
+		//用最新的device_topo_level覆盖。。。
+		snprintf(szTemp, sizeof(szTemp), 
+			"%d"//"node_type=%d"
+			"|%d"//"&topo_level=%d"
+			"|%s"//"..."
+			,
+			ROUTE_ITEM_TYPE_GUAJINODE,
+			device_topo_level,
+			&(arrServerProcesses[i].m_szReport[8]) );
+
+		strcat(report_string, "row=");
+		strcat(report_string, szTemp);
+		strcat(report_string, "\n");
 	}
 
 	for (i = 0; i < MAX_VIEWER_NUM; i++)
@@ -2779,6 +2851,9 @@ int CShiyong::DeviceTopoReport()
 			CtrlCmd_TOPO_REPORT(viewerArray[i].httpOP.m1_use_sock_type, viewerArray[i].httpOP.m1_use_udt_sock, device_node_id, report_string);
 			break;
 		}
+	}
+	if (i == MAX_VIEWER_NUM) {
+		log_msg_f(LOG_LEVEL_ERROR, "CtrlCmd_TOPO_REPORT ==> No Primary Viewer, report_string=\n%s\n", i, report_string);
 	}
 
 	free(report_string);

@@ -26,6 +26,8 @@
 #define HTTP_QUERYCHANNELS_REFERER	"/lsnctrl/QueryChannels.html"
 #define HTTP_PUSH_URL				"/lsnctrl/Push.php"
 #define HTTP_PUSH_REFERER			"/lsnctrl/Push.html"
+#define HTTP_PUSHEND_URL				"/lsnctrl/PushEnd.php"
+#define HTTP_PUSHEND_REFERER			"/lsnctrl/PushEnd.html"
 #define HTTP_PULL_URL				"/lsnctrl/Pull.php"
 #define HTTP_PULL_REFERER			"/lsnctrl/Pull.html"
 #define HTTP_REPORT_URL				"/lsnctrl/Report.php"
@@ -161,6 +163,8 @@ static int RecvHttpResponse(TWSocket *sock, char *lpBuff, int nSize, char **psta
 			lpBuff[nRecvd] = '\0';
 #ifdef ANDROID_NDK ////Debug
 			__android_log_print(ANDROID_LOG_INFO, "RecvHttpResponse", "%s", lpBuff);
+#else
+			log_msg_f(LOG_LEVEL_DEBUG, "RecvHttpResponse: \n%s\n", lpBuff);
 #endif
 			*pstart = strstr(lpBuff, POST_RESULT_START);
 			*pend = strstr(lpBuff, POST_RESULT_END);
@@ -1309,6 +1313,116 @@ int HttpOperate::DoPush(const char *client_charset, const char *client_lang, con
 		else if (strcmp(name, "joined_channel_id") == 0) {
 			if (joined_channel_id != NULL) {
 				*joined_channel_id = atol(value);
+			}
+		}
+
+		if (next_start == NULL) {
+			break;
+		}
+		start = next_start;
+	}
+
+
+	sockClient.ShutDown();
+	sockClient.CloseSocket();
+
+	free(szPost);
+	return result;
+
+#undef POST_BUFF_SIZE
+}
+
+
+//
+// Return Value:
+// -1: Error
+//  0: NG.
+//  1: OK
+//
+int HttpOperate::DoPushEnd(const char *client_charset, const char *client_lang, int joined_channel_id)
+{
+#define POST_BUFF_SIZE	(2*1024)
+
+	TWSocket sockClient;
+	char szKey1[PHP_MD5_OUTPUT_CHARS+1];
+	char szKey2[PHP_MD5_OUTPUT_CHARS+1];
+	char szPostBody[1024];
+	char *szPost;
+	char *start, *end;
+	int result = 0;
+	char name[32];
+	char value[1024];
+	char *next_start = NULL;
+
+
+	if (dwHttpServerIp == 0) {
+		if (TWSocket::GetIPAddr(g1_http_server, szIpAddr, sizeof(szIpAddr)) == 0) {
+			return -1;
+		}
+		dwHttpServerIp = inet_addr(szIpAddr);
+	}
+
+	if (sockClient.Create() < 0) {
+		return -1;
+	}
+
+	if (sockClient.Connect(szIpAddr, HTTP_SERVER_PORT) != 0) {
+		dwHttpServerIp = 0;
+		sockClient.CloseSocket();
+		return -1;
+	}
+
+	szPost = (char *)malloc(POST_BUFF_SIZE);
+
+
+	snprintf(szPostBody, sizeof(szPostBody), "sender_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+												"&joined_channel_id=%ld"
+												"&client_charset=%s"
+												"&client_lang=%s",
+					m0_node_id[0], m0_node_id[1], m0_node_id[2], m0_node_id[3], m0_node_id[4], m0_node_id[5],
+					joined_channel_id,
+					client_charset, client_lang);
+	
+	php_md5(szPostBody, szKey1, sizeof(szKey1));
+	php_md5(szKey1, szKey2, sizeof(szKey2));
+	strcat(szPostBody, "&session_key=");
+	strcat(szPostBody, szKey2);
+	
+	snprintf(szPost, POST_BUFF_SIZE, szPostFormat, 
+										HTTP_PUSHEND_URL,
+										g1_http_server, HTTP_PUSHEND_REFERER,
+										g1_http_server,
+										strlen(szPostBody),
+										szPostBody);
+
+	if (sockClient.Send_Stream(szPost, strlen(szPost)) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+
+	if (RecvHttpResponse(&sockClient, szPost, POST_BUFF_SIZE, &start, &end) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+
+	while(1) {
+
+		if (ParseLine(start, name, sizeof(name), value, sizeof(value), &next_start) == FALSE) {
+			sockClient.CloseSocket();
+			free(szPost);
+			return -1;
+		}
+
+		if (strcmp(name, "result_code") == 0) {
+			if (strcmp(value, "OK") == 0) {
+				result = 1;
+			}
+			else {
+				break;
 			}
 		}
 

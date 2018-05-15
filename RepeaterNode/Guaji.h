@@ -56,7 +56,6 @@ extern int  P2P_PORT;
 extern int  IPC_BIND_PORT;
 
 extern BYTE g_device_topo_level;
-extern BYTE g_device_node_id[6];
 extern BYTE g_peer_node_id[6];
 extern BOOL g_is_topo_primary;
 

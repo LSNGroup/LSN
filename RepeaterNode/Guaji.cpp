@@ -30,7 +30,6 @@ int  P2P_PORT = FIRST_CONNECT_PORT;
 int  IPC_BIND_PORT = 20000;
 
 BYTE g_device_topo_level = 1;
-BYTE g_device_node_id[6];
 BYTE g_peer_node_id[6];//下级的Viewer Node id
 BOOL g_is_topo_primary = FALSE;//是否下级的主通道
 
@@ -1357,6 +1356,7 @@ void DShowAV_Start(SERVER_NODE* pServerNode, BYTE flags, BYTE video_size, BYTE v
 	pServerNode->m_bAVStarted = TRUE;
 	pServerNode->m_bH264FormatSent = FALSE;
 
+	g_is_topo_primary = TRUE;
 
 	if (pServerNode->m_bVideoEnable) {
 		VideoSendSetMediaType(pServerNode, g_video_width, g_video_height, g_video_fps);
@@ -1380,6 +1380,8 @@ void DShowAV_Stop(SERVER_NODE* pServerNode)
 		return;
 	}
 	pServerNode->m_bAVStarted = FALSE;
+
+	g_is_topo_primary = FALSE;
 
 	FakeRtpSend_uninit(pServerNode->m_pFRS);
 	pServerNode->m_pFRS = NULL;
@@ -1648,6 +1650,8 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 				}
 				CtrlCmd_TOPO_REPORT(SOCKET_TYPE_TCP, g_fhandle, source_node_id, (const char *)temp_ptr);
 				free(temp_ptr);
+
+				g_is_topo_primary = TRUE;
 
 				break;
 

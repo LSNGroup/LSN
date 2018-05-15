@@ -145,6 +145,15 @@ public:
 	// Return Value:
 	// -1: Error
 	//  0: NG.
+	//  1: OK
+	//
+	int DoPushEnd(const char *client_charset, const char *client_lang, int joined_channel_id);
+
+
+	//
+	// Return Value:
+	// -1: Error
+	//  0: NG.
 	//  1: OK.his_info
 	//
 	int DoPull(const char *client_charset, const char *client_lang, int channel_id, BOOL isFromStar);
