@@ -12,8 +12,8 @@
 
 #if defined(FOR_WL_YKZ)
 #define MYSELF_VERSION			0x04060200  /* x.x.x.0 */
-#define FIRST_CONNECT_PORT		8848
-#define SECOND_CONNECT_PORT		8846
+#define FIRST_CONNECT_PORT		3478
+#define SECOND_CONNECT_PORT		3476
 #elif (defined(FOR_51HZ_GUAJI) || defined(FOR_MAYI_GUAJI))
 #define MYSELF_VERSION			0x02050000  /* x.x.x.0 */
 #define FIRST_CONNECT_PORT		5178
@@ -29,8 +29,7 @@
 #define ADB_SERVER_PORT			5555
 #define LOCAL_PORT_BASE			10000
 
-#define SYS_TEMP_USER			"Assistant"
-#define SYS_TEMP_PASSWORD		"ykz123"
+#define REPEATER_PASSWORD		"123456"
 
 
 typedef struct _tag_anypc_node {

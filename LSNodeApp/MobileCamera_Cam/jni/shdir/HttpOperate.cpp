@@ -26,6 +26,8 @@
 #define HTTP_QUERYCHANNELS_REFERER	"/lsnctrl/QueryChannels.html"
 #define HTTP_PUSH_URL				"/lsnctrl/Push.php"
 #define HTTP_PUSH_REFERER			"/lsnctrl/Push.html"
+#define HTTP_PUSHEND_URL				"/lsnctrl/PushEnd.php"
+#define HTTP_PUSHEND_REFERER			"/lsnctrl/PushEnd.html"
 #define HTTP_PULL_URL				"/lsnctrl/Pull.php"
 #define HTTP_PULL_REFERER			"/lsnctrl/Pull.html"
 #define HTTP_REPORT_URL				"/lsnctrl/Report.php"
@@ -50,12 +52,19 @@ DWORD g1_lowest_version;
 char g1_http_server[MAX_LOADSTRING];
 char g1_stun_server[MAX_LOADSTRING];
 char g1_measure_server[MAX_LOADSTRING];
-int g1_register_period;  /* Seconds */
-int g1_expire_period;  /* Seconds */
+int g1_register_period = DEFAULT_REGISTER_PERIOD;  /* Seconds */
+int g1_expire_period   = DEFAULT_EXPIRE_PERIOD;  /* Seconds */
+
+BOOL g1_trigger_restart = FALSE;
+int g1_stream_timeout_l3 = 100;
+int g1_stream_timeout_step = 200;
+int g1_bandwidth_per_stream = BANDWIDTH_PER_STREAM_UNKNOWN;
+DWORD g1_system_debug_flags = 0;
 
 //#ifdef JNI_FOR_MOBILECAMERA
 BOOL g1_is_activated = TRUE;
 DWORD g1_comments_id = 0;
+DWORD g1_joined_channel_id = 0;
 //#endif
 
 
@@ -154,6 +163,8 @@ static int RecvHttpResponse(TWSocket *sock, char *lpBuff, int nSize, char **psta
 			lpBuff[nRecvd] = '\0';
 #ifdef ANDROID_NDK ////Debug
 			__android_log_print(ANDROID_LOG_INFO, "RecvHttpResponse", "%s", lpBuff);
+#else
+			log_msg_f(LOG_LEVEL_DEBUG, "RecvHttpResponse: \n%s\n", lpBuff);
 #endif
 			*pstart = strstr(lpBuff, POST_RESULT_START);
 			*pend = strstr(lpBuff, POST_RESULT_END);
@@ -185,17 +196,6 @@ static int RecvHttpResponse(TWSocket *sock, char *lpBuff, int nSize, char **psta
 }
 
 
-//
-// Return Value:
-// -1: Error
-//  0: Success
-//
-int ParseTopoSettings(const char *settings_string)
-{
-	//To do...
-	return 0;
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 
 HttpOperate::HttpOperate(BOOL is_admin, WORD p2p_port)
@@ -207,6 +207,8 @@ HttpOperate::HttpOperate(BOOL is_admin, WORD p2p_port)
 
 	//每个HttpOperate实例有不一样的node_id
 	generate_nodeid(m0_node_id, sizeof(m0_node_id));
+
+	memset(m1_peer_node_id, 0, 6);
 
 	m0_pub_ip = 0;
 	m0_pub_port = 0;
@@ -300,6 +302,7 @@ BOOL HttpOperate::ParseIpValue(char *value)
 //          /* event=3F-1A-CD-90-4B-67|6|Connect   |4F-1A-CD-90-66-88|61.126.78.32|23745|0|5|192.168.1.101-192.168.110.103|3478 */
 //          /* event=3F-1A-CD-90-4B-67|6|ConnectRev|4F-1A-CD-90-66-88|61.126.78.32|23745|0|5|192.168.1.101-192.168.110.103|3478 */
 //          /* event=3F-1A-CD-90-4B-67|6|Disconnect|4F-1A-CD-90-66-88 */
+//          /* event=3F-1A-CD-90-4B-67|0|Switch    |00-00-00-00-00-00 */
 //                   the_node_id   wait_time  type     peer_node_id       pub_ip  pub_port  no_nat  nat_type  ip  port 
 BOOL HttpOperate::ParseEventValue(char *value)
 {
@@ -523,6 +526,18 @@ BOOL HttpOperate::ParseEventValue(char *value)
 		node_id_str = value;
 		mac_addr(node_id_str, m1_peer_node_id, NULL);
 	}
+	else if (strcmp(type_str, "Switch") == 0)
+	{
+
+		/* NODE ID */
+		value = p + 1;
+		p = strchr(value, '|');
+		if (p != NULL) {
+			*p = '\0';  /* Last field */
+		}
+		node_id_str = value;
+		//mac_addr(node_id_str, m1_switch_to_node_id, NULL);
+	}
 	else {
 		return FALSE;
 	}
@@ -645,6 +660,121 @@ BOOL HttpOperate::ParseHisInfoValue(char *value)
 	m1_wait_time = atol(wait_time_str);
 
 	return TRUE;
+}
+
+
+//
+// Return Value:
+// -1: Error
+//  0: Success
+//
+int HttpOperate::ParseTopoSettings(const char *settings_string)
+{
+	char local_buff[1024*2];
+	char *start;
+	char name[32];
+	char value[1024];
+	char *next_start = NULL;
+	BOOL bUpgradeVersion = FALSE;
+	int result;
+
+
+	if (NULL == settings_string) {
+		return -1;
+	}
+	strncpy(local_buff, settings_string, sizeof(local_buff));
+	start = local_buff;
+
+	while(1) {
+
+		if (ParseLine(start, name, sizeof(name), value, sizeof(value), &next_start) == FALSE) {
+			return -1;
+		}
+
+
+		if (strcmp(value, "") != 0)
+		{
+			if (strcmp(name, "is_active") == 0) {
+				if (strcmp(value, "0") == 0) {
+					g1_is_active = FALSE;
+				}
+				else {
+					g1_is_active = TRUE;
+				}
+			}
+			else if (strcmp(name, "lowest_version") == 0) {
+				g1_lowest_version = atol(value);
+				if (g1_lowest_version > g0_version) {
+					bUpgradeVersion = TRUE;
+					printf("\nPlease upgrade the software to new version 0x%08lx ...\n", g1_lowest_version);
+				}
+			}
+			else if (strcmp(name, "http_server") == 0) {
+				strncpy(value, UrlDecode(value).c_str(), sizeof(value));
+				if (strcmp(value, g1_http_server) != 0) {
+					strncpy(g1_http_server, value, sizeof(g1_http_server));
+					//MultiByteToWideChar(CP_OEMCP,0,g1_http_server,-1,wszTemp,MAX_PATH);
+					//SaveSoftwareKeyValue(_T(STRING_REGKEY_NAME_HTTPSERVER), wszTemp);
+					dwHttpServerIp = 0;  /* 重新解析PHP服务器地址 */
+					//break;
+				}
+			}
+			else if (strcmp(name, "stun_server") == 0) {
+				strncpy(value, UrlDecode(value).c_str(), sizeof(value));
+				if (strcmp(value, g1_stun_server) != 0) {
+					strncpy(g1_stun_server, value, sizeof(g1_stun_server));
+				}
+			}
+			else if (strcmp(name, "measure_server") == 0) {
+				strncpy(value, UrlDecode(value).c_str(), sizeof(value));
+				if (strcmp(value, g1_measure_server) != 0) {
+					strncpy(g1_measure_server, value, sizeof(g1_measure_server));
+				}
+			}
+			else if (strcmp(name, "http_client_ip") == 0) {
+				DWORD temp_ip = inet_addr(value);
+				if (temp_ip != 0) {
+					m1_http_client_ip = temp_ip;
+				}
+			}
+			else if (strcmp(name, "register_period") == 0) {
+				g1_register_period = atol(value);
+			}
+			else if (strcmp(name, "expire_period") == 0) {
+				g1_expire_period = atol(value);
+			}
+			else if (strcmp(name, "trigger_restart") == 0) {
+				if (strcmp(value, "0") == 0) {
+					g1_trigger_restart = FALSE;
+				}
+				else {
+					g1_trigger_restart = TRUE;
+				}
+			}
+			else if (strcmp(name, "stream_timeout_l3") == 0) {
+				g1_stream_timeout_l3 = atol(value);
+			}
+			else if (strcmp(name, "stream_timeout_step") == 0) {
+				g1_stream_timeout_step = atol(value);
+			}
+			else if (strcmp(name, "bandwidth_per_stream") == 0) {
+				g1_bandwidth_per_stream = atol(value);
+			}
+			else if (strcmp(name, "system_debug_flags") == 0) {
+				g1_system_debug_flags = atol(value);
+			}
+			else if (strcmp(name, "joined_channel_id") == 0) {
+				g1_joined_channel_id = atol(value);
+			}
+		}
+
+
+		if (next_start == NULL) {
+			break;
+		}
+		start = next_start;
+	}
+	return 0;
 }
 
 
@@ -785,6 +915,26 @@ int HttpOperate::DoRegister1(const char *client_charset, const char *client_lang
 			}
 			else if (strcmp(name, "expire_period") == 0) {
 				g1_expire_period = atol(value);
+			}
+			else if (strcmp(name, "trigger_restart") == 0) {
+				if (strcmp(value, "0") == 0) {
+					g1_trigger_restart = FALSE;
+				}
+				else {
+					g1_trigger_restart = TRUE;
+				}
+			}
+			else if (strcmp(name, "stream_timeout_l3") == 0) {
+				g1_stream_timeout_l3 = atol(value);
+			}
+			else if (strcmp(name, "stream_timeout_step") == 0) {
+				g1_stream_timeout_step = atol(value);
+			}
+			else if (strcmp(name, "bandwidth_per_stream") == 0) {
+				g1_bandwidth_per_stream = atol(value);
+			}
+			else if (strcmp(name, "system_debug_flags") == 0) {
+				g1_system_debug_flags = atol(value);
 			}
 		}
 
@@ -1187,6 +1337,116 @@ int HttpOperate::DoPush(const char *client_charset, const char *client_lang, con
 // Return Value:
 // -1: Error
 //  0: NG.
+//  1: OK
+//
+int HttpOperate::DoPushEnd(const char *client_charset, const char *client_lang, int joined_channel_id)
+{
+#define POST_BUFF_SIZE	(2*1024)
+
+	TWSocket sockClient;
+	char szKey1[PHP_MD5_OUTPUT_CHARS+1];
+	char szKey2[PHP_MD5_OUTPUT_CHARS+1];
+	char szPostBody[1024];
+	char *szPost;
+	char *start, *end;
+	int result = 0;
+	char name[32];
+	char value[1024];
+	char *next_start = NULL;
+
+
+	if (dwHttpServerIp == 0) {
+		if (TWSocket::GetIPAddr(g1_http_server, szIpAddr, sizeof(szIpAddr)) == 0) {
+			return -1;
+		}
+		dwHttpServerIp = inet_addr(szIpAddr);
+	}
+
+	if (sockClient.Create() < 0) {
+		return -1;
+	}
+
+	if (sockClient.Connect(szIpAddr, HTTP_SERVER_PORT) != 0) {
+		dwHttpServerIp = 0;
+		sockClient.CloseSocket();
+		return -1;
+	}
+
+	szPost = (char *)malloc(POST_BUFF_SIZE);
+
+
+	snprintf(szPostBody, sizeof(szPostBody), "sender_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+												"&joined_channel_id=%ld"
+												"&client_charset=%s"
+												"&client_lang=%s",
+					m0_node_id[0], m0_node_id[1], m0_node_id[2], m0_node_id[3], m0_node_id[4], m0_node_id[5],
+					joined_channel_id,
+					client_charset, client_lang);
+	
+	php_md5(szPostBody, szKey1, sizeof(szKey1));
+	php_md5(szKey1, szKey2, sizeof(szKey2));
+	strcat(szPostBody, "&session_key=");
+	strcat(szPostBody, szKey2);
+	
+	snprintf(szPost, POST_BUFF_SIZE, szPostFormat, 
+										HTTP_PUSHEND_URL,
+										g1_http_server, HTTP_PUSHEND_REFERER,
+										g1_http_server,
+										strlen(szPostBody),
+										szPostBody);
+
+	if (sockClient.Send_Stream(szPost, strlen(szPost)) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+
+	if (RecvHttpResponse(&sockClient, szPost, POST_BUFF_SIZE, &start, &end) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+
+	while(1) {
+
+		if (ParseLine(start, name, sizeof(name), value, sizeof(value), &next_start) == FALSE) {
+			sockClient.CloseSocket();
+			free(szPost);
+			return -1;
+		}
+
+		if (strcmp(name, "result_code") == 0) {
+			if (strcmp(value, "OK") == 0) {
+				result = 1;
+			}
+			else {
+				break;
+			}
+		}
+
+		if (next_start == NULL) {
+			break;
+		}
+		start = next_start;
+	}
+
+
+	sockClient.ShutDown();
+	sockClient.CloseSocket();
+
+	free(szPost);
+	return result;
+
+#undef POST_BUFF_SIZE
+}
+
+
+//
+// Return Value:
+// -1: Error
+//  0: NG.
 //  1: OK.his_info
 //
 int HttpOperate::DoPull(const char *client_charset, const char *client_lang, int channel_id, BOOL isFromStar)
@@ -1449,6 +1709,42 @@ int HttpOperate::DoReport1(const char *client_charset, const char *client_lang, 
 				strcat(szPostBody, value);
 				strcat(szPostBody, "\n");
 			}
+			else if (strcmp(name, "trigger_restart") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "stream_timeout_l3") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "stream_timeout_step") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "bandwidth_per_stream") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "system_debug_flags") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "joined_channel_id") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
 		}
 
 
@@ -1490,7 +1786,7 @@ int HttpOperate::DoReport1(const char *client_charset, const char *client_lang, 
 //  2: settings
 //  3: settings,event
 int HttpOperate::DoReport2(const char *client_charset, const char *client_lang, 
-	DWORD joined_channel_id, BYTE joined_node_id[6], int device_node_num, int viewer_grow_rate,
+	BOOL joined_channel, int device_node_num, int viewer_grow_rate,
 	const char *root_device_uuid, const char *root_public_ip, BYTE device_node_id[6],
 	int route_item_num, int route_item_max,
 	int level_1_max_connections, int level_1_current_connections, int level_1_max_streams, int level_1_current_streams,
@@ -1537,8 +1833,7 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 
 	snprintf(szPostBody, sizeof(szPostBody), 
 			 "settings_only=0"
-			 "&joined_channel_id=%ld"
-			 "&joined_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+			 "&joined_channel=%d"
 			 "&device_node_num=%d"
 			 "&viewer_grow_rate=%d"
 			 "&root_device_uuid=%s"
@@ -1565,8 +1860,7 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 			 "&node_array=%s"
 			 "&client_charset=%s"
 			 "&client_lang=%s",
-			joined_channel_id, 
-			joined_node_id[0],joined_node_id[1],joined_node_id[2],joined_node_id[3],joined_node_id[4],joined_node_id[5],
+			 (joined_channel ? 1 : 0), 
 			device_node_num, viewer_grow_rate,
 			root_device_uuid, root_public_ip, 
 			device_node_id[0],device_node_id[1],device_node_id[2],device_node_id[3],device_node_id[4],device_node_id[5],
@@ -1669,11 +1963,47 @@ int HttpOperate::DoReport2(const char *client_charset, const char *client_lang,
 				strcat(szPostBody, value);
 				strcat(szPostBody, "\n");
 			}
+			else if (strcmp(name, "trigger_restart") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "stream_timeout_l3") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "stream_timeout_step") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "bandwidth_per_stream") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
+			else if (strcmp(name, "system_debug_flags") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
+			}
 			else if (strcmp(name, "is_activated") == 0) {
 
 			}
 			else if (strcmp(name, "comments_id") == 0) {
 
+			}
+			else if (strcmp(name, "joined_channel_id") == 0) {
+				strcat(szPostBody, name);
+				strcat(szPostBody, "=");
+				strcat(szPostBody, value);
+				strcat(szPostBody, "\n");
 			}
 			else if (strcmp(name, "event") == 0) {
 				if (NULL != on_event_fn)

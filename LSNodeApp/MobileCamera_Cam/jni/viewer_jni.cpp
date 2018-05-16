@@ -28,16 +28,21 @@ static char g_client_lang[16];
 static BOOL g_bFirstCheckStun = TRUE;
 
 VIEWER_NODE viewerArray[MAX_VIEWER_NUM];
-int current_use_viewer = -1;
+int currentSourceIndex = -1;
 BOOL is_app_recv_av = FALSE;
 
+static DWORD currentLastMediaTime = 0;
+static DWORD timeoutMedia = 0;
 
 static char ipc_socket_name[] = "multi_rudp.ipc_socket";
+static int ipc_listen_sock = INVALID_SOCKET;
 static int ipc_server_sock = INVALID_SOCKET;
-static int ipc_data_sock = INVALID_SOCKET;
 static int ipc_client_sock = INVALID_SOCKET;
 static pthread_t hIpcServerThread;
 void *IpcServerThreadFn(void *pvThreadParam);
+
+static pthread_t hCheckMediaThread;
+void *CheckMediaThreadFn(void *pvThreadParam);
 
 static pthread_t hRegisterThread;
 void *RegisterThreadFn(void *pvThreadParam);
@@ -49,6 +54,25 @@ void *ConnectThreadFnRev(void *pvThreadParam);
 static void InitVar();
 static void HandleRegister(VIEWER_NODE *pViewerNode);
 
+
+static DWORD get_system_milliseconds()//milliseconds
+{
+	struct timeval tv;
+	gettimeofday(&tv,NULL);
+	unsigned long ret = tv.tv_sec*1000 + tv.tv_usec/1000;
+	ret &= 0x7fffffff;
+	return ret;
+}
+
+BYTE CheckNALUType(BYTE bNALUHdr)
+{
+	return ((bNALUHdr & 0x1f) >> 0);
+}
+
+BYTE CheckNALUNri(BYTE bNALUHdr)
+{
+	return ((bNALUHdr & 0x60) >> 5);
+}
 
 UDTSOCKET get_use_udt_sock()
 {
@@ -126,6 +150,8 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StartNative)
 	
 	pthread_create(&hRegisterThread, NULL, RegisterThreadFn, NULL);
 	
+	pthread_create(&hCheckMediaThread, NULL, CheckMediaThreadFn, NULL);
+	
 	pthread_create(&hIpcServerThread, NULL, IpcServerThreadFn, NULL);
 	
 	return 0;
@@ -152,11 +178,11 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StopNative)
 	closesocket(ipc_client_sock);
 	ipc_client_sock = INVALID_SOCKET;
 	
-	closesocket(ipc_data_sock);
-	ipc_data_sock = INVALID_SOCKET;
-	
 	closesocket(ipc_server_sock);
 	ipc_server_sock = INVALID_SOCKET;
+	
+	closesocket(ipc_listen_sock);
+	ipc_listen_sock = INVALID_SOCKET;
 }
 
 
@@ -492,8 +518,9 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoConnect)
 	int len;
 	char *password_str;
 	
-	current_use_viewer = -1;
+	currentSourceIndex = -1;
 	is_app_recv_av = FALSE;
+	currentLastMediaTime = 0;
 	
 	len = (env)->GetStringLength(strPassword);
 	password_str = (char *)malloc(len+1);
@@ -592,8 +619,20 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoDisconnect)
 		ipc_client_sock = INVALID_SOCKET;
 	}
 	
-	current_use_viewer = -1;
+	for (int i = 0; i < MAX_VIEWER_NUM; i++)
+	{
+		if (FALSE == viewerArray[i].bUsing) {
+			continue;
+		}
+		viewerArray[i].bQuitRecvSocketLoop = TRUE;
+		usleep(2000000);
+		UdtClose(viewerArray[i].httpOP.m1_use_udt_sock);
+		UdpClose(viewerArray[i].httpOP.m1_use_udp_sock);
+	}
+	
+	currentSourceIndex = -1;
 	is_app_recv_av = FALSE;
+	currentLastMediaTime = 0;
 }
 
 
@@ -635,6 +674,8 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 	
 	ret = pViewerNode->httpOP.DoRegister1(g_client_charset, g_client_lang);
 	__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "DoRegister1...ret=%d\n", ret);
+	
+	timeoutMedia = g1_stream_timeout_l3 + g1_stream_timeout_step + g1_stream_timeout_step;
 	
 	if (ret == -1) {
 		pViewerNode->m_bNeedRegister = TRUE;
@@ -894,6 +935,78 @@ void *RegisterThreadFn(void *pvThreadParam)
 	return 0;
 }
 
+static void SwitchMediaSource(int oldIndex, int newIndex)
+{
+	__android_log_print(ANDROID_LOG_INFO, "SwitchMediaSource", "SwitchMediaSource(%d => %d)...\n", oldIndex, newIndex);
+
+	if (oldIndex < 0 || oldIndex >= MAX_VIEWER_NUM)	{
+		return;
+	}
+	if (newIndex < 0 || newIndex >= MAX_VIEWER_NUM)	{
+		return;
+	}
+	if (oldIndex == newIndex)	{
+		return;
+	}
+
+	//切换进行中。。。避免下次Check又重复切换操作
+	currentLastMediaTime = 0;
+
+	//viewerArray[oldIndex].bTopoPrimary = FALSE;
+	//viewerArray[newIndex].bTopoPrimary = TRUE;
+	currentSourceIndex = newIndex;
+
+	//if (viewerArray[newIndex].bTopoPrimary)
+	{
+		//必须视频可靠传输，音频非冗余传输！！！
+		BYTE bFlags = AV_FLAGS_VIDEO_ENABLE | AV_FLAGS_AUDIO_ENABLE | AV_FLAGS_VIDEO_RELIABLE | AV_FLAGS_VIDEO_H264 | AV_FLAGS_AUDIO_G729A;
+		BYTE bVideoSize = AV_VIDEO_SIZE_VGA;
+		BYTE bVideoFrameRate = 25;
+		DWORD audioChannel = 0;
+		DWORD videoChannel = 0;
+		CtrlCmd_AV_START(viewerArray[newIndex].httpOP.m1_use_sock_type, viewerArray[newIndex].httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
+	}
+
+	//if (viewerArray[oldIndex].bTopoPrimary == FALSE)
+	{
+		CtrlCmd_AV_STOP(viewerArray[oldIndex].httpOP.m1_use_sock_type, viewerArray[oldIndex].httpOP.m1_use_udt_sock);
+	}
+}
+
+void *CheckMediaThreadFn(void *pvThreadParam)
+{
+	while (1)
+	{
+		usleep(50000);
+		
+		if (timeoutMedia > 0 && currentLastMediaTime > 0)
+		{
+			DWORD nowTime = get_system_milliseconds();
+			if (nowTime - currentLastMediaTime > timeoutMedia) {
+
+				//尝试找到另一个已连接的ViewNode
+				int i;
+				for (i = 0; i < MAX_VIEWER_NUM; i++)
+				{
+					if (viewerArray[i].bUsing == FALSE || viewerArray[i].bConnected == FALSE) {
+						continue;
+					}
+					if (currentSourceIndex != i) {
+						break;
+					}
+				}
+				if (i < MAX_VIEWER_NUM)//找到一个！切换。。。
+				{
+					int oldIndex = currentSourceIndex;
+					SwitchMediaSource(currentSourceIndex, i);
+					DisconnectNode(&(viewerArray[oldIndex]));
+				}
+
+			}
+		}
+	}
+	return 0;
+}
 
 //
 // Return values:
@@ -956,9 +1069,9 @@ static void OnFakeRtpRecv(void *ctx, int payload_type, unsigned long rtptimestam
 		return;
 	}
 	
-	if (is_app_recv_av && current_use_viewer == pViewerNode->nID)
+	if (is_app_recv_av && currentSourceIndex == pViewerNode->nID)
 	{
-		int ret = CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE_TCP, ipc_data_sock, data, len);
+		int ret = CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE_TCP, ipc_server_sock, data, len);
 		if (ret < 0) {
 			__android_log_print(ANDROID_LOG_ERROR, "OnFakeRtpRecv", "CtrlCmd_Send_FAKERTP_RESP() failed!\n");
 		}
@@ -1009,6 +1122,10 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 
 			ret = RecvStream(ftype, fhandle, (char *)pRecvData, copy_len);
 			if (ret == 0) {
+				BYTE bType = CheckNALUType(pRecvData[8]);
+				if (bType != 30) {//VideoSendSetMediaType
+					currentLastMediaTime = get_system_milliseconds();
+				}
 				OnFakeRtpRecv(pViewerNode, pRecvData[0], ntohl(pf_get_dword(pRecvData + 4)), pRecvData, copy_len);
 				free(pRecvData);
 			}
@@ -1059,7 +1176,7 @@ void DoInConnection(VIEWER_NODE *pViewerNode, BOOL bProxy)
 	pViewerNode->bConnected = TRUE;
 	
 	//连接是为了视频监控。。。
-	if (current_use_viewer == pViewerNode->nID)
+	if (currentSourceIndex == pViewerNode->nID)
 	{
 		//必须视频可靠传输，音频非冗余传输！！！
 		BYTE bFlags = AV_FLAGS_VIDEO_ENABLE | AV_FLAGS_AUDIO_ENABLE | AV_FLAGS_VIDEO_RELIABLE | AV_FLAGS_VIDEO_H264 | AV_FLAGS_AUDIO_G729A;
@@ -1080,6 +1197,33 @@ void DoInConnection(VIEWER_NODE *pViewerNode, BOOL bProxy)
 	}
 	
 	pViewerNode->bConnected = FALSE;
+	
+	
+	//异常断开rudp连接时，处理Primary Viewer问题。。。
+	if (currentSourceIndex == pViewerNode->nID)
+	{
+		__android_log_print(ANDROID_LOG_INFO, "DoInConnection", "需要处理Primary Viewer问题。。。");
+
+		//尝试找到另一个已连接的ViewNode
+		int i;
+		for (i = 0; i < MAX_VIEWER_NUM; i++)
+		{
+			if (viewerArray[i].bUsing == FALSE || viewerArray[i].bConnected == FALSE) {
+				continue;
+			}
+			if (currentSourceIndex != i) {
+				break;
+			}
+		}
+		if (i < MAX_VIEWER_NUM)//找到一个！切换。。。
+		{
+			SwitchMediaSource(currentSourceIndex, i);
+		}
+		else {
+			currentSourceIndex = -1;
+		}
+
+	}
 }
 
 void *ConnectThreadFn(void *pvThreadParam)
@@ -1483,10 +1627,59 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 	return 0;
 }
 
+void DisconnectNode(VIEWER_NODE *pViewerNode)
+{
+	__android_log_print(ANDROID_LOG_INFO, "DisconnectNode", "DisconnectNode(%d)...\n", pViewerNode->nID);
+
+	if (pViewerNode->bUsing == FALSE) {
+		return;
+	}
+	//if (pViewerNode->bTopoPrimary) {
+	//	CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+	//}
+	if (currentSourceIndex == pViewerNode->nID) {
+
+		//尝试找到另一个已连接的ViewNode
+		int i;
+		for (i = 0; i < MAX_VIEWER_NUM; i++)
+		{
+			if (viewerArray[i].bUsing == FALSE || viewerArray[i].bConnected == FALSE) {
+				continue;
+			}
+			if (currentSourceIndex != i) {
+				break;
+			}
+		}
+		if (i < MAX_VIEWER_NUM)//找到一个！切换。。。
+		{
+			SwitchMediaSource(currentSourceIndex, i);
+		}
+		else {
+			CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+			currentSourceIndex = -1;
+		}
+	}
+
+	pViewerNode->bQuitRecvSocketLoop = TRUE;
+
+	usleep(2000*1000);
+
+	if (pViewerNode->httpOP.m1_use_sock_type == SOCKET_TYPE_UDT)
+	{
+		UDT::close(pViewerNode->httpOP.m1_use_udt_sock);
+		closesocket(pViewerNode->httpOP.m1_use_udp_sock);
+	}
+	else if (pViewerNode->httpOP.m1_use_sock_type == SOCKET_TYPE_TCP)
+	{
+		closesocket(pViewerNode->httpOP.m1_use_udt_sock);
+	}
+}
+
 void ReturnViewerNode(VIEWER_NODE *pViewerNode)
 {
 	if (NULL != pViewerNode)
 	{
+		pViewerNode->bConnected = FALSE;
 		pViewerNode->bConnecting = FALSE;
 		pViewerNode->bUsing = FALSE;
 		pViewerNode->nID = -1;
@@ -1510,7 +1703,7 @@ void *IpcServerThreadFn(void *pvThreadParam)
 	sockaddr_in their_addr;
 	int namelen = sizeof(their_addr);
 	
-	ipc_server_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	ipc_listen_sock = socket(AF_UNIX, SOCK_STREAM, 0);
 	
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
@@ -1518,24 +1711,24 @@ void *IpcServerThreadFn(void *pvThreadParam)
     strncpy(addr.sun_path + 1, ipc_socket_name, sizeof(addr.sun_path) - 1);
     len = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(ipc_socket_name);
     
-	if (bind(ipc_server_sock, (sockaddr *)&addr, len) < 0) {
-		printf("IpcServerThreadFn: TCP bind() failed!\n");
-		closesocket(ipc_server_sock);
-		ipc_server_sock = INVALID_SOCKET;
+	if (bind(ipc_listen_sock, (sockaddr *)&addr, len) < 0) {
+		__android_log_print(ANDROID_LOG_INFO, "IpcServerThreadFn", "TCP bind() failed!\n");
+		closesocket(ipc_listen_sock);
+		ipc_listen_sock = INVALID_SOCKET;
 		return 0;
 	}
 	
-	listen(ipc_server_sock, 1);
+	listen(ipc_listen_sock, 1);
 	
 	while (1)
 	{
 		//Blocking...
-		SOCKET fhandle = accept(ipc_server_sock, (sockaddr*)&their_addr, &namelen);
+		SOCKET fhandle = accept(ipc_listen_sock, (sockaddr*)&their_addr, &namelen);
 		if (INVALID_SOCKET == fhandle) {
-			printf("IpcServerThreadFn: TCP accept() failed!\n");
+			__android_log_print(ANDROID_LOG_INFO, "IpcServerThreadFn", "TCP accept() failed!\n");
 			break;
 		}
-		ipc_data_sock = fhandle;
+		ipc_server_sock = fhandle;
 		
 		while (1)
 		{
@@ -1550,12 +1743,14 @@ void *IpcServerThreadFn(void *pvThreadParam)
 			
 			ret = RecvStream(type, fhandle, buff, 6);
 			if (ret != 0) {
-				printf("IpcServerThreadFn: RecvStream(6) failed!\n");
+				__android_log_print(ANDROID_LOG_INFO, "IpcServerThreadFn", "RecvStream(6) failed!\n");
 				break;
 			}
 			
 			wCommand = ntohs(pf_get_word(buff+0));
 			dwDataLength = ntohl(pf_get_dword(buff+2));
+			
+			__android_log_print(ANDROID_LOG_INFO, "IpcServerThreadFn", "RecvStream(6) wCommand=0x%04x, dwDataLength=%ld\n", wCommand, dwDataLength);
 			
 			switch (wCommand)
 			{
@@ -1631,9 +1826,9 @@ void *IpcServerThreadFn(void *pvThreadParam)
 						bQuitLoop = TRUE;
 						break;
 					}
-					if (current_use_viewer != -1)
+					if (currentSourceIndex != -1)
 					{
-						CtrlCmd_Send_Raw(viewerArray[current_use_viewer].httpOP.m1_use_sock_type, viewerArray[current_use_viewer].httpOP.m1_use_udt_sock, (BYTE *)temp_ptr, 6+dwDataLength);
+						CtrlCmd_Send_Raw(viewerArray[currentSourceIndex].httpOP.m1_use_sock_type, viewerArray[currentSourceIndex].httpOP.m1_use_udt_sock, (BYTE *)temp_ptr, 6+dwDataLength);
 					}
 					free(temp_ptr);
 					break;
@@ -1644,10 +1839,10 @@ void *IpcServerThreadFn(void *pvThreadParam)
 			}
 		}//while(1)
 		
-		closesocket(ipc_data_sock);
-		ipc_data_sock = INVALID_SOCKET;
+		closesocket(ipc_server_sock);
+		ipc_server_sock = INVALID_SOCKET;
 	}//while(1)
 	
-	closesocket(ipc_server_sock);
-	ipc_server_sock = INVALID_SOCKET;
+	closesocket(ipc_listen_sock);
+	ipc_listen_sock = INVALID_SOCKET;
 }

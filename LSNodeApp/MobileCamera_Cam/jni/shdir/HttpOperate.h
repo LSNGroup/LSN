@@ -5,12 +5,21 @@
 #include "CommonLib.h"
 
 
-#define DEFAULT_HTTP_SERVER		"www.e2eye.com"
+#define DEFAULT_HTTP_SERVER		"www.lsnet.io"
 #define DEFAULT_STUN_SERVER		"Unknown" /* 可以用来测试是否可以访问HTTP Server */
 #define HTTP_SERVER_PORT		80
 
 #define DEFAULT_REGISTER_PERIOD		10
 #define DEFAULT_EXPIRE_PERIOD		25
+
+#define BANDWIDTH_PER_STREAM_UNKNOWN	0 //用于判断g1_bandwidth_per_stream是否已获取
+#define BANDWIDTH_PER_STREAM_DEFAULT	260 //单位KB/s
+
+#define  def_debug_device_online	0x0001
+#define  def_debug_connect_ok		0x0002
+#define  def_debug_connect_ng		0x0004
+#define  def_debug_stream_switch	0x0008
+#define  def_debug_error_msg		0x0010
 
 
 typedef void (*ON_REPORT_SETTINGS_FN)(char *settings_str);
@@ -30,15 +39,20 @@ extern char g1_measure_server[MAX_LOADSTRING];
 extern int g1_register_period;  /* Seconds */
 extern int g1_expire_period;  /* Seconds */
 
+extern BOOL g1_trigger_restart;
+extern int g1_stream_timeout_l3;
+extern int g1_stream_timeout_step;
+extern int g1_bandwidth_per_stream;
+extern DWORD g1_system_debug_flags;
+
 //#ifdef JNI_FOR_MOBILECAMERA
 extern BOOL g1_is_activated;
 extern DWORD g1_comments_id;
+extern DWORD g1_joined_channel_id;
 //#endif
 
 
 BOOL ParseLine(char *start, char *name, int name_size, char *value, int value_size, char **next);
-
-int ParseTopoSettings(const char *settings_string);
 
 
 class HttpOperate
@@ -89,7 +103,7 @@ public:
 	BOOL ParseIpValue(char *value);
 	BOOL ParseEventValue(char *value);
 	BOOL ParseHisInfoValue(char *value);
-
+	int ParseTopoSettings(const char *settings_string);
 
 	//
 	// Return Value:
@@ -131,6 +145,15 @@ public:
 	// Return Value:
 	// -1: Error
 	//  0: NG.
+	//  1: OK
+	//
+	int DoPushEnd(const char *client_charset, const char *client_lang, int joined_channel_id);
+
+
+	//
+	// Return Value:
+	// -1: Error
+	//  0: NG.
 	//  1: OK.his_info
 	//
 	int DoPull(const char *client_charset, const char *client_lang, int channel_id, BOOL isFromStar);
@@ -154,7 +177,7 @@ public:
 	//  2: settings
 	//  3: settings,event
 	static int DoReport2(const char *client_charset, const char *client_lang, 
-		DWORD joined_channel_id, BYTE joined_node_id[6], int device_node_num, int viewer_grow_rate,
+		BOOL joined_channel, int device_node_num, int viewer_grow_rate,
 		const char *root_device_uuid, const char *root_public_ip, BYTE device_node_id[6],
 		int route_item_num, int route_item_max,
 		int level_1_max_connections, int level_1_current_connections, int level_1_max_streams, int level_1_current_streams,

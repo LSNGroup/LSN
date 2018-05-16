@@ -118,7 +118,7 @@ N Bytes, Data.
 
 #define CMD_CODE_TOPO_REPORT	0x00D1  /* CMD_CODE_TOPO_REPORT | 12 + n |  (device)source_node_id  | 00:00:00:00:00:00 | report_string */
 
-#define CMD_CODE_TOPO_DROP		0x00D2  /* CMD_CODE_TOPO_DROP | 1 + 6 |  node_type | node_id */
+#define CMD_CODE_TOPO_DROP		0x00D2  /* CMD_CODE_TOPO_DROP | 1 + 1 + 6 | is_connected | node_type | node_id */
 
 #define CMD_CODE_TOPO_EVALUATE	0x00D3  /* CMD_CODE_TOPO_EVALUATE | 12 + 4 + 4 + 4 | (device)source_node_id | (guaji)object_node_id | begin_time | end_time | stream_flow */
 
@@ -197,7 +197,7 @@ int CtrlCmd_RUN(SOCKET_TYPE type, SOCKET fhandle, const char *exe_cmd, char *res
 
 int CtrlCmd_IPC_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string);
 int CtrlCmd_TOPO_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string);
-int CtrlCmd_TOPO_DROP(SOCKET_TYPE type, SOCKET fhandle, BYTE node_type, BYTE *node_id);
+int CtrlCmd_TOPO_DROP(SOCKET_TYPE type, SOCKET fhandle, BYTE is_connected, BYTE node_type, BYTE *node_id);
 int CtrlCmd_TOPO_EVALUATE(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, BYTE *object_node_id, DWORD begin_time, DWORD end_time, DWORD stream_flow);
 int CtrlCmd_TOPO_EVENT(SOCKET_TYPE type, SOCKET fhandle, BYTE *dest_node_id, const char *event_string);
 int CtrlCmd_TOPO_SETTINGS(SOCKET_TYPE type, SOCKET fhandle, BYTE topo_level, const char *settings_string);

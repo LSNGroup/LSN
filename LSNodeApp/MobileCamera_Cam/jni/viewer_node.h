@@ -25,9 +25,10 @@ typedef struct _tag_viewer_node {
 
 
 extern VIEWER_NODE viewerArray[MAX_VIEWER_NUM];
-extern int current_use_viewer;
+extern int currentSourceIndex;
 extern BOOL is_app_recv_av;
 
+void DisconnectNode(VIEWER_NODE *pViewerNode);
 void ReturnViewerNode(VIEWER_NODE *pViewerNode);
 
 

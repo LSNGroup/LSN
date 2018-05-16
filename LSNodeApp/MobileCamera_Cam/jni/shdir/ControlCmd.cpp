@@ -217,6 +217,7 @@ void CtrlCmd_Recv_AV_END(SOCKET_TYPE type, SOCKET fhandle)
 
 int CtrlCmd_HELLO(SOCKET_TYPE type, SOCKET fhandle, BYTE *client_node_id, DWORD client_version, BYTE topo_primary, const char *password, BYTE *server_node_id, DWORD *server_version, BYTE *func_flags, BYTE *topo_level, WORD *result_code)
 {
+	BYTE bZeroID[6] = {0, 0, 0, 0, 0, 0};
 	char buff[32];
 	int ret;
 	WORD wCommand;
@@ -248,7 +249,7 @@ int CtrlCmd_HELLO(SOCKET_TYPE type, SOCKET fhandle, BYTE *client_node_id, DWORD 
 	wCommand = ntohs(pf_get_word(buff));
 	dwDataLength = ntohl(pf_get_dword(buff+2));
 
-	if (wCommand != CMD_CODE_HELLO_RESP || dwDataLength != 13) {
+	if (wCommand != CMD_CODE_HELLO_RESP || dwDataLength != 14) {//修改协议字段时，不要忘记这个数据长度！！！
 		return -1;
 	}
 
@@ -256,8 +257,14 @@ int CtrlCmd_HELLO(SOCKET_TYPE type, SOCKET fhandle, BYTE *client_node_id, DWORD 
 	if (ret != 0) {
 		return -1;
 	}
-	if (memcmp(server_node_id, buff, 6) != 0) {
-		return -1;
+	if (memcmp(client_node_id, bZeroID, 6) == 0)//client_node_id为零，IPC通道，返回server_node_id
+	{
+		memcpy(server_node_id, buff, 6);
+	}
+	else {
+		if (memcmp(server_node_id, buff, 6) != 0) {
+			return -1;
+		}
 	}
 
 	ret = RecvStream(type, fhandle, buff, 4);
@@ -384,19 +391,20 @@ int CtrlCmd_TOPO_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, 
 	return ret;
 }
 
-int CtrlCmd_TOPO_DROP(SOCKET_TYPE type, SOCKET fhandle, BYTE node_type, BYTE *node_id)
+int CtrlCmd_TOPO_DROP(SOCKET_TYPE type, SOCKET fhandle, BYTE is_connected, BYTE node_type, BYTE *node_id)
 {
 	int ret;
 	char bSendPacket[32];
 
 	memset(bSendPacket, 0, sizeof(bSendPacket));
 	pf_set_word(bSendPacket + 0, htons(CMD_CODE_TOPO_DROP));
-	pf_set_dword(bSendPacket + 2, htonl(1 + 6));
-	*(BYTE *)(bSendPacket + 6) = node_type;
-	memcpy(bSendPacket + 7, node_id, 6);
+	pf_set_dword(bSendPacket + 2, htonl(1 + 1 + 6));
+	*(BYTE *)(bSendPacket + 6) = is_connected;
+	*(BYTE *)(bSendPacket + 7) = node_type;
+	memcpy(bSendPacket + 8, node_id, 6);
 	
 	pthread_mutex_lock(getMutexSend(type));
-	ret = SendStream(type, fhandle, bSendPacket, 6+1+6);
+	ret = SendStream(type, fhandle, bSendPacket, 6+1+1+6);
 	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }

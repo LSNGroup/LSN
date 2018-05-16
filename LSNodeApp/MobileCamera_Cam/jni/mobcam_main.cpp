@@ -349,7 +349,7 @@ void *NativeMainFunc(void *lpParameter)
 				}
 
 				int joined_channel_id = 0;
-				ret = myHttpOperate.DoPush(g_client_charset, g_client_lang, "Channel Comments", &joined_channel_id);
+				ret = myHttpOperate.DoPush(g_client_charset, g_client_lang, "LSN Test Channel", &joined_channel_id);
 				__android_log_print(ANDROID_LOG_INFO, "NativeMainFunc", "DoPush() = %d\n", ret);
 				if_on_push_result(ret, joined_channel_id);
 				if (ret == 1 && joined_channel_id > 0) {
@@ -381,7 +381,6 @@ void *NativeMainFunc(void *lpParameter)
 				pthread_create(&g_hWorkingThread1, NULL, WorkingThreadFn1, NULL);
 
 				if (g_bDoConnection1) {
-					__android_log_print(ANDROID_LOG_INFO, "NativeMainFunc", "DoUnregister()...\n");
 					pthread_create(&g_hUnregisterThread, NULL, UnregisterThreadFn, NULL);
 				}
 
@@ -402,7 +401,6 @@ void *NativeMainFunc(void *lpParameter)
 				pthread_create(&g_hWorkingThreadRev, NULL, WorkingThreadFnRev, NULL);
 
 				if (g_bDoConnection1) {
-					__android_log_print(ANDROID_LOG_INFO, "NativeMainFunc", "DoUnregister()...\n");
 					pthread_create(&g_hUnregisterThread, NULL, UnregisterThreadFn, NULL);
 				}
 
@@ -433,6 +431,9 @@ void *NativeMainFunc(void *lpParameter)
 
 void *UnregisterThreadFn(void *pvThreadParam)
 {
+	//不能马上Unregister，会delete Event！！！
+	usleep((g1_register_period + 5)*1000*1000);
+	__android_log_print(ANDROID_LOG_INFO, "UnregisterThreadFn", "DoUnregister()...\n");
 	myHttpOperate.DoUnregister(g_client_charset, g_client_lang);
 }
 
@@ -768,6 +769,7 @@ static int ControlChannelLoop(SOCKET_TYPE type, SOCKET fhandle)
 		wCommand = ntohs(pf_get_word(buff+0));
 		dwDataLength = ntohl(pf_get_dword(buff+2));
 
+		__android_log_print(ANDROID_LOG_INFO, "ControlChannelLoop", "RecvStream(6) wCommand=0x%04x, dwDataLength=%ld\n", wCommand, dwDataLength);
 
 #if 1 /* 密码校验成功后才能受理其他命令。*/
 		if (FALSE == bAuthOK && CMD_CODE_HELLO_REQ != wCommand) {
@@ -789,6 +791,12 @@ static int ControlChannelLoop(SOCKET_TYPE type, SOCKET fhandle)
 				//}
 
 				ret = RecvStream(type, fhandle, buff, 4);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
+
+				ret = RecvStream(type, fhandle, buff, 1);
 				if (ret != 0) {
 					bQuitLoop = TRUE;
 					break;
@@ -993,7 +1001,7 @@ void StopDoConnection()
 {
 	if (g_bDoConnection1) {
 		__android_log_print(ANDROID_LOG_INFO, "StopDoConnection", "DoUnregister()...\n");
-		pthread_create(&g_hUnregisterThread, NULL, UnregisterThreadFn, NULL);
+		myHttpOperate.DoUnregister(g_client_charset, g_client_lang);
 	}
 	g_bDoConnection1 = FALSE;
 	g_bDoConnection2 = FALSE;
