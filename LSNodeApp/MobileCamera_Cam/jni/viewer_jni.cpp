@@ -30,6 +30,7 @@ static BOOL g_bFirstCheckStun = TRUE;
 VIEWER_NODE viewerArray[MAX_VIEWER_NUM];
 int currentSourceIndex = -1;
 BOOL is_app_recv_av = FALSE;
+DWORD joined_channel_id = -1;
 
 static DWORD currentLastMediaTime = 0;
 static DWORD timeoutMedia = 0;
@@ -50,6 +51,8 @@ void *RegisterThreadFn(void *pvThreadParam);
 void *ConnectThreadFn(void *pvThreadParam);
 void *ConnectThreadFn2(void *pvThreadParam);
 void *ConnectThreadFnRev(void *pvThreadParam);
+
+void *NewConnectThreadFn(void *pvThreadParam);
 
 static void InitVar();
 static void HandleRegister(VIEWER_NODE *pViewerNode);
@@ -139,7 +142,7 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StartNative)
 		viewerArray[i].mapping.externalPort = ((myUPnP.GetLocalIP() & 0xff000000) >> 24) | ((2049 + (65535 - 2049) * (WORD)rand() / (65536)) & 0xffffff00);
 		while (hasUPnP && UNAT_OK == myUPnP.GetNATSpecificEntry(&(viewerArray[i].mapping), &bMappingExists) && bMappingExists)
 		{
-			__android_log_print(ANDROID_LOG_INFO, "StartNative", "Find NATPortMapping(%s), retry...\n", viewerArray[i].mapping.description.c_str());
+			__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "Find NATPortMapping(%s), retry...\n", viewerArray[i].mapping.description.c_str());
 			bMappingExists = FALSE;
 			viewerArray[i].mapping.description = "";
 			viewerArray[i].mapping.protocol = UNAT_UDP;
@@ -163,6 +166,15 @@ void
 MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StopNative)
 	(JNIEnv* env, jobject thiz)
 {
+	closesocket(ipc_client_sock);
+	ipc_client_sock = INVALID_SOCKET;
+	
+	closesocket(ipc_server_sock);
+	ipc_server_sock = INVALID_SOCKET;
+	
+	closesocket(ipc_listen_sock);
+	ipc_listen_sock = INVALID_SOCKET;
+	
 	// use this function to release the UDT library
 	//UdtCleanup();
 	
@@ -175,14 +187,6 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StopNative)
 		myUPnP.RemoveNATPortMapping(viewerArray[i].mapping);
 	}
 	
-	closesocket(ipc_client_sock);
-	ipc_client_sock = INVALID_SOCKET;
-	
-	closesocket(ipc_server_sock);
-	ipc_server_sock = INVALID_SOCKET;
-	
-	closesocket(ipc_listen_sock);
-	ipc_listen_sock = INVALID_SOCKET;
 }
 
 
@@ -414,7 +418,7 @@ int SendVoice(SOCKET_TYPE type, SOCKET fhandle, const BYTE *pData, int len) //Fo
 	unsigned char *pOutput = (unsigned char *)malloc(len2);
 	g729a_Encoder((short *)pData, pOutput, nFrame * L_G729A_FRAME);
 	
-	__android_log_print(ANDROID_LOG_INFO, "SendVoice", "SendVoice(%d bytes g729a)...", len2);
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "SendVoice(%d bytes g729a)...", len2);
 	ret = CtrlCmd_VOICE(type, fhandle, (BYTE *)pOutput, len2);
 	
 	free(pOutput);
@@ -496,12 +500,26 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoSearchChannels)
 		for (i = 0; i < (int)cntServer; i++)
 		{
 			CHANNEL_NODE *pNode = &servers[i];
+			
+			jstring channel_comments = (env)->NewStringUTF(pNode->channel_comments);
+			jstring device_uuid = (env)->NewStringUTF(pNode->device_uuid);
+			jstring node_id_str = (env)->NewStringUTF(pNode->node_id_str);
+			jstring pub_ip_str = (env)->NewStringUTF(pNode->pub_ip_str);
+			jstring location = (env)->NewStringUTF(pNode->location);
+			
 			(env)->CallVoidMethod(thiz, mid, 
-									i, pNode->channel_id, (env)->NewStringUTF(pNode->channel_comments), 
-									(env)->NewStringUTF(pNode->device_uuid), (env)->NewStringUTF(pNode->node_id_str), 
-									(env)->NewStringUTF(pNode->pub_ip_str), (env)->NewStringUTF(pNode->location) );
+									i, pNode->channel_id, channel_comments, 
+									device_uuid, node_id_str, 
+									pub_ip_str, location );
 		
-			__android_log_print(ANDROID_LOG_INFO, "DoSearchChannels", "FillChannelNode(index = %d)!", i);////Debug
+			__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "DoSearchChannels: FillChannelNode(index = %d)!", i);////Debug
+			
+			//这里如果不手动释放局部引用，很有可能造成局部引用表溢出(max:512)
+			(env)->DeleteLocalRef(channel_comments);
+			(env)->DeleteLocalRef(device_uuid);
+			(env)->DeleteLocalRef(node_id_str);
+			(env)->DeleteLocalRef(pub_ip_str);
+			(env)->DeleteLocalRef(location);
 		}
 	}
 
@@ -522,66 +540,7 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoConnect)
 	is_app_recv_av = FALSE;
 	currentLastMediaTime = 0;
 	
-	len = (env)->GetStringLength(strPassword);
-	password_str = (char *)malloc(len+1);
-	(env)->GetStringUTFRegion(strPassword, 0, len, password_str);
-	password_str[len] = '\0';
-	
-	for (int n = 0; n < 2; n++)
-	{
-		int i;
-		//{{{{--------------------------------------->
-		for (i = 0; i < MAX_VIEWER_NUM; i++ ) {
-			if (viewerArray[i].bUsing == FALSE) {
-				break;
-			}
-		}
-
-		if (i == MAX_VIEWER_NUM) { // no free node
-			//MessageBox("对不起，当前并发连接数已达到上限!", (LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
-			break;
-		}
-
-		viewerArray[i].bUsing = TRUE;
-		viewerArray[i].nID = i;
-		//<---------------------------------------}}}}
-		
-		
-		//{{{{--------------------------------------->
-		viewerArray[i].hConnectThread = NULL;
-		viewerArray[i].hConnectThread2 = NULL;
-		viewerArray[i].hConnectThreadRev = NULL;
-		viewerArray[i].bQuitRecvSocketLoop = TRUE;
-		viewerArray[i].bConnecting = TRUE;
-		viewerArray[i].bConnected = FALSE;
-
-		strncpy(viewerArray[i].password, password_str, sizeof(viewerArray[i].password));
-		//<---------------------------------------}}}}
-		
-		//mac_addr(node_id_str, g1_peer_node_id, NULL);
-		
-		HandleRegister(&(viewerArray[i]));
-		
-		ret = viewerArray[i].httpOP.DoPull(g_client_charset, g_client_lang, channel_id, (n == 0 ? TRUE : FALSE));
-		if (ret != 1) {
-			continue;
-		}
-		
-		if (TRUE == viewerArray[i].httpOP.m1_peer_nonat) {
-			pthread_create(&(viewerArray[i].hConnectThread2), NULL, ConnectThreadFn2, &(viewerArray[i]));
-		}
-		else if (TRUE == viewerArray[i].httpOP.m0_no_nat) {
-			pthread_create(&(viewerArray[i].hConnectThreadRev), NULL, ConnectThreadFnRev, &(viewerArray[i]));
-		}
-		else {
-			pthread_create(&(viewerArray[i].hConnectThread), NULL, ConnectThreadFn, &(viewerArray[i]));
-		}
-		
-	}//for n 2
-
-	free(password_str);
-	
-	
+	//////////////////////////////////////////////////////////////////////////////
 	int data_sock;
 	struct sockaddr_un addr;
 	
@@ -594,16 +553,41 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoConnect)
     len = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(ipc_socket_name);
     
     if (connect(data_sock, (struct sockaddr *)&addr, len) < 0) {
-    	__android_log_print(ANDROID_LOG_ERROR, "DoConnect", "connect(%s) failed, wait 50 ms...\n", ipc_socket_name);
+    	__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "DoConnect: connect(%s) failed, wait 50 ms...\n", ipc_socket_name);
     	usleep(50000);
 	    if (connect(data_sock, (struct sockaddr *)&addr, len) < 0) {
-			__android_log_print(ANDROID_LOG_ERROR, "DoConnect", "connect(%s) failed!\n", ipc_socket_name);
+			__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "DoConnect: connect(%s) failed!\n", ipc_socket_name);
 			close(data_sock);
 			return;
 		}
 	}
 	
 	ipc_client_sock = data_sock;
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "DoConnect: Ipc connect(%s) ok! ipc_client_sock=%ld\n", ipc_socket_name, ipc_client_sock);
+	//////////////////////////////////////////////////////////////////////////////
+	
+	
+	len = (env)->GetStringLength(strPassword);
+	password_str = (char *)malloc(len+1);
+	(env)->GetStringUTFRegion(strPassword, 0, len, password_str);
+	password_str[len] = '\0';
+	//...
+	free(password_str);
+	
+	
+	joined_channel_id = channel_id;
+	
+	//建立快速连接。。。from_star
+	{
+		pthread_t hThread;
+		pthread_create(&hThread, NULL, NewConnectThreadFn, (void *)1);
+	}
+	
+	//尝试建立另一个连接...
+	{
+		pthread_t hThread;
+		pthread_create(&hThread, NULL, NewConnectThreadFn, (void *)0);
+	}
 }
 
 extern "C"
@@ -611,7 +595,7 @@ void
 MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoDisconnect)
 	(JNIEnv* env, jobject thiz)
 {
-	__android_log_print(ANDROID_LOG_INFO, "DoDisconnect", "DoDisconnect()...\n");
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "DoDisconnect()...\n");
 	
 	//if (sock_type == SOCKET_TYPE_TCP)
 	{
@@ -633,6 +617,7 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoDisconnect)
 	currentSourceIndex = -1;
 	is_app_recv_av = FALSE;
 	currentLastMediaTime = 0;
+	joined_channel_id = -1;
 }
 
 
@@ -673,7 +658,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 	
 	
 	ret = pViewerNode->httpOP.DoRegister1(g_client_charset, g_client_lang);
-	__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "DoRegister1...ret=%d\n", ret);
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "HandleRegister: DoRegister1()=%d\n", ret);
 	
 	timeoutMedia = g1_stream_timeout_l3 + g1_stream_timeout_step + g1_stream_timeout_step;
 	
@@ -701,7 +686,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 	{
 		ret = CheckStunMyself(g1_http_server, pViewerNode->httpOP.m0_p2p_port, &mapped, &bNoNAT, &nNatType);
 		if (ret == -1) {
-			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStunMyself() failed!\n");
+			__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "HandleRegister: CheckStunMyself() failed!\n");
 			
 		   mapped.addr = ntohl(pViewerNode->httpOP.m1_http_client_ip);
 		   mapped.port = pViewerNode->httpOP.m0_p2p_port;
@@ -725,7 +710,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
 			pViewerNode->httpOP.m0_nat_type = nNatType;
-			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
+			__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "HandleRegister: CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
 				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
 				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
 				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
@@ -739,7 +724,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
 			pViewerNode->httpOP.m0_nat_type = nNatType;
-			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStunMyself: %d.%d.%d.%d[%d]\n", 
+			__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "HandleRegister: CheckStunMyself: %d.%d.%d.%d[%d]\n", 
 				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
 				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
 				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
@@ -750,7 +735,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 	else if (g_bFirstCheckStun) {
 		ret = CheckStun(g1_stun_server, pViewerNode->httpOP.m0_p2p_port, &mapped, &bNoNAT, &nNatType);
 		if (ret == -1) {
-			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStun() failed!\n");
+			__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "HandleRegister: CheckStun() failed!\n");
 			
 		   mapped.addr = ntohl(pViewerNode->httpOP.m1_http_client_ip);
 		   mapped.port = pViewerNode->httpOP.m0_p2p_port;
@@ -774,7 +759,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
 			pViewerNode->httpOP.m0_nat_type = nNatType;
-			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
+			__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "HandleRegister: CheckStunHttp: %d.%d.%d.%d[%d], NoNAT=%d\n", 
 				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
 				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
 				(pViewerNode->httpOP.m0_pub_ip & 0x00ff0000) >> 16,
@@ -798,7 +783,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
 			pViewerNode->httpOP.m0_nat_type = nNatType;
 #if 1 ////Debug
-			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStun: %s %d.%d.%d.%d[%d]", 
+			__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "HandleRegister: CheckStun: %s %d.%d.%d.%d[%d]", 
 				pViewerNode->httpOP.m0_no_nat ? "NoNAT" : "NAT",
 				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
 				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
@@ -811,7 +796,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 	else {
 		ret = CheckStunSimple(g1_stun_server, pViewerNode->httpOP.m0_p2p_port, &mapped);
 		if (ret == -1) {
-			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStunSimple() failed!\n");
+			__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "HandleRegister: CheckStunSimple() failed!\n");
 			mapped.addr = ntohl(pViewerNode->httpOP.m1_http_client_ip);
 			mapped.port = pViewerNode->httpOP.m0_p2p_port;;
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
@@ -821,7 +806,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 #if 1 ////Debug
-			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "CheckStunSimple: %s %d.%d.%d.%d[%d]", 
+			__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "HandleRegister: CheckStunSimple: %s %d.%d.%d.%d[%d]", 
 				pViewerNode->httpOP.m0_no_nat ? "NoNAT" : "NAT",
 				(pViewerNode->httpOP.m0_pub_ip & 0x000000ff) >> 0,
 				(pViewerNode->httpOP.m0_pub_ip & 0x0000ff00) >> 8,
@@ -854,7 +839,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 				pViewerNode->httpOP.m0_no_nat = TRUE;
 				pViewerNode->httpOP.m0_nat_type = StunTypeOpen;
 
-				__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "UPnP AddPortMapping OK: %s[%d] --> %s[%d]", extIp, pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
+				__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "HandleRegister: UPnP AddPortMapping OK: %s[%d] --> %s[%d]", extIp, pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
 			}
 			else
 			{
@@ -869,7 +854,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 					pViewerNode->httpOP.m0_no_nat = TRUE;
 					pViewerNode->httpOP.m0_nat_type = StunTypeOpen;
 
-					__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "UPnP PortMapping Exists: %s[%d] --> %s[%d]", extIp, pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
+					__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "HandleRegister: UPnP PortMapping Exists: %s[%d] --> %s[%d]", extIp, pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
 				}
 				else {
 					pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
@@ -880,7 +865,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 			}
 		}
 		else {
-			__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "UPnP PortMapping Skipped: %s --> %s", extIp, myUPnP.GetLocalIPStr().c_str());
+			__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "HandleRegister: UPnP PortMapping Skipped: %s --> %s", extIp, myUPnP.GetLocalIPStr().c_str());
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
@@ -904,7 +889,7 @@ static void HandleRegister(VIEWER_NODE *pViewerNode)
 		memcpy(pViewerNode->httpOP.m0_ipArray, ipArrayTemp, sizeof(DWORD)*ipCountTemp);
 		pViewerNode->httpOP.m0_port = pViewerNode->httpOP.m0_p2p_port;//FIRST_CONNECT_PORT;
 #if 1 ////Debug
-		__android_log_print(ANDROID_LOG_INFO, "HandleRegister", "GetLocalAddress: (count=%d) %d.%d.%d.%d[%d]", 
+		__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "HandleRegister: GetLocalAddress: (count=%d) %d.%d.%d.%d[%d]", 
 			pViewerNode->httpOP.m0_ipCount,
 			(pViewerNode->httpOP.m0_ipArray[0] & 0x000000ff) >> 0,
 			(pViewerNode->httpOP.m0_ipArray[0] & 0x0000ff00) >> 8,
@@ -937,7 +922,7 @@ void *RegisterThreadFn(void *pvThreadParam)
 
 static void SwitchMediaSource(int oldIndex, int newIndex)
 {
-	__android_log_print(ANDROID_LOG_INFO, "SwitchMediaSource", "SwitchMediaSource(%d => %d)...\n", oldIndex, newIndex);
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "SwitchMediaSource(%d => %d)...\n", oldIndex, newIndex);
 
 	if (oldIndex < 0 || oldIndex >= MAX_VIEWER_NUM)	{
 		return;
@@ -979,11 +964,12 @@ void *CheckMediaThreadFn(void *pvThreadParam)
 	{
 		usleep(50000);
 		
-		if (timeoutMedia > 0 && currentLastMediaTime > 0)
+		if (timeoutMedia > 0 && currentLastMediaTime > 0 && currentSourceIndex != -1)
 		{
 			DWORD nowTime = get_system_milliseconds();
 			if (nowTime - currentLastMediaTime > timeoutMedia) {
-
+				__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "CheckMediaThreadFn: Media stream timeout...");
+				
 				//尝试找到另一个已连接的ViewNode
 				int i;
 				for (i = 0; i < MAX_VIEWER_NUM; i++)
@@ -1005,6 +991,66 @@ void *CheckMediaThreadFn(void *pvThreadParam)
 			}
 		}
 	}
+	return 0;
+}
+
+void *NewConnectThreadFn(void *pvThreadParam)
+{
+	BOOL from_star = (pvThreadParam != 0);
+	
+	int i;
+	//{{{{--------------------------------------->
+	for (i = 0; i < MAX_VIEWER_NUM; i++ ) {
+		if (viewerArray[i].bUsing == FALSE) {
+			break;
+		}
+	}
+	
+	if (i == MAX_VIEWER_NUM) { // no free node
+		//MessageBox("对不起，当前并发连接数已达到上限!", (LPCTSTR)strProductName, MB_OK|MB_ICONWARNING);
+		;
+	}
+	else
+	{
+		viewerArray[i].bUsing = TRUE;
+		viewerArray[i].nID = i;
+		//<---------------------------------------}}}}
+		
+		
+		//{{{{--------------------------------------->
+		viewerArray[i].hConnectThread = NULL;
+		viewerArray[i].hConnectThread2 = NULL;
+		viewerArray[i].hConnectThreadRev = NULL;
+		viewerArray[i].bQuitRecvSocketLoop = TRUE;
+		viewerArray[i].bConnecting = TRUE;
+		viewerArray[i].bConnected = FALSE;
+		viewerArray[i].from_star = from_star;
+
+		strncpy(viewerArray[i].password, "123456", sizeof(viewerArray[i].password));
+		//<---------------------------------------}}}}
+		
+		//mac_addr(node_id_str, g1_peer_node_id, NULL);
+		
+		HandleRegister(&(viewerArray[i]));
+		
+		if (ipc_client_sock != INVALID_SOCKET)
+		{
+			int ret = viewerArray[i].httpOP.DoPull(g_client_charset, g_client_lang, joined_channel_id, viewerArray[i].from_star);
+			if (ret == 1 && ipc_client_sock != INVALID_SOCKET)
+			{
+				if (TRUE == viewerArray[i].httpOP.m1_peer_nonat) {
+					pthread_create(&(viewerArray[i].hConnectThread2), NULL, ConnectThreadFn2, &(viewerArray[i]));
+				}
+				else if (TRUE == viewerArray[i].httpOP.m0_no_nat) {
+					pthread_create(&(viewerArray[i].hConnectThreadRev), NULL, ConnectThreadFnRev, &(viewerArray[i]));
+				}
+				else {
+					pthread_create(&(viewerArray[i].hConnectThread), NULL, ConnectThreadFn, &(viewerArray[i]));
+				}
+			}//if (ret == 1)
+		}
+	}//i < MAX_VIEWER_NUM
+	
 	return 0;
 }
 
@@ -1041,6 +1087,7 @@ static int CheckPassword(VIEWER_NODE *pViewerNode, SOCKET_TYPE sock_type, SOCKET
 	}
 	else {
 		bTopoPrimary = 1;
+		currentSourceIndex = pViewerNode->nID;
 	}
 
 	php_md5(pViewerNode->password, szPassEnc, sizeof(szPassEnc));
@@ -1069,11 +1116,13 @@ static void OnFakeRtpRecv(void *ctx, int payload_type, unsigned long rtptimestam
 		return;
 	}
 	
+	//__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "OnFakeRtpRecv: FakeRtpPacket[%d], len=%ld\n", payload_type, len);
+	
 	if (is_app_recv_av && currentSourceIndex == pViewerNode->nID)
 	{
 		int ret = CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE_TCP, ipc_server_sock, data, len);
 		if (ret < 0) {
-			__android_log_print(ANDROID_LOG_ERROR, "OnFakeRtpRecv", "CtrlCmd_Send_FAKERTP_RESP() failed!\n");
+			__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "OnFakeRtpRecv: CtrlCmd_Send_FAKERTP_RESP() failed!\n");
 		}
 	}
 }
@@ -1173,6 +1222,7 @@ void DoInConnection(VIEWER_NODE *pViewerNode, BOOL bProxy)
 	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
 	//eloop_register_timeout(1, 0, HandleDoUnregister, pViewerNode, NULL);
 	
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "DoInConnection: ### connected...");
 	pViewerNode->bConnected = TRUE;
 	
 	//连接是为了视频监控。。。
@@ -1197,12 +1247,13 @@ void DoInConnection(VIEWER_NODE *pViewerNode, BOOL bProxy)
 	}
 	
 	pViewerNode->bConnected = FALSE;
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "DoInConnection: ### disconnected!!!");
 	
 	
 	//异常断开rudp连接时，处理Primary Viewer问题。。。
 	if (currentSourceIndex == pViewerNode->nID)
 	{
-		__android_log_print(ANDROID_LOG_INFO, "DoInConnection", "需要处理Primary Viewer问题。。。");
+		__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "DoInConnection: Need to handle [Primary Viewer]...");
 
 		//尝试找到另一个已连接的ViewNode
 		int i;
@@ -1222,7 +1273,26 @@ void DoInConnection(VIEWER_NODE *pViewerNode, BOOL bProxy)
 		else {
 			currentSourceIndex = -1;
 		}
-
+	}
+	
+	
+	//检查剩余连接数，看是否需要新建连接。。。
+	int nConnections = 0;
+	for (int i = 0; i < MAX_VIEWER_NUM; i++)
+	{
+		if (viewerArray[i].bUsing == FALSE) {
+			continue;
+		}
+		if (viewerArray[i].bConnected) {
+			nConnections += 1;
+		}
+	}
+	if (nConnections <= 1 && ipc_client_sock != INVALID_SOCKET)
+	{
+		__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "DoInConnection: Need new connection... nConnections=%d", nConnections);
+		
+		pthread_t hThread;
+		pthread_create(&hThread, NULL, NewConnectThreadFn, (void *)0);
 	}
 }
 
@@ -1235,7 +1305,7 @@ void *ConnectThreadFn(void *pvThreadParam)
 	int i, nRetry;
 
 
-	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFn", "ConnectThreadFn()...\n");
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "ConnectThreadFn()...\n");
 
 	if_progress_show(R_string::msg_please_wait);
 
@@ -1289,7 +1359,7 @@ void *ConnectThreadFn(void *pvThreadParam)
 	pViewerNode->httpOP.m1_use_peer_ip = use_ip;
 	pViewerNode->httpOP.m1_use_peer_port = use_port;
 #if 1 ////Debug
-	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFn", "@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "ConnectThreadFn: @@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
 		(pViewerNode->httpOP.m1_use_peer_ip & 0x000000ff) >> 0,
 		(pViewerNode->httpOP.m1_use_peer_ip & 0x0000ff00) >> 8,
 		(pViewerNode->httpOP.m1_use_peer_ip & 0x00ff0000) >> 16,
@@ -1377,12 +1447,12 @@ void *ConnectThreadFn2(void *pvThreadParam)
 	int nRetry;
 
 
-	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFn2", "ConnectThreadFn2()...\n");
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "ConnectThreadFn2()...\n");
 
 	pViewerNode->httpOP.m1_use_peer_ip = pViewerNode->httpOP.m1_peer_ip;
 	pViewerNode->httpOP.m1_use_peer_port = pViewerNode->httpOP.m1_peer_port;
 #if 1 ////Debug
-	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFn2", "@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "ConnectThreadFn2: @@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
 		(pViewerNode->httpOP.m1_use_peer_ip & 0x000000ff) >> 0,
 		(pViewerNode->httpOP.m1_use_peer_ip & 0x0000ff00) >> 8,
 		(pViewerNode->httpOP.m1_use_peer_ip & 0x00ff0000) >> 16,
@@ -1484,7 +1554,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 	int i;
 
 
-	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "ConnectThreadFnRev()...\n");
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "ConnectThreadFnRev()...\n");
 
 	pViewerNode->httpOP.m1_wait_time -= 5;
 	if (pViewerNode->httpOP.m1_wait_time < 0) {
@@ -1504,7 +1574,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 	if (udp_sock == INVALID_SOCKET) {
 		if_progress_cancel();
 		if_messagebox(R_string::msg_connect_connecting_failed1);
-		__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDP socket() failed!\n");
+		__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "ConnectThreadFnRev: UDP socket() failed!\n");
 		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
@@ -1519,7 +1589,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 	if (bind(udp_sock, (sockaddr *)&my_addr, sizeof(my_addr)) < 0) {
 		if_progress_cancel();
 		if_messagebox(R_string::msg_connect_connecting_failed1);
-		__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDP bind() failed!\n");
+		__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "ConnectThreadFnRev: UDP bind() failed!\n");
 		closesocket(udp_sock);
 		ReturnViewerNode(pViewerNode);
 		return 0;
@@ -1534,7 +1604,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 	{
 		if_progress_cancel();
 		if_messagebox(R_string::msg_connect_connecting_failed2);
-		__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDT::bind() failed!\n");
+		__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "ConnectThreadFnRev: UDT::bind() failed!\n");
 		UDT::close(serv);
 		closesocket(udp_sock);
 		ReturnViewerNode(pViewerNode);
@@ -1545,7 +1615,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 	{
 		if_progress_cancel();
 		if_messagebox(R_string::msg_connect_connecting_failed2);
-		__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDT::listen() failed!\n");
+		__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "ConnectThreadFnRev: UDT::listen() failed!\n");
 		UDT::close(serv);
 		closesocket(udp_sock);
 		ReturnViewerNode(pViewerNode);
@@ -1561,7 +1631,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 	if (ret == UDT::ERROR || ret == 0) {
 		if_progress_cancel();
 		if_messagebox(R_string::msg_connect_connecting_failed8);
-		__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDT::select() failed/timeout!\n");
+		__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "ConnectThreadFnRev: UDT::select() failed/timeout!\n");
 		UDT::close(serv);
 		closesocket(udp_sock);
 		ReturnViewerNode(pViewerNode);
@@ -1573,14 +1643,14 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 	if ((fhandle = UDT::accept(serv, (sockaddr*)&their_addr, &namelen)) == UDT::INVALID_SOCK) {
 		if_progress_cancel();
 		if_messagebox(R_string::msg_connect_connecting_failed8);
-		__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDT::accept() failed!\n");
+		__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "ConnectThreadFnRev: UDT::accept() failed!\n");
 		UDT::close(serv);
 		closesocket(udp_sock);
 		ReturnViewerNode(pViewerNode);
 		return 0;
 	}
 
-	__android_log_print(ANDROID_LOG_INFO, "ConnectThreadFnRev", "UDT::accept() OK!\n");
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "ConnectThreadFnRev: UDT::accept() OK!\n");
 
 	UDT::close(serv);
 
@@ -1629,7 +1699,7 @@ void *ConnectThreadFnRev(void *pvThreadParam)
 
 void DisconnectNode(VIEWER_NODE *pViewerNode)
 {
-	__android_log_print(ANDROID_LOG_INFO, "DisconnectNode", "DisconnectNode(%d)...\n", pViewerNode->nID);
+	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "DisconnectNode(%d)...\n", pViewerNode->nID);
 
 	if (pViewerNode->bUsing == FALSE) {
 		return;
@@ -1712,7 +1782,7 @@ void *IpcServerThreadFn(void *pvThreadParam)
     len = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(ipc_socket_name);
     
 	if (bind(ipc_listen_sock, (sockaddr *)&addr, len) < 0) {
-		__android_log_print(ANDROID_LOG_INFO, "IpcServerThreadFn", "TCP bind() failed!\n");
+		__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "IpcServerThreadFn: TCP bind() failed!\n");
 		closesocket(ipc_listen_sock);
 		ipc_listen_sock = INVALID_SOCKET;
 		return 0;
@@ -1725,7 +1795,7 @@ void *IpcServerThreadFn(void *pvThreadParam)
 		//Blocking...
 		SOCKET fhandle = accept(ipc_listen_sock, (sockaddr*)&their_addr, &namelen);
 		if (INVALID_SOCKET == fhandle) {
-			__android_log_print(ANDROID_LOG_INFO, "IpcServerThreadFn", "TCP accept() failed!\n");
+			__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "IpcServerThreadFn: TCP accept() failed!\n");
 			break;
 		}
 		ipc_server_sock = fhandle;
@@ -1743,14 +1813,14 @@ void *IpcServerThreadFn(void *pvThreadParam)
 			
 			ret = RecvStream(type, fhandle, buff, 6);
 			if (ret != 0) {
-				__android_log_print(ANDROID_LOG_INFO, "IpcServerThreadFn", "RecvStream(6) failed!\n");
+				__android_log_print(ANDROID_LOG_ERROR, "viewer_jni", "IpcServerThreadFn: RecvStream(6) failed!\n");
 				break;
 			}
 			
 			wCommand = ntohs(pf_get_word(buff+0));
 			dwDataLength = ntohl(pf_get_dword(buff+2));
 			
-			__android_log_print(ANDROID_LOG_INFO, "IpcServerThreadFn", "RecvStream(6) wCommand=0x%04x, dwDataLength=%ld\n", wCommand, dwDataLength);
+			__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "IpcServerThreadFn: RecvStream(6) wCommand=0x%04x, dwDataLength=%ld\n", wCommand, dwDataLength);
 			
 			switch (wCommand)
 			{

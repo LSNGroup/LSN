@@ -105,6 +105,7 @@ public class MainListActivity extends ListActivity {
 		    		send_msg = _instance.mMainHandler.obtainMessage(UI_MSG_MESSAGEBOX, _instance.getResources().getString(R.string.msg_connect_checking_password_failed1));
 		        	_instance.mMainHandler.sendMessage(send_msg);
 		        	DoDisconnect();
+		        	_instance.conn_fhandle = -1;
 		    	}
 		    	else if (SharedFuncLib.CTRLCMD_RESULT_NG == arrResults[0]) {
 		    		send_msg = _instance.mMainHandler.obtainMessage(UI_MSG_MESSAGETIP, _instance.getResources().getString(R.string.msg_connect_checking_password_retry));
@@ -216,6 +217,7 @@ public class MainListActivity extends ListActivity {
 		        		    		Message send_msg = _instance.mMainHandler.obtainMessage(UI_MSG_MESSAGETIP, _instance.getResources().getString(R.string.msg_connect_checking_password_failed1));
 		        		        	_instance.mMainHandler.sendMessage(send_msg);
 		        		        	DoDisconnect();
+		        		        	_instance.conn_fhandle = -1;
 		        		        	onBtnRefresh();
 		        		    	}
 		        		    	else if (SharedFuncLib.CTRLCMD_RESULT_NG == arrResults[0]) {
@@ -245,6 +247,7 @@ public class MainListActivity extends ListActivity {
 		    		    		Message send_msg = _instance.mMainHandler.obtainMessage(UI_MSG_MESSAGETIP, _instance.getResources().getString(R.string.msg_connect_checking_password_failed2));
 		    		        	_instance.mMainHandler.sendMessage(send_msg);
 		    		        	DoDisconnect();
+		    		        	_instance.conn_fhandle = -1;
 		    		        	onBtnRefresh();
 		    		        	dialog.dismiss();
 		                    }
@@ -486,6 +489,7 @@ public class MainListActivity extends ListActivity {
     		mMainHandler.removeCallbacks(auto_send_ctrlnull_runnable);
     		SharedFuncLib.CtrlCmdBYE(conn_type, conn_fhandle);
     		DoDisconnect();
+    		_instance.conn_fhandle = -1;
     		onBtnRefresh();
     		break;
     	}
@@ -608,6 +612,9 @@ public class MainListActivity extends ListActivity {
     		return;
     	}
     	
+    	Message msg = _instance.mMainHandler.obtainMessage(UI_MSG_PROGRESS_SHOW, _instance.getResources().getString(R.string.msg_please_wait));
+    	_instance.mMainHandler.sendMessage(msg);
+    	
     	DoConnect("123456",	m_nodesArray.get(m_nCurrentSelected).channel_id);
     }
     
@@ -706,12 +713,7 @@ public class MainListActivity extends ListActivity {
     
     public static void j_messagebox(int msg_rid)
     {
-    	if (_instance == null) {
-    		return;
-    	}
-    	
-    	Message msg = _instance.mMainHandler.obtainMessage(UI_MSG_MESSAGEBOX, _instance.getResources().getString(msg_rid));
-    	_instance.mMainHandler.sendMessage(msg);
+    	Log.d("viewer_jni", _instance.getResources().getString(msg_rid));
     }
     
     public static void j_messagetip(int msg_rid)
@@ -726,44 +728,24 @@ public class MainListActivity extends ListActivity {
     
     public static void j_progress_show(int msg_rid)
     {
-    	if (_instance == null) {
-    		return;
-    	}
-    	
-    	Message msg = _instance.mMainHandler.obtainMessage(UI_MSG_PROGRESS_SHOW, _instance.getResources().getString(msg_rid));
-    	_instance.mMainHandler.sendMessage(msg);
+    	Log.d("viewer_jni", _instance.getResources().getString(msg_rid));
     }    
     
     public static void j_progress_show_format1(int msg_rid, int arg1)
     {
-    	if (_instance == null) {
-    		return;
-    	}
-    	
     	String obj = String.format(_instance.getResources().getString(msg_rid), arg1);
-    	Message msg = _instance.mMainHandler.obtainMessage(UI_MSG_PROGRESS_SHOW, obj);
-    	_instance.mMainHandler.sendMessage(msg);
+    	Log.d("viewer_jni", obj);
     }
     
     public static void j_progress_show_format2(int msg_rid, int arg1, int arg2)
     {
-    	if (_instance == null) {
-    		return;
-    	}
-    	
     	String obj = String.format(_instance.getResources().getString(msg_rid), arg1, arg2);
-    	Message msg = _instance.mMainHandler.obtainMessage(UI_MSG_PROGRESS_SHOW, obj);
-    	_instance.mMainHandler.sendMessage(msg);
+    	Log.d("viewer_jni", obj);
     }
     
     public static void j_progress_cancel()
     {
-    	if (_instance == null) {
-    		return;
-    	}
     	
-    	Message msg = _instance.mMainHandler.obtainMessage(UI_MSG_PROGRESS_CANCEL);
-    	_instance.mMainHandler.sendMessage(msg);
     }
     
     public static void j_on_connected(int type, int fhandle)
@@ -771,6 +753,14 @@ public class MainListActivity extends ListActivity {
     	if (_instance == null) {
     		return;
     	}
+    	if (_instance.conn_type == type && _instance.conn_fhandle == fhandle) {
+    		Message msg = _instance.mMainHandler.obtainMessage(UI_MSG_MESSAGETIP, "Another viewer node connected!");
+        	_instance.mMainHandler.sendMessage(msg);
+    		return;
+    	}
+    	
+    	Message msg0 = _instance.mMainHandler.obtainMessage(UI_MSG_PROGRESS_CANCEL);
+    	_instance.mMainHandler.sendMessage(msg0);
     	
     	Message msg = _instance.mWorkerHandler.obtainMessage(WORK_MSG_ON_CONNECTED, type, fhandle);
     	_instance.mWorkerHandler.sendMessage(msg);

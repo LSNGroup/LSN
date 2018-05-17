@@ -582,7 +582,7 @@ public class AvPlayActivity extends Activity {
         	av_flags |= SharedFuncLib.AV_FLAGS_AUDIO_ENABLE;
         }
         
-        tmpVal = AppSettings.GetSoftwareKeyDwordValue(_instance, "" + comments_id + AppSettings.STRING_REGKEY_NAME_CAM_AVPARAM_VIDEOENABLE, 0);
+        tmpVal = AppSettings.GetSoftwareKeyDwordValue(_instance, "" + comments_id + AppSettings.STRING_REGKEY_NAME_CAM_AVPARAM_VIDEOENABLE, 1);
         if (1 == tmpVal) {
         	av_flags |= SharedFuncLib.AV_FLAGS_VIDEO_ENABLE;
         }
@@ -592,7 +592,7 @@ public class AvPlayActivity extends Activity {
         	av_flags |= SharedFuncLib.AV_FLAGS_AUDIO_REDUNDANCE;
         }
         
-        tmpVal = AppSettings.GetSoftwareKeyDwordValue(_instance, "" + comments_id + AppSettings.STRING_REGKEY_NAME_CAM_AVPARAM_VIDEORELIABLE, 0);
+        tmpVal = AppSettings.GetSoftwareKeyDwordValue(_instance, "" + comments_id + AppSettings.STRING_REGKEY_NAME_CAM_AVPARAM_VIDEORELIABLE, 1);
         if (1 == tmpVal) {
         	av_flags |= SharedFuncLib.AV_FLAGS_VIDEO_RELIABLE;
         }
