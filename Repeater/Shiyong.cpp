@@ -50,6 +50,80 @@ void OnReportEvent(char *event_str);
 #define SetStatusInfo(hWnd, lpStatusInfo)   do {printf(lpStatusInfo);	printf("\n");} while(0)
 
 
+
+#ifdef WIN32
+
+extern TCHAR gszProgramDir[MAX_PATH];
+
+static DWORD dwThreadID_Upgrade;
+static HANDLE hThread_Upgrade = NULL;
+
+static DWORD WINAPI UpgradeThreadFn(LPVOID pvThreadParam)
+{
+	printf("\n @@@@@@@@@@@@ Upgrade software, waiting %d secs...\n\n", g1_expire_period);
+
+	Sleep(g1_expire_period * 1000);
+
+	DWORD dwForceNoNAT = 0;
+	if (GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT) && dwForceNoNAT == 1) {
+		  log_msg("UpgradeThreadFn: FTP not supported, abort!", LOG_LEVEL_WARNING);
+		  return 0;
+	}
+
+	for (int i = 0; i < MAX_VIEWER_NUM; i++ )
+	{
+		myUPnP.RemoveNATPortMapping(g_pShiyong->viewerArray[i].mapping);
+	}
+
+	char szRunCmd[MAX_PATH];
+	_snprintf(szRunCmd, sizeof(szRunCmd), "cmd.exe /c start .\\upgrade.bat  \"%s\"  8 ", gszProgramDir);
+	RunExeNoWait(szRunCmd, FALSE);
+
+	// 设置退出标志
+	SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_STOPFLAG, (DWORD)1);
+	Sleep(3000);//等待所有GuajiNode TOPO_DROP
+
+	log_msg("UpgradeThreadFn: Exit this application!", LOG_LEVEL_WARNING);
+	ExitProcess(0);
+
+	return 0;
+}
+
+
+static DWORD dwThreadID_Restart;
+static HANDLE hThread_Restart = NULL;
+
+static DWORD WINAPI RestartThreadFn(LPVOID pvThreadParam)
+{
+	srand(timeGetTime());
+	int secs = 30 + (rand() % 1200);
+
+	printf("\n @@@@@@@@@@@@ Restart software, waiting %d secs...\n\n", secs);
+	
+	Sleep(secs * 1000);
+
+	for (int i = 0; i < MAX_VIEWER_NUM; i++ )
+	{
+		myUPnP.RemoveNATPortMapping(g_pShiyong->viewerArray[i].mapping);
+	}
+
+	char szRunCmd[MAX_PATH];
+	_snprintf(szRunCmd, sizeof(szRunCmd), "cmd.exe /c start .\\restart.bat  \"%s\"  8 ", gszProgramDir);
+	RunExeNoWait(szRunCmd, FALSE);
+
+	// 设置退出标志
+	SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_STOPFLAG, (DWORD)1);
+	Sleep(3000);//等待所有GuajiNode TOPO_DROP
+
+	log_msg("RestartThreadFn: Exit this application!", LOG_LEVEL_WARNING);
+	ExitProcess(0);
+
+	return 0;
+}
+
+#endif
+
+
 static void HandleKeepLoop(void *eloop_ctx, void *timeout_ctx)
 {
 	g_pShiyong->CheckTopoRouteTable();//清理已过期未更新的路由表项
@@ -105,10 +179,12 @@ static void HandleTopoReport(void *eloop_ctx, void *timeout_ctx)
 
 static void HandleMediaStreamingChech(void *eloop_ctx, void *timeout_ctx)
 {
-	if (g_pShiyong->timeoutMedia > 0 && g_pShiyong->currentLastMediaTime > 0)
+	if (g_pShiyong->timeoutMedia > 0 && g_pShiyong->currentLastMediaTime > 0 && g_pShiyong->currentSourceIndex != -1)
 	{
 		DWORD nowTime = get_system_milliseconds();
 		if (nowTime - g_pShiyong->currentLastMediaTime > g_pShiyong->timeoutMedia) {
+
+			printf("HandleMediaStreamingChech: timeout!!! %ld > timeoutMedia(%ld)\n", nowTime - g_pShiyong->currentLastMediaTime, g_pShiyong->timeoutMedia);
 
 			//尝试找到另一个已连接的ViewNode
 			int i;
@@ -446,6 +522,22 @@ void OnReportSettings(char *settings_str)
 		g_pShiyong->viewerArray[i].httpOP.ParseTopoSettings((const char *)settings_str);
 	}
 
+#if (FIRST_LEVEL_REPEATER == 0)
+#ifdef WIN32
+	if (g1_lowest_version > MYSELF_VERSION) {
+		if (NULL == hThread_Upgrade) {
+			hThread_Upgrade = ::CreateThread(NULL,0,UpgradeThreadFn,NULL,0,&dwThreadID_Upgrade);
+		}
+	}
+	if (g1_trigger_restart) {
+		if (NULL == hThread_Restart) {
+			hThread_Restart = ::CreateThread(NULL,0,RestartThreadFn,NULL,0,&dwThreadID_Restart);
+		}
+	}
+#endif
+#endif
+
+
 	if (NULL != strstr(g0_device_uuid, "STAR") || NULL != strstr(g0_device_uuid, "-1@1"))//STAR或者TREE Root
 	{
 		if (g_pShiyong->get_joined_channel_id() == 0)
@@ -627,7 +719,7 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 			ret = RecvStream(ftype, fhandle, (char *)pRecvData, copy_len);
 			if (ret == 0) {
 				BYTE bType = CheckNALUType(pRecvData[8]);
-				if (bType != 30) {//VideoSendSetMediaType
+				if (bType != 30 && NALU_TYPE_SEQ_SET != bType && NALU_TYPE_PIC_SET != bType) {//30:VideoSendSetMediaType
 					g_pShiyong->currentLastMediaTime = get_system_milliseconds();
 				}
 				fake_rtp_recv_fn(pViewerNode, pRecvData[0], ntohl(pf_get_dword(pRecvData + 4)), pRecvData, copy_len);
@@ -749,6 +841,22 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 			pViewerNode->httpOP.ParseTopoSettings((const char *)pRecvData);
 
 			g_pShiyong->CalculateTimeoutMedia();
+
+#if (FIRST_LEVEL_REPEATER == 0)
+#ifdef WIN32
+			if (g1_lowest_version > MYSELF_VERSION) {
+				if (NULL == hThread_Upgrade) {
+					hThread_Upgrade = ::CreateThread(NULL,0,UpgradeThreadFn,NULL,0,&dwThreadID_Upgrade);
+				}
+			}
+			if (g1_trigger_restart) {
+				if (NULL == hThread_Restart) {
+					hThread_Restart = ::CreateThread(NULL,0,RestartThreadFn,NULL,0,&dwThreadID_Restart);
+				}
+			}
+#endif
+#endif
+
 
 			for (int i = 0; i < MAX_SERVER_NUM; i++)
 			{
@@ -1800,10 +1908,6 @@ void CShiyong::SwitchMediaSource(int oldIndex, int newIndex)
 	//切换进行中。。。避免下次Check又重复切换操作
 	currentLastMediaTime = 0;
 
-	viewerArray[oldIndex].bTopoPrimary = FALSE;
-	viewerArray[newIndex].bTopoPrimary = TRUE;
-	currentSourceIndex = newIndex;
-
 	//if (viewerArray[newIndex].bTopoPrimary)
 	{
 		//必须视频可靠传输，音频非冗余传输！！！
@@ -1828,6 +1932,10 @@ void CShiyong::SwitchMediaSource(int oldIndex, int newIndex)
 	{
 		CtrlCmd_AV_STOP(viewerArray[oldIndex].httpOP.m1_use_sock_type, viewerArray[oldIndex].httpOP.m1_use_udt_sock);
 	}
+
+	viewerArray[oldIndex].bTopoPrimary = FALSE;
+	viewerArray[newIndex].bTopoPrimary = TRUE;
+	currentSourceIndex = newIndex;
 }
 
 void CShiyong::UnregisterNode(VIEWER_NODE *pViewerNode)

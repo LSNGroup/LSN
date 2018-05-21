@@ -239,7 +239,11 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 				if (g1_bandwidth_per_stream == BANDWIDTH_PER_STREAM_UNKNOWN) {
 					g1_bandwidth_per_stream = BANDWIDTH_PER_STREAM_DEFAULT;
 				}
+#if FIRST_LEVEL_REPEATER
+				g_pShiyong->device_max_streams = 5;//²âËÙ¡£¡£¡£
+#else
 				g_pShiyong->device_max_streams = 2;//²âËÙ¡£¡£¡£
+#endif
 				if (strstr(g0_device_uuid, "-1@1") != NULL) {
 					MAX_SERVER_NUM = g_pShiyong->device_max_streams;
 				}

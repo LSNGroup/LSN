@@ -155,7 +155,7 @@ static int RecvHttpResponse(TWSocket *sock, char *lpBuff, int nSize, char **psta
 	}
 
 	start_time = time(NULL);
-	while ((time(NULL) - start_time) < 60 && nRecvd < nSize)
+	while ((time(NULL) - start_time) < 15 && nRecvd < nSize)
 	{
 		ret = sock->WaitRecv(lpBuff + nRecvd, nSize - 1 - nRecvd, 800);// Wait recv
 		if (ret > 0) {
@@ -774,6 +774,20 @@ int HttpOperate::ParseTopoSettings(const char *settings_string)
 		}
 		start = next_start;
 	}
+
+
+	if (bUpgradeVersion) {//在外部处理。。。
+		//if (NULL == hThread_Upgrade) {
+		//	hThread_Upgrade = ::CreateThread(NULL,0,UpgradeThreadFn,NULL,0,&dwThreadID_Upgrade);
+		//}
+	}
+	if (g1_trigger_restart) {//在外部处理。。。
+		//if (NULL == hThread_Restart) {
+		//	hThread_Restart = ::CreateThread(NULL,0,RestartThreadFn,NULL,0,&dwThreadID_Restart);
+		//}
+	}
+
+
 	return 0;
 }
 

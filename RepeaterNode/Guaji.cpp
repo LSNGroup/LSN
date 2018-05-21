@@ -44,12 +44,14 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 
 #ifdef WIN32
 DWORD WINAPI WinMainThreadFn(LPVOID pvThreadParam);
+DWORD WINAPI CheckingThreadFn(LPVOID pvThreadParam);
 DWORD WINAPI UnregisterThreadFn(LPVOID pvThreadParam);
 DWORD WINAPI WorkingThreadFn1(LPVOID pvThreadParam);
 DWORD WINAPI WorkingThreadFnRev(LPVOID pvThreadParam);
 DWORD WINAPI WorkingThreadFn2(LPVOID pvThreadParam);
 #else
 void *WinMainThreadFn(void *pvThreadParam);
+void *CheckingThreadFn(void *pvThreadParam);
 void *UnregisterThreadFn(void *pvThreadParam);
 void *WorkingThreadFn1(void *pvThreadParam);
 void *WorkingThreadFnRev(void *pvThreadParam);
@@ -456,6 +458,12 @@ void *WinMainThreadFn(void *pvThreadParam)
 	}
 
 
+	hThread = ::CreateThread(NULL,0,CheckingThreadFn,(void *)pServerNode,0,&dwThreadID);
+	if (hThread == NULL) {
+		log_msg("Create CheckingThread failed!", LOG_LEVEL_ERROR);/* Error */
+	}
+
+
 #ifdef WIN32
 	hThread2 = ::CreateThread(NULL,0,WorkingThreadFn2,(void *)pServerNode,0,&dwThreadID2);
 	if (hThread2 == NULL)
@@ -853,6 +861,46 @@ void *WinMainThreadFn(void *pvThreadParam)
 	//RunExeNoWait("net stop "UVNC_SERVICE_NAME, FALSE);
 
 	log_msg("WinMain: Exit this application!\n", LOG_LEVEL_WARNING);
+	return 0;
+}
+
+#ifdef WIN32
+DWORD WINAPI CheckingThreadFn(LPVOID pvThreadParam)
+#else
+void *CheckingThreadFn(void *pvThreadParam)
+#endif
+{
+	SERVER_NODE* pServerNode = (SERVER_NODE*)pvThreadParam;
+	DWORD dwStopFlag;
+
+	while (1)
+	{
+		if (GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_STOPFLAG, &dwStopFlag)) {
+			if (dwStopFlag == 1)
+			{
+				Sleep(800);
+
+				if (pServerNode->m_bDoConnection1) {
+					log_msg("DoUnregister()...", LOG_LEVEL_INFO);
+					pServerNode->m_bExit = TRUE;
+#ifdef WIN32
+					DWORD dwThreadID;
+					::CreateThread(NULL,0,UnregisterThreadFn,(void *)pServerNode,0,&dwThreadID);
+#else
+					pthread_t hTempThread;
+					pthread_create(&hTempThread, NULL, UnregisterThreadFn, (void *)pServerNode);
+#endif
+				}
+
+				myUPnP.RemoveNATPortMapping(pServerNode->mapping);
+
+
+				log_msg("CheckingThread: Exit this application!", LOG_LEVEL_WARNING);
+				ExitProcess(0);
+			}
+		}
+		Sleep(1000);
+	}
 	return 0;
 }
 
