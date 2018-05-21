@@ -12,10 +12,10 @@
     </RelativeLayout>
     
     <RelativeLayout android:id="@+id/sub_layout3" android:background="#ffb5b5b5" android:paddingLeft="10.0dip" android:paddingRight="10.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_below="@id/sub_layout2" >
-        <Button android:id="@+id/addcam_btn" android:layout_width="fill_parent" android:layout_height="wrap_content" android:text="@string/ui_addcam_btn" />
+        <Button android:id="@+id/push_btn" android:layout_width="fill_parent" android:layout_height="wrap_content" android:text="@string/ui_push_btn" />
     </RelativeLayout>
     
     <ListView android:id="@android:id/list" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_above="@id/sub_layout1" android:layout_below="@id/sub_layout3" />
-    <TextView android:id="@android:id/empty" android:layout_width="fill_parent" android:layout_height="wrap_content" android:text="@string/msg_empty_addcam_first" android:gravity="center" android:layout_above="@id/sub_layout1" android:layout_below="@id/sub_layout3" />
+    <TextView android:id="@android:id/empty" android:layout_width="fill_parent" android:layout_height="wrap_content" android:text="@string/msg_list_empty" android:gravity="center" android:layout_above="@id/sub_layout1" android:layout_below="@id/sub_layout3" />
 
 </RelativeLayout>

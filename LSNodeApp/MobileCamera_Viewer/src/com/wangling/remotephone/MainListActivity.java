@@ -354,9 +354,9 @@ public class MainListActivity extends ListActivity {
     	m_nCurrentSelected = -1;
         
      
-        findViewById(R.id.addcam_btn).setOnClickListener(new View.OnClickListener() {
+        findViewById(R.id.push_btn).setOnClickListener(new View.OnClickListener() {
         	public void onClick(View v) {
-        		onBtnAddCam();
+        		onBtnPush();
         	}
         });
         findViewById(R.id.refresh_btn).setOnClickListener(new View.OnClickListener() {
@@ -416,21 +416,15 @@ public class MainListActivity extends ListActivity {
     	super.onDestroy();
     }
     
-    private void onBtnAddCam()
+    private void onBtnPush()
     {
-    	Intent intent = new Intent(this, AddCamActivity.class);
-    	startActivityForResult(intent, REQUEST_CODE_ADDCAM);
+    	Intent intent = new Intent(this, MobileCameraActivity.class);
+    	startActivity(intent);
     }
     
     private void onBtnRefresh()
     {
-    	String ids = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_QUERYIDS, "");
-    	//if (ids.equals("")) {
-    	//	SharedFuncLib.MyMessageTip(_instance, _instance.getResources().getString(R.string.msg_empty_addcam_first));
-    	//	return;
-    	//}
-    	
-    	Message send_msg = mWorkerHandler.obtainMessage(WORK_MSG_REFRESH, ids);
+    	Message send_msg = mWorkerHandler.obtainMessage(WORK_MSG_REFRESH, "");
     	mWorkerHandler.sendMessage(send_msg);
     }
     
@@ -470,21 +464,13 @@ public class MainListActivity extends ListActivity {
     }   
     
     
-    static final int REQUEST_CODE_ADDCAM = 1;
-    static final int REQUEST_CODE_AVPLAY = 2;
+    static final int REQUEST_CODE_AVPLAY = 1;
     
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data)
     {
     	switch (requestCode)
     	{
-    	case REQUEST_CODE_ADDCAM:
-    		if (RESULT_OK == resultCode)
-    		{
-    			onBtnRefresh();
-    		}
-    		break;
-    		
     	case REQUEST_CODE_AVPLAY:
     		mMainHandler.removeCallbacks(auto_send_ctrlnull_runnable);
     		SharedFuncLib.CtrlCmdBYE(conn_type, conn_fhandle);
@@ -538,10 +524,6 @@ public class MainListActivity extends ListActivity {
 	    				{
 	    					onMenuItemSetParams();
 	    				}
-	    				else if (2 == which)
-	    				{
-	    					onMenuItemRemove();
-	    				}
 	    			}
     			});
     		dialog = builder.create();
@@ -555,10 +537,6 @@ public class MainListActivity extends ListActivity {
 	    				{
 	    					onMenuItemSetParams();
 	    				}
-	    				else if (1 == which)
-	    				{
-	    					onMenuItemRemove();
-	    				}
 	    			}
     			});
     		dialog = builder.create();
@@ -571,43 +549,8 @@ public class MainListActivity extends ListActivity {
     	return dialog;
     }
     
-    private void autoAddCam(int cam_id)
-    {
-    	String ids = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_QUERYIDS, "");
-    	String ids2 = "-" + ids + "-";
-    	
-    	String strCamId = String.format("%d", cam_id);
-    	
-    	if (strCamId == null || strCamId.equals(""))
-    	{
-    		//SharedFuncLib.MyMessageBox(this, 
-    		//		getResources().getString(R.string.app_name), 
-    		//		getResources().getString(R.string.msg_mobcam_id_empty));
-    		return;
-    	}
-    	
-    	if (ids2.contains("-" + strCamId + "-"))
-    	{
-    		//SharedFuncLib.MyMessageBox(this, 
-    		//		getResources().getString(R.string.app_name), 
-    		//		getResources().getString(R.string.msg_mobcam_id_exists));
-    		return;
-    	}
-    	
-    	String new_ids = null;
-    	if (ids.equals("")) {
-    		new_ids = strCamId;
-    	}
-    	else {
-    		new_ids = ids + "-" + strCamId;
-    	}
-    	AppSettings.SaveSoftwareKeyValue(this, AppSettings.STRING_REGKEY_NAME_QUERYIDS, new_ids);
-    }
-    
     private void onMenuItemConnect()
     {
-    	autoAddCam(m_nodesArray.get(m_nCurrentSelected).channel_id);
-    	
     	if (false == m_nodesArray.get(m_nCurrentSelected).isOnline()) {
     		return;
     	}
@@ -621,29 +564,6 @@ public class MainListActivity extends ListActivity {
     private void onMenuItemSetParams()
     {
     }
-    
-    private void onMenuItemRemove()
-    {
-    	String ids = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_QUERYIDS, "");
-    	if (ids.equals("")) {
-    		return;
-    	}
-    	
-    	String ids2 = "-" + ids + "-";
-    	String target = String.format("-%d-", m_nodesArray.get(m_nCurrentSelected).channel_id);
-    	ids2 = ids2.replace(target, "-");
-    	if (ids2.equals("-") || ids2.equals("--")) {
-    		ids = "";
-    	}
-    	else {
-    		ids = ids2.substring(1, ids2.length() - 1);
-    	}
-    	
-    	AppSettings.SaveSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_QUERYIDS, ids);
-    	
-    	onBtnRefresh();
-    }
-    
     
     public void FillChannelNode(int index, int channel_id, String channel_comments, 
     		String device_uuid,	String node_id_str, String pub_ip_str, String location 		)

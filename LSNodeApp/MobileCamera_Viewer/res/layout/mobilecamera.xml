@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:background="#ff757575" android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+  
+    <RelativeLayout android:id="@+id/sub_layout1" android:background="#ffb5b5b5" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_alignParentBottom="true">
+        <Button android:id="@+id/push_start_btn" android:layout_width="160.0dip" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" android:text="@string/ui_push_start_btn" android:layout_alignParentLeft="true" />
+        <Button android:id="@+id/push_end_btn"   android:layout_width="160.0dip" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" android:text="@string/ui_push_end_btn"   android:layout_alignParentRight="true" />
+    </RelativeLayout>
+
+	<SurfaceView android:id="@+id/preview_surfaceview" android:layout_width="fill_parent" android:layout_height="fill_parent" 
+	    android:layout_alignParentTop="true" android:layout_above="@id/sub_layout1" />
+
+</RelativeLayout>

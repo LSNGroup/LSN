@@ -484,7 +484,7 @@ public class AvPlayActivity extends Activity {
         
         Log.d(TAG, "Acquiring wake lock");
         PowerManager pm = (PowerManager)getSystemService(Context.POWER_SERVICE);
-        m_wl = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, "AvPlayActivity SCREEN_DIM_WAKE_LOCK");
+        m_wl = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "AvPlayActivity SCREEN_BRIGHT_WAKE_LOCK");
         m_wl.acquire();
         
         mMainHandler = new MainHandler();

@@ -10,9 +10,15 @@ public class AppSettings {
 
 	private static final String fileName = "remotephone_settings";
 	
+	/* For MobileCamera */
+	public static final String STRING_REGKEY_NAME_CAMID = "CamId";//int:val
+	public static final String STRING_REGKEY_NAME_NODENAME = "NodeName";
+	public static final String STRING_REGKEY_NAME_NODEID = "NodeId";
+	public static final String STRING_REGKEY_NAME_PASSWORD = "Password";
+	public static final String STRING_REGKEY_NAME_SAVED_MAC = "SavedMac";
+	
 	/* For Viewer */
 	public static final String STRING_REGKEY_NAME_VIEWERNODEID = "ViewerNodeId";
-	public static final String STRING_REGKEY_NAME_QUERYIDS = "QueryIds";
 	public static final String STRING_REGKEY_NAME_CAM_PASSWORD = "_Password";
 	
 	public static final String STRING_REGKEY_NAME_CAM_AVPARAM_AUDIOENABLE = "_AvParam_AudioEnable";//int:0,1
