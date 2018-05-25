@@ -1332,46 +1332,6 @@ void *WorkingThreadFn2(void *pvThreadParam)
 
 ///////////////////////////////////////////////////////////////////////////////
 
-int VideoSendSetMediaType(SERVER_NODE *pServerNode, int width, int height, int fps)
-{
-	if (FALSE == pServerNode->m_bAVStarted)
-	{
-		return -1;
-	}
-	
-
-	int m_nWidth = width;
-	int m_nHeight = height;
-	long long m_avgFrameTime = 10000000/fps;
-
-
-	BYTE bSendBuff[17];
-	BYTE bNRI  = 3; /* most important */
-	BYTE bType = 30; /* use un-defined value */
-	int i;
-
-	bSendBuff[0] = (0x00 << 7) | (bNRI << 5) | (bType);
-	pf_set_dword(bSendBuff + 1, htonl(m_nWidth));
-	pf_set_dword(bSendBuff + 5, htonl(m_nHeight));
-	pf_set_dword(bSendBuff + 9, htonl((DWORD)(m_avgFrameTime & 0x00000000ffffffffULL))); // lower 4 bytes
-	pf_set_dword(bSendBuff + 13, htonl((DWORD)((m_avgFrameTime & 0xffffffff00000000ULL) >> 32))); // high 4 bytes
-
-	if (pServerNode->m_bVideoReliable)
-	{
-		FakeRtpSend_sendpacket(pServerNode->m_pFRS, 0, bSendBuff, sizeof(bSendBuff), PAYLOAD_VIDEO, 0, bNRI | FAKERTP_RELIABLE_FLAG);
-	}
-	else
-	{
-		for (i = 0; i < 8; i++ ) {
-			usleep(20000);
-			FakeRtpSend_sendpacket(pServerNode->m_pFRS, 0, bSendBuff, sizeof(bSendBuff), PAYLOAD_VIDEO, 0, bNRI);
-		}
-	}
-	
-	pServerNode->m_bH264FormatSent = TRUE;
-	return 0;
-}
-
 void DShowAV_Start(SERVER_NODE* pServerNode, BYTE flags, BYTE video_size, BYTE video_framerate, DWORD audio_channel, DWORD video_channel)
 {
 	if (pServerNode->m_bAVStarted) {
@@ -1406,11 +1366,11 @@ void DShowAV_Start(SERVER_NODE* pServerNode, BYTE flags, BYTE video_size, BYTE v
 
 	g_is_topo_primary = TRUE;
 
-	if (pServerNode->m_bVideoEnable) {
-		VideoSendSetMediaType(pServerNode, g_video_width, g_video_height, g_video_fps);
-	}
+	//if (pServerNode->m_bVideoEnable) {
+	//	VideoSendSetMediaType(pServerNode, g_video_width, g_video_height, g_video_fps);
+	//}
 
-	//首先VideoSendSetMediaType，然后通知Repeater发送SPS，PPS。。。
+	//通知Repeater。。。
 	if (INVALID_SOCKET != g_fhandle)
 	{
 		CtrlCmd_AV_START(SOCKET_TYPE_TCP, g_fhandle, flags, video_size, video_framerate, audio_channel, video_channel);

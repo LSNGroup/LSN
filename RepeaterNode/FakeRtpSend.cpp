@@ -93,7 +93,7 @@ void FakeRtpSend_uninit(FAKERTPSEND *pFRS)
 	free(pFRS);
 }
 
-int FakeRtpSend_sendpacket(FAKERTPSEND *pFRS, unsigned long rtptimestamp, const void *data, size_t len, BYTE bPayloadType, BYTE bReserved, BYTE bNri)
+int FakeRtpSend_sendpacket(FAKERTPSEND *pFRS, unsigned long rtptimestamp, WORD seq, const void *data, size_t len, BYTE bPayloadType, BYTE bReserved, BYTE bNri)
 {
 	if (FALSE == pFRS->bInit) {
 		return -1;
@@ -146,13 +146,7 @@ int FakeRtpSend_sendpacket(FAKERTPSEND *pFRS, unsigned long rtptimestamp, const 
 		pf_set_dword(szSendBuff + DIRECT_UDP_HEAD_LEN + 4, htonl(rtptimestamp));
 		memcpy(szSendBuff + DIRECT_UDP_HEAD_LEN + 8, data, len);
 
-		if (pFRS->arraySequenceNumber[bPayloadType] == 0xffffU) {
-			pFRS->arraySequenceNumber[bPayloadType] = 0;
-		}
-		else {
-			pFRS->arraySequenceNumber[bPayloadType] += 1;
-		}
-
+		pFRS->arraySequenceNumber[bPayloadType] = seq;
 
 		dst.sin_family = AF_INET;
 		dst.sin_port = htons(pFRS->dstport);
@@ -177,12 +171,7 @@ int FakeRtpSend_sendpacket(FAKERTPSEND *pFRS, unsigned long rtptimestamp, const 
 		pf_set_dword(szSendBuff + 4, htonl(rtptimestamp));
 		memcpy(szSendBuff + 8, data, len);
 
-		if (pFRS->arraySequenceNumber[bPayloadType] == 0xffffU) {
-			pFRS->arraySequenceNumber[bPayloadType] = 0;
-		}
-		else {
-			pFRS->arraySequenceNumber[bPayloadType] += 1;
-		}
+		pFRS->arraySequenceNumber[bPayloadType] = seq;
 
 		pthread_mutex_lock(&(pFRS->m_mutexRtpSend));  //原来是在ControlCmd中Packet层次加锁
 		ret = CtrlCmd_Send_FAKERTP_RESP_NOMUTEX(pFRS->ftype, pFRS->fhandle, szSendBuff, len + 8);

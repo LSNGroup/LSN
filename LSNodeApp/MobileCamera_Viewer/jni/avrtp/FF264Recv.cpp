@@ -167,6 +167,9 @@ static void OnReceiveRtpPacket(DWORD rtptimestamp, BYTE * pcData, int nLen, BOOL
 			if (nSeqNum != m_ulLastSeqNum + 1) {
 				bPacketLost = TRUE;
 			}
+			else {
+				m_ulLastSeqNum = nSeqNum;
+			}
 		}
 	}
 

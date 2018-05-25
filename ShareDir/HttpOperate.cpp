@@ -36,6 +36,8 @@
 #define HTTP_DROP_REFERER			"/lsnctrl/Drop.html"
 #define HTTP_EVALUATE_URL			"/lsnctrl/Evaluate.php"
 #define HTTP_EVALUATE_REFERER		"/lsnctrl/Evaluate.html"
+#define HTTP_LOGRECORD_URL			"/lsnctrl/LogRecord.php"
+#define HTTP_LOGRECORD_REFERER		"/lsnctrl/LogRecord.html"
 
 #define POST_RESULT_START		"FLAG5TGB6YHNSTART"
 #define POST_RESULT_END			"FLAG5TGB6YHNEND"
@@ -2287,3 +2289,124 @@ int HttpOperate::DoEvaluate(const char *client_charset, const char *client_lang,
 
 #undef POST_BUFF_SIZE
 }
+
+
+//
+// Return Value:
+// -1: Error
+//  0: NG.
+//  1: OK.
+//
+int HttpOperate::DoLogRecord(const char *client_charset, const char *client_lang, BYTE device_node_id[6], DWORD version, int log_type, const char *log_info)
+{
+#define POST_BUFF_SIZE	(2*1024)
+
+	TWSocket sockClient;
+	char szKey1[PHP_MD5_OUTPUT_CHARS+1];
+	char szKey2[PHP_MD5_OUTPUT_CHARS+1];
+	char szPostBody[2*1024];
+	char *szPost;
+	char *start, *end;
+	int result = 0;
+	int ret;
+	char name[32];
+	char value[1024];
+	char *next_start = NULL;
+
+
+	if (log_info == NULL) {
+		return -1;
+	}
+
+	if (dwHttpServerIp == 0) {
+		if (TWSocket::GetIPAddr(g1_http_server, szIpAddr, sizeof(szIpAddr)) == 0) {
+			return -1;
+		}
+		dwHttpServerIp = inet_addr(szIpAddr);
+	}
+
+	if (sockClient.Create() < 0) {
+		return -1;
+	}
+
+	if (sockClient.Connect(szIpAddr, HTTP_SERVER_PORT) != 0) {
+		dwHttpServerIp = 0;
+		sockClient.CloseSocket();
+		return -1;
+	}
+
+
+	szPost = (char *)malloc(POST_BUFF_SIZE);
+
+
+
+	snprintf(szPostBody, sizeof(szPostBody), "device_node_id=%02X-%02X-%02X-%02X-%02X-%02X"
+												"&version=%lu"
+												"&log_type=%d"
+												"&log_info=%s"
+												"&client_charset=%s"
+												"&client_lang=%s",
+					device_node_id[0], device_node_id[1], device_node_id[2], device_node_id[3], device_node_id[4], device_node_id[5],
+					version,
+					log_type,
+					UrlEncode(log_info).c_str(),
+					client_charset, client_lang);
+	
+	php_md5(szPostBody, szKey1, sizeof(szKey1));
+	php_md5(szKey1, szKey2, sizeof(szKey2));
+	strcat(szPostBody, "&session_key=");
+	strcat(szPostBody, szKey2);
+	
+	snprintf(szPost, POST_BUFF_SIZE, szPostFormat, 
+										HTTP_LOGRECORD_URL,
+										g1_http_server, HTTP_LOGRECORD_REFERER,
+										g1_http_server,
+										strlen(szPostBody),
+										szPostBody);
+
+	if (sockClient.Send_Stream(szPost, strlen(szPost)) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+
+	if (RecvHttpResponse(&sockClient, szPost, POST_BUFF_SIZE, &start, &end) < 0) {
+		sockClient.CloseSocket();
+		free(szPost);
+		return -1;
+	}
+
+
+	while(1) {
+
+		if (ParseLine(start, name, sizeof(name), value, sizeof(value), &next_start) == FALSE) {
+			sockClient.CloseSocket();
+			free(szPost);
+			return -1;
+		}
+
+		if (strcmp(name, "result_code") == 0) {
+			if (strcmp(value, "OK") == 0) {
+				result = 1;
+			}
+			else {
+				break;
+			}
+		}
+
+		if (next_start == NULL) {
+			break;
+		}
+		start = next_start;
+	}
+
+	sockClient.ShutDown();
+	sockClient.CloseSocket();
+
+	free(szPost);
+	return result;
+
+#undef POST_BUFF_SIZE
+}
+

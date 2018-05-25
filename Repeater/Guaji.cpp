@@ -120,21 +120,6 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				pServerPorcess->m_bVideoEnable = ((BYTE)(buff[0]) & AV_FLAGS_VIDEO_ENABLE) != 0;
 				pServerPorcess->m_bAudioEnable = ((BYTE)(buff[0]) & AV_FLAGS_AUDIO_ENABLE) != 0;
 				pServerPorcess->m_bTLVEnable = FALSE;
-				
-				if (pServerPorcess->m_bVideoEnable && 
-					g_pShiyong->currentSourceIndex != -1 && 
-					g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].m_sps_len > 0 && 
-					g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].m_pps_len > 0)
-				{
-					int ret = CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE_TCP, pServerPorcess->m_fhandle, g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].m_sps_buff, g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].m_sps_len);
-					if (ret < 0) {
-						log_msg("OnIpcMsg: CtrlCmd_Send_FAKERTP_RESP(sps) failed!", LOG_LEVEL_ERROR);
-					}
-					ret = CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE_TCP, pServerPorcess->m_fhandle, g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].m_pps_buff, g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].m_pps_len);
-					if (ret < 0) {
-						log_msg("OnIpcMsg: CtrlCmd_Send_FAKERTP_RESP(pps) failed!", LOG_LEVEL_ERROR);
-					}
-				}
 
 				break;
 

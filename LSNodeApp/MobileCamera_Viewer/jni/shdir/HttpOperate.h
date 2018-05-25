@@ -15,11 +15,14 @@
 #define BANDWIDTH_PER_STREAM_UNKNOWN	0 //用于判断g1_bandwidth_per_stream是否已获取
 #define BANDWIDTH_PER_STREAM_DEFAULT	260 //单位KB/s
 
-#define  def_debug_device_online	0x0001
-#define  def_debug_connect_ok		0x0002
-#define  def_debug_connect_ng		0x0004
-#define  def_debug_stream_switch	0x0008
-#define  def_debug_error_msg		0x0010
+/* Http Log Type，参考config.php */
+#define  HTTP_LOG_TYPE_UNKNOWN				0
+#define  HTTP_LOG_TYPE_DEVICE_ONLINE		1
+#define  HTTP_LOG_TYPE_DEVICE_OFFLINE		2
+#define  HTTP_LOG_TYPE_NODE_CONNECTED		3
+#define  HTTP_LOG_TYPE_NODE_DISCONNECTED	4
+#define  HTTP_LOG_TYPE_TIMEOUT_SWITCH		5
+#define  HTTP_LOG_TYPE_OPTIMIZE_SWITCH		6
 
 
 typedef void (*ON_REPORT_SETTINGS_FN)(char *settings_str);
@@ -204,6 +207,15 @@ public:
 	//  1: OK.
 	//
 	static int DoEvaluate(const char *client_charset, const char *client_lang, BYTE sender_node_id[6], const char *record_array);
+
+
+	//
+	// Return Value:
+	// -1: Error
+	//  0: NG.
+	//  1: OK.
+	//
+	static int DoLogRecord(const char *client_charset, const char *client_lang, BYTE device_node_id[6], DWORD version, int log_type, const char *log_info);
 };
 
 

@@ -39,7 +39,7 @@ static 	BOOL SendCurrent(DWORD rtptimestamp, BYTE *lpData, int nLength);
 static 	BOOL SendCurrentFrag(DWORD rtptimestamp, BYTE *lpData, int nLength);
 
 
-#define TRANSPORT_LAYER_MSS		(1420 - 8 - 1)
+#define TRANSPORT_LAYER_MSS		(512 - 8 - 1)
 
 static BYTE g_StartCode3[] = {0x00, 0x00, 0x01};
 static BYTE g_StartCode4[] = {0x00, 0x00, 0x00, 0x01};

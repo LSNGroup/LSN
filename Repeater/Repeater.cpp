@@ -117,6 +117,7 @@ static void UiLoop(void)
 		}
 		else if (strcmp(cmd, "x") == 0)
 		{
+			g_pShiyong->m_bQuit = TRUE;
 			printf("Stop ViewerNode...\n");
 			for (int i = 0; i < MAX_VIEWER_NUM; i++)
 			{
@@ -127,6 +128,14 @@ static void UiLoop(void)
 				g_pShiyong->DisconnectNode(&(g_pShiyong->viewerArray[i]));
 			}
 			g_pShiyong->DoExit();
+
+			if (g1_system_debug_flags != 0)
+			{
+				char log_info[MAX_PATH];
+				snprintf(log_info, sizeof(log_info), "设备下线！！！%s，%s，x", g0_device_uuid, g0_node_name);
+				HttpOperate::DoLogRecord("gbk", "zh", g_pShiyong->device_node_id, g0_version, HTTP_LOG_TYPE_DEVICE_OFFLINE, log_info);
+			}
+
 			printf("Waiting...\n");
 			usleep(5000*1000);
 
@@ -227,6 +236,13 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 
 				g_pShiyong = new CShiyong();
 				g_pShiyong->OnInit();
+
+				if (g1_system_debug_flags != 0)
+				{
+					char log_info[MAX_PATH];
+					snprintf(log_info, sizeof(log_info), "设备上线。。。%s，%s", g0_device_uuid, g0_node_name);
+					HttpOperate::DoLogRecord("gbk", "zh", g_pShiyong->device_node_id, g0_version, HTTP_LOG_TYPE_DEVICE_ONLINE, log_info);
+				}
 
 				for (int i = 0; i < 20; i++)
 				{

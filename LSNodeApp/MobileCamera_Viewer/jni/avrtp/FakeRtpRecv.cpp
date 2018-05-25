@@ -99,7 +99,7 @@ static void PutIntoRecvPacketQueue(int nQueueIndex, RECV_PACKET_SMALL *pPacket)
 		temp = tail;
 		while (temp) {
 			p = (RECV_PACKET_SMALL *)get_qbody(temp);
-#if 1
+#if 0
 			if ((p->wSeqNum < wSeqNum)
 				|| (p->wSeqNum > 0xfc00U && wSeqNum < 0x400U)) /* wSeqNum: 0xffff -> 0 */ {
 #else
@@ -405,11 +405,9 @@ void * RecvUdtSocketData(void *lpParameter)
 			pNewPack->wSeqNum = ntohs(pf_get_word(pNewPack->szData + 2));
 			pNewPack->bReserved = *((unsigned char *)(pNewPack->szData) + 1);
 			pNewPack->dfRecvTime = CurrentTime();//可靠传输通道，也需要jitter缓冲
-
-            if (pNewPack->wSeqNum == 0)
-            {
-                printf("FakeRtpRecv: index=%u, wSeqNum=%u, copy_len=%lu\n", pNewPack->szData[0], pNewPack->wSeqNum, copy_len);
-            }
+#ifdef ANDROID_NDK
+			//__android_log_print(ANDROID_LOG_INFO, "avrtp", "FakeRtpRecv: index=%u, wSeqNum=%u, copy_len=%lu\n", pNewPack->szData[0], pNewPack->wSeqNum, copy_len);
+#endif
 			bPayloadType = pNewPack->szData[0];
 			PutIntoRecvPacketQueue(bPayloadType, pNewPack);
 		}

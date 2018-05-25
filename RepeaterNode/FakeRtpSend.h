@@ -30,7 +30,7 @@ int FakeRtpSend_init(FAKERTPSEND **ppFRS, const T_RTPPARAM *param);
 void FakeRtpSend_uninit(FAKERTPSEND *pFRS);
 
 // Return values: 0, -1
-int FakeRtpSend_sendpacket(FAKERTPSEND *pFRS, unsigned long rtptimestamp, const void *data, size_t len, BYTE bPayloadType, BYTE bReserved, BYTE bNri);
+int FakeRtpSend_sendpacket(FAKERTPSEND *pFRS, unsigned long rtptimestamp, WORD seq, const void *data, size_t len, BYTE bPayloadType, BYTE bReserved, BYTE bNri);
 
 
 

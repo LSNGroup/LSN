@@ -75,6 +75,13 @@ static DWORD WINAPI UpgradeThreadFn(LPVOID pvThreadParam)
 		myUPnP.RemoveNATPortMapping(g_pShiyong->viewerArray[i].mapping);
 	}
 
+	if (g1_system_debug_flags != 0)
+	{
+		char log_info[MAX_PATH];
+		snprintf(log_info, sizeof(log_info), "设备下线！！！%s，%s，u", g0_device_uuid, g0_node_name);
+		HttpOperate::DoLogRecord("gbk", "zh", g_pShiyong->device_node_id, g0_version, HTTP_LOG_TYPE_DEVICE_OFFLINE, log_info);
+	}
+
 	char szRunCmd[MAX_PATH];
 	_snprintf(szRunCmd, sizeof(szRunCmd), "cmd.exe /c start .\\upgrade.bat  \"%s\"  8 ", gszProgramDir);
 	RunExeNoWait(szRunCmd, FALSE);
@@ -105,6 +112,13 @@ static DWORD WINAPI RestartThreadFn(LPVOID pvThreadParam)
 	for (int i = 0; i < MAX_VIEWER_NUM; i++ )
 	{
 		myUPnP.RemoveNATPortMapping(g_pShiyong->viewerArray[i].mapping);
+	}
+
+	if (g1_system_debug_flags != 0)
+	{
+		char log_info[MAX_PATH];
+		snprintf(log_info, sizeof(log_info), "设备下线！！！%s，%s，r", g0_device_uuid, g0_node_name);
+		HttpOperate::DoLogRecord("gbk", "zh", g_pShiyong->device_node_id, g0_version, HTTP_LOG_TYPE_DEVICE_OFFLINE, log_info);
 	}
 
 	char szRunCmd[MAX_PATH];
@@ -203,6 +217,14 @@ static void HandleMediaStreamingChech(void *eloop_ctx, void *timeout_ctx)
 				log_msg_f(LOG_LEVEL_INFO, "HandleMediaStreamingChech: SwitchMediaSource(%d => %d)\n", g_pShiyong->currentSourceIndex, i);
 				int oldIndex = g_pShiyong->currentSourceIndex;
 				g_pShiyong->SwitchMediaSource(g_pShiyong->currentSourceIndex, i);
+
+				if (g1_system_debug_flags != 0)
+				{
+					char log_info[MAX_PATH];
+					snprintf(log_info, sizeof(log_info), "因流媒体超时而切换通道＠＠＠[%d]=>[%d]，TopoLevel=%d", oldIndex, i, g_pShiyong->device_topo_level);
+					HttpOperate::DoLogRecord("gbk", "zh", g_pShiyong->device_node_id, g0_version, HTTP_LOG_TYPE_TIMEOUT_SWITCH, log_info);
+				}
+
 				g_pShiyong->DisconnectNode(&(g_pShiyong->viewerArray[oldIndex]));
 			}
 
@@ -240,6 +262,23 @@ static void HandleDoUnregister(void *eloop_ctx, void *timeout_ctx)
 				CtrlCmd_TOPO_DROP(g_pShiyong->viewerArray[i].httpOP.m1_use_sock_type, g_pShiyong->viewerArray[i].httpOP.m1_use_udt_sock, is_connected, node_type, object_node_id);
 				break;
 			}
+		}
+	}
+
+	if (is_connected != 0)
+	{
+		if (g1_system_debug_flags != 0)
+		{
+			char log_info[MAX_PATH];
+			snprintf(log_info, sizeof(log_info), "节点[%d]连接成功。。。TopoPrimary=%d，(%s:%d)=>(%d.%d.%d.%d:%d)", 
+				pViewerNode->nID, pViewerNode->bTopoPrimary, 
+				pViewerNode->httpOP.MakePubIpStr(), pViewerNode->httpOP.m0_pub_port,
+				(pViewerNode->httpOP.m1_peer_ip & 0x000000ff) >> 0,
+				(pViewerNode->httpOP.m1_peer_ip & 0x0000ff00) >> 8,
+				(pViewerNode->httpOP.m1_peer_ip & 0x00ff0000) >> 16,
+				(pViewerNode->httpOP.m1_peer_ip & 0xff000000) >> 24,
+				pViewerNode->httpOP.m1_peer_port);
+			HttpOperate::DoLogRecord("gbk", "zh", g_pShiyong->device_node_id, g0_version, HTTP_LOG_TYPE_NODE_CONNECTED, log_info);
 		}
 	}
 }
@@ -719,7 +758,7 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 			ret = RecvStream(ftype, fhandle, (char *)pRecvData, copy_len);
 			if (ret == 0) {
 				BYTE bType = CheckNALUType(pRecvData[8]);
-				if (bType != 30 && NALU_TYPE_SEQ_SET != bType && NALU_TYPE_PIC_SET != bType) {//30:VideoSendSetMediaType
+				if (bType != 30) {//30:VideoSendSetMediaType
 					g_pShiyong->currentLastMediaTime = get_system_milliseconds();
 				}
 				fake_rtp_recv_fn(pViewerNode, pRecvData[0], ntohl(pf_get_dword(pRecvData + 4)), pRecvData, copy_len);
@@ -780,7 +819,15 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 				{
 					strcpy(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "");
 					if (g_pShiyong->currentSourceIndex != index) {
+						int oldIndex = g_pShiyong->currentSourceIndex;
 						g_pShiyong->SwitchMediaSource(g_pShiyong->currentSourceIndex, index);
+
+						if (g1_system_debug_flags != 0)
+						{
+							char log_info[MAX_PATH];
+							snprintf(log_info, sizeof(log_info), "因优化路径而切换通道＠＠＠[%d]=>[%d]，TopoLevel=%d", oldIndex, index, g_pShiyong->device_topo_level);
+							HttpOperate::DoLogRecord("gbk", "zh", g_pShiyong->device_node_id, g0_version, HTTP_LOG_TYPE_OPTIMIZE_SWITCH, log_info);
+						}
 					}
 				}
 			}
@@ -908,6 +955,12 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
 	eloop_register_timeout(1, 0, HandleDoUnregister, pViewerNode, (void *)1/*is_connected*/);
 
+	/* 为了节省连接时间，在 HandleDoUnregister 中执行DoLogRecord  */
+	//if (g1_system_debug_flags != 0)
+	//{
+	//	HttpOperate::DoLogRecord("gbk", "zh", g_pShiyong->device_node_id, g0_version, HTTP_LOG_TYPE_NODE_CONNECTED, log_info);
+	//}
+
 	SetStatusInfo(pDlg->m_hWnd, _T("成功建立连接。。。"));
 	pViewerNode->bConnected = TRUE;
 
@@ -943,6 +996,20 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 
 	SetStatusInfo(pDlg->m_hWnd, _T("即将断开连接。。。"));
 	pViewerNode->bConnected = FALSE;
+
+	if (g1_system_debug_flags != 0)
+	{
+		char log_info[MAX_PATH];
+		snprintf(log_info, sizeof(log_info), "节点[%d]断开连接！！！TopoPrimary=%d，(%s:%d)=>(%d.%d.%d.%d:%d)", 
+			pViewerNode->nID, pViewerNode->bTopoPrimary, 
+			pViewerNode->httpOP.MakePubIpStr(), pViewerNode->httpOP.m0_pub_port,
+			(pViewerNode->httpOP.m1_peer_ip & 0x000000ff) >> 0,
+			(pViewerNode->httpOP.m1_peer_ip & 0x0000ff00) >> 8,
+			(pViewerNode->httpOP.m1_peer_ip & 0x00ff0000) >> 16,
+			(pViewerNode->httpOP.m1_peer_ip & 0xff000000) >> 24,
+			pViewerNode->httpOP.m1_peer_port);
+		HttpOperate::DoLogRecord("gbk", "zh", g_pShiyong->device_node_id, g0_version, HTTP_LOG_TYPE_NODE_DISCONNECTED, log_info);
+	}
 
 
 	//检查是否没有任何ViewerNode连接了。。。
@@ -3312,10 +3379,6 @@ void CShiyong::DoExit()
 {
 	// TODO: 在此添加命令处理程序代码
 
-	if (m_bQuit)
-	{
-		return;
-	}
 	m_bQuit = TRUE;
 
 
@@ -3323,14 +3386,17 @@ void CShiyong::DoExit()
 	{
 		if (NULL != viewerArray[i].hConnectThread) {
 			::TerminateThread(viewerArray[i].hConnectThread, 0);
+			viewerArray[i].hConnectThread = NULL;
 		}
 
 		if (NULL != viewerArray[i].hConnectThread2) {
 			::TerminateThread(viewerArray[i].hConnectThread2, 0);
+			viewerArray[i].hConnectThread2 = NULL;
 		}
 
 		if (NULL != viewerArray[i].hConnectThreadRev) {
 			::TerminateThread(viewerArray[i].hConnectThreadRev, 0);
+			viewerArray[i].hConnectThreadRev = NULL;
 		}
 	}
 

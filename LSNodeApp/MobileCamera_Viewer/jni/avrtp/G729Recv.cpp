@@ -135,6 +135,9 @@ static int CheckRtpPacket(BYTE *pcData, int nLen, BOOL bMarker, unsigned short n
 			if (nSeqNum != m_ulLastSeqNum + 1) {
 				bPacketLost = TRUE;
 			}
+			else {
+				m_ulLastSeqNum = nSeqNum;
+			}
 		}
 	}
 
