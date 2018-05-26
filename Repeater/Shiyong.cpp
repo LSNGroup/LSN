@@ -773,9 +773,19 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 
 		case CMD_CODE_END:
 			bRecvEnd = TRUE;
+			g_pShiyong->currentLastMediaTime = 0;
 #if LOG_MSG
+			printf( "RecvSocketDataLoop: CMD_CODE_END?????????\n");
 			log_msg("RecvSocketDataLoop: CMD_CODE_END?????????\n", LOG_LEVEL_DEBUG);
 #endif
+			for (int i = 0; i < MAX_SERVER_NUM; i++)
+			{
+				int ret = CtrlCmd_Send_END(SOCKET_TYPE_TCP, arrServerProcesses[i].m_fhandle);
+				if (ret < 0) {
+					continue;
+				}
+			}
+
 			break;
 
 		case CMD_CODE_TOPO_EVENT:
@@ -1024,6 +1034,21 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 	if (bConnected == FALSE)
 	{
 		g_pShiyong->device_topo_level = 1;
+
+		for (int i = 0; i < MAX_SERVER_NUM; i++)
+		{
+			if (arrServerProcesses == NULL) {
+				log_msg_f(LOG_LEVEL_WARNING, "DoInConnection: Guaji processes not started!\n");
+				break;
+			}
+			if (arrServerProcesses[i].m_bAVStarted != TRUE) {
+				continue;
+			}
+			int ret = CtrlCmd_Send_END(SOCKET_TYPE_TCP, arrServerProcesses[i].m_fhandle);
+			if (ret < 0) {
+				continue;
+			}
+		}
 	}
 
 

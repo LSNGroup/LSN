@@ -995,9 +995,32 @@ void *CheckMediaThreadFn(void *pvThreadParam)
 					SwitchMediaSource(currentSourceIndex, i);
 					DisconnectNode(&(viewerArray[oldIndex]));
 				}
-
+				
 			}
 		}
+		
+		if (currentSourceIndex != -1 && viewerArray[currentSourceIndex].from_star == TRUE)
+		{
+			int i;
+			for (i = 0; i < MAX_VIEWER_NUM; i++)
+			{
+				if (viewerArray[i].bUsing == FALSE || viewerArray[i].bConnected == FALSE) {
+					continue;
+				}
+				if (currentSourceIndex != i) {
+					break;
+				}
+			}
+			if (i < MAX_VIEWER_NUM)//ÕÒµ½Ò»¸ö£¡ÇÐ»»¡£¡£¡£
+			{
+				__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "CheckMediaThreadFn: Switch to not_from_star...\n");
+				int oldIndex = currentSourceIndex;
+				SwitchMediaSource(currentSourceIndex, i);
+				DisconnectNode(&(viewerArray[oldIndex]));
+			}
+			
+		}
+		
 	}
 	return 0;
 }
@@ -1005,6 +1028,10 @@ void *CheckMediaThreadFn(void *pvThreadParam)
 void *NewConnectThreadFn(void *pvThreadParam)
 {
 	BOOL from_star = (pvThreadParam != 0);
+	
+	if (FALSE == from_star) {
+		usleep(800*1000);
+	}
 	
 	int i;
 	//{{{{--------------------------------------->
@@ -1195,6 +1222,7 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 
 		case CMD_CODE_END:
 			bRecvEnd = TRUE;
+			currentLastMediaTime = 0;
 #if LOG_MSG
 			log_msg("RecvSocketDataLoop: CMD_CODE_END?????????\n", LOG_LEVEL_DEBUG);
 #endif

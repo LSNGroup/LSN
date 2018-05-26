@@ -262,7 +262,9 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 		if (wCmd == CMD_CODE_END)
 		{
 			log_msg("wCmd == CMD_CODE_END...", LOG_LEVEL_INFO);
-			break;
+			if (g_pServerNode->m_bConnected == TRUE) {
+				CtrlCmd_Send_END(g_pServerNode->myHttpOperate.m1_use_sock_type, g_pServerNode->myHttpOperate.m1_use_udt_sock);
+			}
 		}
 		else if (wCmd == CMD_CODE_FAKERTP_RESP && copy_len != 0)
 		{

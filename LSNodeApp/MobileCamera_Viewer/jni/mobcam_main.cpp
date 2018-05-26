@@ -942,6 +942,12 @@ static int ControlChannelLoop(SOCKET_TYPE type, SOCKET fhandle)
 	}
 	if_contrl_flash_off();
 	DShowAV_Stop();
+	if (push_channel_id > 0)
+	{
+		int ret = myHttpOperate.DoPushEnd(g_client_charset, g_client_lang, push_channel_id);
+		__android_log_print(ANDROID_LOG_INFO, "ControlChannelLoop", "DoPushEnd(%ld) = %d\n", push_channel_id, ret);
+		if (ret != -1) push_channel_id = 0;
+	}
 	if_on_client_disconnected();
 	return 0;
 }
@@ -1007,6 +1013,9 @@ void StartDoConnection()
 
 void StopDoConnection()
 {
+	//先让转发器们不再执行超时切换。。。
+	CtrlCmd_Send_END(myHttpOperate.m1_use_sock_type, myHttpOperate.m1_use_udt_sock);
+	
 	if (push_channel_id > 0)
 	{
 		int ret = myHttpOperate.DoPushEnd(g_client_charset, g_client_lang, push_channel_id);
