@@ -41,6 +41,7 @@ void *ConnectThreadFnRev(void *lpParameter);
 
 static int lastAdjustTime = 0;
 static int lastOptimizeTime = 0;
+static int lastEvaluateTime = 0;
 static int lastDoReportTime = 0;
 void OnReportSettings(char *settings_str);
 void OnReportEvent(char *event_str);
@@ -159,6 +160,16 @@ static void HandleKeepLoop(void *eloop_ctx, void *timeout_ctx)
 		{
 			lastOptimizeTime = now;
 			g_pShiyong->OptimizeStreamPath();//自动调整单元树内Stream负载均衡
+		}
+	}
+
+	if (g_pShiyong->ShouldEvaluateFlow())
+	{
+		int now = time(NULL);
+		if (now - lastEvaluateTime >= 60)
+		{
+			g_pShiyong->EvaluateFlow(g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].httpOP.m1_peer_node_id, lastEvaluateTime + 1, now);//流量评估
+			lastEvaluateTime = now;
 		}
 	}
 
@@ -761,6 +772,10 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 				if (bType != 30) {//30:VideoSendSetMediaType
 					g_pShiyong->currentLastMediaTime = get_system_milliseconds();
 				}
+
+				//流量统计。。。
+				g_pShiyong->dwStreamFlow += copy_len;
+
 				fake_rtp_recv_fn(pViewerNode, pRecvData[0], ntohl(pf_get_dword(pRecvData + 4)), pRecvData, copy_len);
 				free(pRecvData);
 			}
@@ -993,6 +1008,12 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 		DWORD audioChannel = 0;
 		DWORD videoChannel = 0;
 		CtrlCmd_AV_START(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
+
+		if (lastEvaluateTime == 0)
+		{
+			lastEvaluateTime = time(NULL);
+			g_pShiyong->dwStreamFlow = 0;
+		}
 	}
 
 	//Loop...,需要CShiyong::DisconnectNode()才能退出Loop！！！
@@ -1072,7 +1093,15 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 		{
 			g_pShiyong->SwitchMediaSource(g_pShiyong->currentSourceIndex, i);
 		}
-		else {
+		else
+		{
+			if (g_pShiyong->ShouldEvaluateFlow()) {
+				DWORD dwTime = lastEvaluateTime;
+				DWORD now = time(NULL);
+				lastEvaluateTime = now;
+				g_pShiyong->EvaluateFlow(g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].httpOP.m1_peer_node_id, dwTime, now);
+			}
+
 			g_pShiyong->currentSourceIndex = -1;
 		}
 
@@ -1568,6 +1597,72 @@ void *ConnectThreadFnRev(void *lpParameter)
 }
 
 
+///////////////////////////////////////////////////////////////////////////////
+//
+//  0: OK
+// -1: NG
+static int get_device_nodeid(BYTE *buff, int size)
+{
+	BOOL bRetry = FALSE;
+	DWORD dwResult = NO_ERROR;
+	DWORD dwRet;
+	ULONG ulOutBufLen = 0;
+	IP_ADAPTER_INFO *pAdapterInfo = NULL, *pLoopAdapter = NULL;
+
+
+	dwRet = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen);
+	if (NO_ERROR != dwRet && ERROR_BUFFER_OVERFLOW != dwRet) {
+		dwResult = dwRet;
+		goto exit;
+	}
+
+	pAdapterInfo = (IP_ADAPTER_INFO*)malloc(ulOutBufLen);
+
+_RETRY:
+	dwRet = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen);	/* call second */
+	if (NO_ERROR !=  dwRet) {
+		dwResult = dwRet;
+		goto exit;
+	}
+
+	pLoopAdapter = pAdapterInfo;
+	while (pLoopAdapter != NULL) {
+		/* 接口类型为： 有线接口（无线接口，拨号网络接口）*/
+		if (MIB_IF_TYPE_ETHERNET == pLoopAdapter->Type) {
+			if (bRetry) {
+				break;
+			}
+			else
+			{
+				if (NULL == strstr(pLoopAdapter->Description, "Wireless") && NULL == strstr(pLoopAdapter->Description, "USB")) {
+					break;
+				}
+			}
+		}
+		
+		pLoopAdapter = pLoopAdapter->Next;
+	}
+
+	if (pLoopAdapter != NULL) {
+		memcpy(buff, pLoopAdapter->Address, size);
+	}
+	else {
+		if (bRetry) {
+			dwResult = ERROR_ACCESS_DENIED;
+		}
+		else {
+			bRetry = TRUE;
+			goto _RETRY;
+		}
+	}
+
+exit:
+	if (pAdapterInfo) {
+		free(pAdapterInfo);
+	}
+	return (dwResult == NO_ERROR ? 0 : -1);
+}
+
 //
 //  0: OK
 // -1: NG
@@ -1728,8 +1823,8 @@ CShiyong::CShiyong()
 	device_topo_level = 1;
 
 	//确保device_node_id与前面的最后一个viewer_node_id不雷同！！！
-	usleep(300*1000);
-	generate_nodeid(device_node_id, sizeof(device_node_id));
+	//usleep(300*1000);
+	get_device_nodeid(device_node_id, sizeof(device_node_id));
 
 	pthread_mutex_init(&route_table_csec, NULL);
 
@@ -1744,6 +1839,9 @@ CShiyong::CShiyong()
 		connecting_event_table[i].bUsing = FALSE;
 		connecting_event_table[i].nID = -1;
 	}
+
+	dwStreamFlow = 0;
+	strcpy(szEvaluateRecordBuff, "");
 
 	//g_pShiyong = this;
 
@@ -2018,6 +2116,18 @@ void CShiyong::SwitchMediaSource(int oldIndex, int newIndex)
 		DWORD audioChannel = 0;
 		DWORD videoChannel = 0;
 		CtrlCmd_AV_START(viewerArray[newIndex].httpOP.m1_use_sock_type, viewerArray[newIndex].httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
+
+		if (lastEvaluateTime == 0)
+		{
+			lastEvaluateTime = time(NULL);
+			g_pShiyong->dwStreamFlow = 0;
+		}
+		else if (g_pShiyong->ShouldEvaluateFlow()) {
+			DWORD dwTime = lastEvaluateTime;
+			DWORD now = time(NULL);
+			lastEvaluateTime = now;
+			g_pShiyong->EvaluateFlow(g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].httpOP.m1_peer_node_id, dwTime, now);
+		}
 	}
 
 	//if (viewerArray[oldIndex].bTopoPrimary == FALSE)
@@ -2033,6 +2143,62 @@ void CShiyong::SwitchMediaSource(int oldIndex, int newIndex)
 void CShiyong::UnregisterNode(VIEWER_NODE *pViewerNode)
 {
 	HandleDoUnregister(pViewerNode, (void *)0/*is_connected*/);
+}
+
+void CShiyong::EvaluateFlow(BYTE *target_node_id, DWORD begin_time, DWORD end_time)
+{
+	//优先选择NotPrimary通道，向上发送。。。
+	int i;
+	for (i = 0; i < MAX_VIEWER_NUM; i++)
+	{
+		if (viewerArray[i].bUsing == FALSE || viewerArray[i].bConnected == FALSE) {
+			continue;
+		}
+		if (viewerArray[i].bTopoPrimary == FALSE)
+		{
+			log_msg_f(LOG_LEVEL_DEBUG, "CtrlCmd_TOPO_EVALUATE ==> viewerArray[%d], begin_time=%lu, end_time=%lu, dwStreamFlow=%lu  %d KB/s \n", i, begin_time, end_time, dwStreamFlow, dwStreamFlow/(end_time-begin_time)/1024 );
+			CtrlCmd_TOPO_EVALUATE(viewerArray[i].httpOP.m1_use_sock_type, viewerArray[i].httpOP.m1_use_udt_sock, device_node_id, target_node_id, begin_time, end_time, dwStreamFlow);
+			break;
+		}
+	}
+	if (i == MAX_VIEWER_NUM) {
+		for (i = 0; i < MAX_VIEWER_NUM; i++)
+		{
+			if (viewerArray[i].bUsing == FALSE || viewerArray[i].bConnected == FALSE) {
+				continue;
+			}
+			if (viewerArray[i].bTopoPrimary == TRUE)
+			{
+				log_msg_f(LOG_LEVEL_DEBUG, "CtrlCmd_TOPO_EVALUATE ==> viewerArray[%d], begin_time=%lu, end_time=%lu, dwStreamFlow=%lu  %d KB/s \n", i, begin_time, end_time, dwStreamFlow, dwStreamFlow/(end_time-begin_time)/1024 );
+				CtrlCmd_TOPO_EVALUATE(viewerArray[i].httpOP.m1_use_sock_type, viewerArray[i].httpOP.m1_use_udt_sock, device_node_id, target_node_id, begin_time, end_time, dwStreamFlow);
+				break;
+			}
+		}
+	}
+	if (i == MAX_VIEWER_NUM) {
+		log_msg_f(LOG_LEVEL_ERROR, "CtrlCmd_TOPO_EVALUATE ==> No Viewer, dwStreamFlow=%lu\n", dwStreamFlow);
+	}
+
+	dwStreamFlow = 0;
+}
+
+BOOL CShiyong::ShouldEvaluateFlow()
+{
+	//一级转发器
+	if (strstr(g0_device_uuid, "STAR") != NULL) {
+		return FALSE;
+	}
+
+	//TREE ROOT
+	if (strstr(g0_device_uuid, "-1@1") != NULL) {
+		return FALSE;
+	}
+
+	if (GetConnectedViewerNodes() == 0) {
+		return FALSE;
+	}
+
+	return (dwStreamFlow > 0);
 }
 
 BOOL CShiyong::ShouldDoHttpOP()

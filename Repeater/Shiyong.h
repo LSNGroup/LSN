@@ -154,6 +154,11 @@ public:
 	int GetDeviceFreeStreams();
 	int DeviceTopoReport();
 
+	BOOL ShouldEvaluateFlow();
+	void EvaluateFlow(BYTE *target_node_id, DWORD begin_time, DWORD end_time);
+	DWORD dwStreamFlow;
+	char szEvaluateRecordBuff[2*1024];
+
 	int get_joined_channel_id();
 	const char *get_public_ip();
 	const char *get_node_array();

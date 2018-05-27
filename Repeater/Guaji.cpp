@@ -328,9 +328,48 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				stream_flow = ntohl(pf_get_dword(buff));
 
 
-				if (g_pShiyong->ShouldDoHttpOP())//Root Node, DoEvaluate()
+				if (strstr(g0_device_uuid, "-1@1") != NULL)//Root Node, DoEvaluate()
 				{
+					int retIndex = g_pShiyong->FindRouteNode(object_node_id);
+					if (retIndex != -1)
+					{
+						BYTE *pNodeId = g_pShiyong->device_route_table[retIndex].owner_node_id;
 
+						char szTemp[256];
+						snprintf(szTemp, sizeof(szTemp), 
+							"%02X-%02X-%02X-%02X-%02X-%02X"//source_node_id
+							"|%02X-%02X-%02X-%02X-%02X-%02X"//object_device_node_id
+							"|%02X-%02X-%02X-%02X-%02X-%02X"//object_guaji_node_id
+							"|%lu"//begin_time
+							"|%lu"//end_time
+							"|%lu"//stream_flow
+							,
+							source_node_id[0],source_node_id[1],source_node_id[2],source_node_id[3],source_node_id[4],source_node_id[5],
+							pNodeId[0],pNodeId[1],pNodeId[2],pNodeId[3],pNodeId[4],pNodeId[5],
+							object_node_id[0],object_node_id[1],object_node_id[2],object_node_id[3],object_node_id[4],object_node_id[5],
+							begin_time,
+							end_time,
+							stream_flow);
+
+						if (g_pShiyong->szEvaluateRecordBuff[0] == '\0')
+						{
+							strcpy(g_pShiyong->szEvaluateRecordBuff, szTemp);
+						}
+						else if (strlen(g_pShiyong->szEvaluateRecordBuff) + strlen(szTemp) < sizeof(g_pShiyong->szEvaluateRecordBuff) - 2)
+						{
+							strcat(g_pShiyong->szEvaluateRecordBuff, ";");
+							strcat(g_pShiyong->szEvaluateRecordBuff, szTemp);
+						}
+
+						if (strlen(g_pShiyong->szEvaluateRecordBuff) > sizeof(g_pShiyong->szEvaluateRecordBuff) - 256)
+						{
+							ret = HttpOperate::DoEvaluate("gbk", "zh", g_pShiyong->device_node_id, g_pShiyong->szEvaluateRecordBuff);
+							log_msg_f(LOG_LEVEL_DEBUG, "DoEvaluate() = %d \n", ret);
+							if (ret != -1) {
+								strcpy(g_pShiyong->szEvaluateRecordBuff, "");
+							}
+						}
+					}//if (retIndex != -1)
 				}
 				else
 				{//优先选择Secondary通道，向上转发。。。
