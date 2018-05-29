@@ -54,7 +54,7 @@ BASE_NAMESPACE_BEGIN_DECL
 		uint8_t* pos = (uint8_t*)&data;\
 		if(big_endian)\
 		{\
-			::memcpy(pos ,wptr_, type_size);\
+			::memcpy(pos ,rptr_, type_size);\
 		}\
 		else\
 		{\
@@ -294,6 +294,21 @@ public:
 		::memcpy((void *)wptr_, (const void *)data, (size_t)data_len);
 		wptr_ += data_len;
 		used_ += data_len;
+	}
+
+	uint32_t pop_data(uint8_t *data, uint32_t data_len)
+	{
+		uint32_t ret = 0;
+		DECODE(ret, uint32_t);
+
+		if (ret > data_len || ret > used_ - rsize_)
+			throw 0;
+
+		memcpy(data, get_rptr(), ret);
+		rptr_ += ret;
+		rsize_ += ret;
+
+		return ret;
 	}
 
 	void bin_to_string(string& data)

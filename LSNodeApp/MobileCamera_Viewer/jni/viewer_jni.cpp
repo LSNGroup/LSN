@@ -35,6 +35,13 @@ DWORD joined_channel_id = -1;
 static DWORD currentLastMediaTime = 0;
 static DWORD timeoutMedia = 0;
 
+static int lastEvaluateTime = 0;
+static DWORD dwStreamFlow = 0;
+static DWORD dwAudioPackets = 0;
+static DWORD dwVideoPackets = 0;
+static DWORD dwAudioSeqNum = 0xffffffffUL;
+static DWORD dwVideoSeqNum = 0xffffffffUL;
+
 static char ipc_socket_name[] = "multi_rudp.ipc_socket";
 static int ipc_listen_sock = INVALID_SOCKET;
 static int ipc_server_sock = INVALID_SOCKET;
@@ -547,6 +554,13 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoConnect)
 	is_app_recv_av = FALSE;
 	currentLastMediaTime = 0;
 	
+	lastEvaluateTime = 0;
+	dwStreamFlow = 0;
+	dwAudioPackets = 0;
+	dwVideoPackets = 0;
+	dwAudioSeqNum = 0xffffffffUL;
+	dwVideoSeqNum = 0xffffffffUL;
+	
 	//////////////////////////////////////////////////////////////////////////////
 	int data_sock;
 	struct sockaddr_un addr;
@@ -927,6 +941,34 @@ void *RegisterThreadFn(void *pvThreadParam)
 	return 0;
 }
 
+static void EvaluateFlow(BYTE *target_node_id, DWORD begin_time, DWORD end_time)
+{
+	//选择Primary通道，向上发送。。。
+	if (currentSourceIndex != -1)
+	{
+		int i = currentSourceIndex;
+		BYTE device_node_id[6] = {0, 0, 0, 0, 0, 0};
+		__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "CtrlCmd_TOPO_EVALUATE ==> viewerArray[%d], begin_time=%lu, end_time=%lu, dwStreamFlow=%lu  %d KB/s  %d A-Packets/s  %d V-Packets/s \n", i, begin_time, end_time, dwStreamFlow, dwStreamFlow/(end_time-begin_time)/1024, dwAudioPackets/(end_time-begin_time), dwVideoPackets/(end_time-begin_time) );
+		CtrlCmd_TOPO_EVALUATE(viewerArray[i].httpOP.m1_use_sock_type, viewerArray[i].httpOP.m1_use_udt_sock, device_node_id, target_node_id, begin_time, end_time, dwStreamFlow);
+	}
+	else {
+		__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "CtrlCmd_TOPO_EVALUATE ==> No Viewer, dwStreamFlow=%lu\n", dwStreamFlow);
+	}
+
+	dwStreamFlow = 0;
+	dwAudioPackets = 0;
+	dwVideoPackets = 0;
+}
+
+static BOOL ShouldEvaluateFlow()
+{
+	if (currentSourceIndex == -1 || viewerArray[currentSourceIndex].from_star == TRUE) {
+		return FALSE;
+	}
+	
+	return (dwStreamFlow > 0);
+}
+
 static void SwitchMediaSource(int oldIndex, int newIndex)
 {
 	__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "SwitchMediaSource(%d => %d)...\n", oldIndex, newIndex);
@@ -951,8 +993,40 @@ static void SwitchMediaSource(int oldIndex, int newIndex)
 		BYTE bVideoSize = AV_VIDEO_SIZE_VGA;
 		BYTE bVideoFrameRate = 25;
 		DWORD audioChannel = 0;
+		if (dwAudioSeqNum == 0xffffffffUL) {
+			audioChannel = dwAudioSeqNum;
+		}
+		else if (dwAudioSeqNum == 0xffffU) {
+			audioChannel = 0;
+		}
+		else {
+			audioChannel = dwAudioSeqNum + 1;
+		}
 		DWORD videoChannel = 0;
+		if (dwVideoSeqNum == 0xffffffffUL) {
+			videoChannel = dwVideoSeqNum;
+		}
+		else if (dwVideoSeqNum == 0xffffU) {
+			videoChannel = 0;
+		}
+		else {
+			videoChannel = dwVideoSeqNum + 1;
+		}
 		CtrlCmd_AV_START(viewerArray[newIndex].httpOP.m1_use_sock_type, viewerArray[newIndex].httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
+		
+		if (lastEvaluateTime == 0)
+		{
+			lastEvaluateTime = time(NULL);
+			dwStreamFlow = 0;
+			dwAudioPackets = 0;
+			dwVideoPackets = 0;
+		}
+		else if (ShouldEvaluateFlow()) {
+			DWORD dwTime = lastEvaluateTime;
+			DWORD now = time(NULL);
+			lastEvaluateTime = now;
+			EvaluateFlow(viewerArray[currentSourceIndex].httpOP.m1_peer_node_id, dwTime, now);
+		}
 	}
 
 	//if (viewerArray[oldIndex].bTopoPrimary == FALSE)
@@ -1019,6 +1093,15 @@ void *CheckMediaThreadFn(void *pvThreadParam)
 				DisconnectNode(&(viewerArray[oldIndex]));
 			}
 			
+		}
+		
+		int now = time(NULL);
+		if (now - lastEvaluateTime >= 60)
+		{
+			if (ShouldEvaluateFlow()) {
+				EvaluateFlow(viewerArray[currentSourceIndex].httpOP.m1_peer_node_id, lastEvaluateTime + 1, now);//流量评估
+				lastEvaluateTime = now;
+			}
 		}
 		
 	}
@@ -1210,6 +1293,22 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 				if (bType != 30) {//VideoSendSetMediaType
 					currentLastMediaTime = get_system_milliseconds();
 				}
+				
+				if (currentSourceIndex != -1 && currentSourceIndex == pViewerNode->nID)
+				{
+					//流量统计。。。
+					dwStreamFlow += copy_len;
+					
+					if (PAYLOAD_AUDIO == pRecvData[0]) {
+						dwAudioPackets += 1;
+						dwAudioSeqNum = ntohs(pf_get_word(pRecvData + 2));
+					}
+					if (PAYLOAD_VIDEO == pRecvData[0]) {
+						dwVideoPackets += 1;
+						dwVideoSeqNum = ntohs(pf_get_word(pRecvData + 2));
+					}
+				}
+				
 				OnFakeRtpRecv(pViewerNode, pRecvData[0], ntohl(pf_get_dword(pRecvData + 4)), pRecvData, copy_len);
 				free(pRecvData);
 			}
@@ -1269,8 +1368,34 @@ void DoInConnection(VIEWER_NODE *pViewerNode, BOOL bProxy)
 		BYTE bVideoSize = AV_VIDEO_SIZE_VGA;
 		BYTE bVideoFrameRate = 25;
 		DWORD audioChannel = 0;
+		if (dwAudioSeqNum == 0xffffffffUL) {
+			audioChannel = dwAudioSeqNum;
+		}
+		else if (dwAudioSeqNum == 0xffffU) {
+			audioChannel = 0;
+		}
+		else {
+			audioChannel = dwAudioSeqNum + 1;
+		}
 		DWORD videoChannel = 0;
+		if (dwVideoSeqNum == 0xffffffffUL) {
+			videoChannel = dwVideoSeqNum;
+		}
+		else if (dwVideoSeqNum == 0xffffU) {
+			videoChannel = 0;
+		}
+		else {
+			videoChannel = dwVideoSeqNum + 1;
+		}
 		CtrlCmd_AV_START(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
+		
+		if (lastEvaluateTime == 0)
+		{
+			lastEvaluateTime = time(NULL);
+			dwStreamFlow = 0;
+			dwAudioPackets = 0;
+			dwVideoPackets = 0;
+		}
 	}
 	
 	//Loop...,需要CShiyong::DisconnectNode()才能退出Loop！！！
@@ -1307,6 +1432,13 @@ void DoInConnection(VIEWER_NODE *pViewerNode, BOOL bProxy)
 			SwitchMediaSource(currentSourceIndex, i);
 		}
 		else {
+			if (ShouldEvaluateFlow()) {
+				DWORD dwTime = lastEvaluateTime;
+				DWORD now = time(NULL);
+				lastEvaluateTime = now;
+				EvaluateFlow(viewerArray[currentSourceIndex].httpOP.m1_peer_node_id, dwTime, now);
+			}
+			
 			currentSourceIndex = -1;
 		}
 	}
@@ -1857,7 +1989,7 @@ void *IpcServerThreadFn(void *pvThreadParam)
 			wCommand = ntohs(pf_get_word(buff+0));
 			dwDataLength = ntohl(pf_get_dword(buff+2));
 			
-			__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "IpcServerThreadFn: RecvStream(6) wCommand=0x%04x, dwDataLength=%ld\n", wCommand, dwDataLength);
+			__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "IpcServerThreadFn: RecvStream(6) wCommand=0x%04x, dwDataLength=%lu\n", wCommand, dwDataLength);
 			
 			switch (wCommand)
 			{

@@ -99,11 +99,11 @@ static void PutIntoRecvPacketQueue(int nQueueIndex, RECV_PACKET_SMALL *pPacket)
 		temp = tail;
 		while (temp) {
 			p = (RECV_PACKET_SMALL *)get_qbody(temp);
-#if 0
+#if 1
 			if ((p->wSeqNum < wSeqNum)
 				|| (p->wSeqNum > 0xfc00U && wSeqNum < 0x400U)) /* wSeqNum: 0xffff -> 0 */ {
 #else
-			if (TRUE) {//udt可靠传输通道，不会乱序，不会重复
+			if (TRUE) {//udt可靠传输通道，不会乱序，不会重复??? 路径切换时有可能重复
 #endif
 				wps_insert_que(&(arrayRecvQueue[nQueueIndex]), temp, &pPacket->link);
 				goto _OUT;
@@ -116,7 +116,7 @@ static void PutIntoRecvPacketQueue(int nQueueIndex, RECV_PACKET_SMALL *pPacket)
 				goto _OUT;
 			}
 			temp = temp->q_back;
-#if LOG_MSG
+#if 0//LOG_MSG
 			log_msg("FakeRtpRecv: late packet, haha!\n", LOG_LEVEL_DEBUG);
 #endif
 			if (pPacket->dfRecvTime != 0)
@@ -124,7 +124,7 @@ static void PutIntoRecvPacketQueue(int nQueueIndex, RECV_PACKET_SMALL *pPacket)
 				pPacket->dfRecvTime -= 0.1f;//迟来的数据包，应该尽快被上层获取！
 			}
 		}
-#if 0//LOG_MSG
+#if LOG_MSG
 		log_msg("FakeRtpRecv: least sequence number, place it in the head!\n", LOG_LEVEL_DEBUG);
 #endif
 		wps_insert_que(&(arrayRecvQueue[nQueueIndex]), NULL, &pPacket->link);

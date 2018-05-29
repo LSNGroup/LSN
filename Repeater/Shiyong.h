@@ -13,6 +13,9 @@
 #define MAX_TOPO_LEVEL			4
 
 
+#define MAX_AUDIO_RECV_QUEUE_SIZE  30
+#define MAX_VIDEO_RECV_QUEUE_SIZE  200
+
 
 #define MAX_ROUTE_ITEM_NUM	2048
 
@@ -157,7 +160,15 @@ public:
 	BOOL ShouldEvaluateFlow();
 	void EvaluateFlow(BYTE *target_node_id, DWORD begin_time, DWORD end_time);
 	DWORD dwStreamFlow;
+	DWORD dwAudioPackets;
+	DWORD dwVideoPackets;
+	DWORD dwAudioSeqNum;
+	DWORD dwVideoSeqNum;
 	char szEvaluateRecordBuff[2*1024];
+	wps_queue *arrayRecvQueue[NUM_PAYLOAD_TYPE];
+	pthread_mutex_t arrayCriticalSec[NUM_PAYLOAD_TYPE];
+	void PutIntoRecvPacketQueue(int nQueueIndex, RECV_PACKET_SMALL *pPacket);
+	void FreeRecvPacketQueue(int nQueueIndex);
 
 	int get_joined_channel_id();
 	const char *get_public_ip();

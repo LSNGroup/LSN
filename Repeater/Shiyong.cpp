@@ -773,8 +773,20 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 					g_pShiyong->currentLastMediaTime = get_system_milliseconds();
 				}
 
-				//流量统计。。。
-				g_pShiyong->dwStreamFlow += copy_len;
+				if (g_pShiyong->currentSourceIndex != -1 && g_pShiyong->currentSourceIndex == pViewerNode->nID)
+				{
+					//流量统计。。。
+					g_pShiyong->dwStreamFlow += copy_len;
+
+					if (PAYLOAD_AUDIO == pRecvData[0]) {
+						g_pShiyong->dwAudioPackets += 1;
+						g_pShiyong->dwAudioSeqNum = ntohs(pf_get_word(pRecvData + 2));
+					}
+					if (PAYLOAD_VIDEO == pRecvData[0]) {
+						g_pShiyong->dwVideoPackets += 1;
+						g_pShiyong->dwVideoSeqNum = ntohs(pf_get_word(pRecvData + 2));
+					}
+				}
 
 				fake_rtp_recv_fn(pViewerNode, pRecvData[0], ntohl(pf_get_dword(pRecvData + 4)), pRecvData, copy_len);
 				free(pRecvData);
@@ -1006,13 +1018,33 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 		}
 		BYTE bVideoFrameRate = g_video_fps;
 		DWORD audioChannel = 0;
+		if (g_pShiyong->dwAudioSeqNum == 0xffffffffUL) {
+			audioChannel = g_pShiyong->dwAudioSeqNum;
+		}
+		else if (g_pShiyong->dwAudioSeqNum == 0xffffU) {
+			audioChannel = 0;
+		}
+		else {
+			audioChannel = g_pShiyong->dwAudioSeqNum + 1;
+		}
 		DWORD videoChannel = 0;
+		if (g_pShiyong->dwVideoSeqNum == 0xffffffffUL) {
+			videoChannel = g_pShiyong->dwVideoSeqNum;
+		}
+		else if (g_pShiyong->dwVideoSeqNum == 0xffffU) {
+			videoChannel = 0;
+		}
+		else {
+			videoChannel = g_pShiyong->dwVideoSeqNum + 1;
+		}
 		CtrlCmd_AV_START(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
 
 		if (lastEvaluateTime == 0)
 		{
 			lastEvaluateTime = time(NULL);
 			g_pShiyong->dwStreamFlow = 0;
+			g_pShiyong->dwAudioPackets = 0;
+			g_pShiyong->dwVideoPackets = 0;
 		}
 	}
 
@@ -1055,6 +1087,13 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 	if (bConnected == FALSE)
 	{
 		g_pShiyong->device_topo_level = 1;
+
+		g_pShiyong->dwAudioSeqNum = 0xffffffffUL;
+		g_pShiyong->dwVideoSeqNum = 0xffffffffUL;
+
+		for (int i = 0; i < NUM_PAYLOAD_TYPE; i++) {
+			g_pShiyong->FreeRecvPacketQueue(i);
+		}
 
 		for (int i = 0; i < MAX_SERVER_NUM; i++)
 		{
@@ -1763,7 +1802,6 @@ static void InitVar()
 }
 
 
-
 // CShiyong
 
 CShiyong::CShiyong()
@@ -1841,7 +1879,17 @@ CShiyong::CShiyong()
 	}
 
 	dwStreamFlow = 0;
+	dwAudioPackets = 0;
+	dwVideoPackets = 0;
+	dwAudioSeqNum = 0xffffffffUL;//invalid seq num
+	dwVideoSeqNum = 0xffffffffUL;//invalid seq num
 	strcpy(szEvaluateRecordBuff, "");
+
+	for (int i = 0; i < NUM_PAYLOAD_TYPE; i++) {
+		pthread_mutex_init(&(arrayCriticalSec[i]), NULL);
+		arrayRecvQueue[i] = NULL;
+	}
+
 
 	//g_pShiyong = this;
 
@@ -1858,6 +1906,11 @@ CShiyong::~CShiyong()
 	}
 
 	pthread_mutex_destroy(&route_table_csec);
+
+	for (int i = 0; i < NUM_PAYLOAD_TYPE; i++) {
+		FreeRecvPacketQueue(i);
+		pthread_mutex_destroy(&(arrayCriticalSec[i]));
+	}
 
 	//g_pShiyong = NULL;
 }
@@ -2064,6 +2117,104 @@ void CShiyong::ReturnViewerNode(VIEWER_NODE *pViewerNode)
 	}
 }
 
+void CShiyong::PutIntoRecvPacketQueue(int nQueueIndex, RECV_PACKET_SMALL *pPacket)
+{
+	WORD wSeqNum = pPacket->wSeqNum;
+	wps_queue *temp;
+	wps_queue *tail;
+	RECV_PACKET_SMALL *p;
+
+
+	wps_init_que(&pPacket->link, (void *)pPacket);
+
+	//EnterCriticalSection(&(arrayCriticalSec[nQueueIndex]));
+	pthread_mutex_lock(&(arrayCriticalSec[nQueueIndex]));
+
+	if (NULL == arrayRecvQueue[nQueueIndex]) {
+#if LOG_MSG
+		log_msg("PutIntoRecvPacketQueue: empty queue, enter directly!\n", LOG_LEVEL_DEBUG);
+#endif
+		arrayRecvQueue[nQueueIndex] = &pPacket->link;
+	}
+	else {
+		//temp = arrayRecvQueue[nQueueIndex];
+		//while (temp) {
+		//	p = (RECV_PACKET_SMALL *)get_qbody(temp);
+		//	if (p->wSeqNum > wSeqNum) {
+		//		insert_before(&(arrayRecvQueue[nQueueIndex]), temp, &pPacket->link);
+		//		break;
+		//	}
+		//	else if (p->wSeqNum == wSeqNum) {
+		//		free(pPacket);
+		//		break;
+		//	}
+		//	temp = temp->q_forw;
+		//}
+
+		tail = arrayRecvQueue[nQueueIndex];
+
+		while (tail->q_forw != NULL) tail = tail->q_forw;
+
+		temp = tail;
+		while (temp) {
+			p = (RECV_PACKET_SMALL *)get_qbody(temp);
+#if 1
+			if ((p->wSeqNum < wSeqNum)
+				|| (p->wSeqNum > 0xfc00U && wSeqNum < 0x400U)) /* wSeqNum: 0xffff -> 0 */ {
+#else
+			if (TRUE) {//udt可靠传输通道，不会乱序，不会重复??? 路径切换时有可能重复
+#endif
+				wps_insert_que(&(arrayRecvQueue[nQueueIndex]), temp, &pPacket->link);
+				goto _OUT;
+			}
+			else if (p->wSeqNum == wSeqNum) {
+#if LOG_MSG
+				log_msg("PutIntoRecvPacketQueue: duplicate packet, drop!\n", LOG_LEVEL_DEBUG);
+#endif
+				free(pPacket);
+				goto _OUT;
+			}
+			temp = temp->q_back;
+#if LOG_MSG
+			log_msg("PutIntoRecvPacketQueue: late packet, haha!\n", LOG_LEVEL_DEBUG);
+#endif
+			//if (pPacket->dfRecvTime != 0)
+			//{
+			//	pPacket->dfRecvTime -= 0.1f;//dfRecvTime被借用
+			//}
+		}
+#if LOG_MSG
+		log_msg("PutIntoRecvPacketQueue: least sequence number, place it in the head!\n", LOG_LEVEL_DEBUG);
+#endif
+		wps_insert_que(&(arrayRecvQueue[nQueueIndex]), NULL, &pPacket->link);
+	}
+
+_OUT:
+	//LeaveCriticalSection(&(arrayCriticalSec[nQueueIndex]));
+	pthread_mutex_unlock(&(arrayCriticalSec[nQueueIndex]));
+}
+
+void CShiyong::FreeRecvPacketQueue(int nQueueIndex)
+{
+	wps_queue *temp;
+	RECV_PACKET_SMALL *p;
+	int count;
+
+	//EnterCriticalSection(&(arrayCriticalSec[nQueueIndex]));
+	pthread_mutex_lock(&(arrayCriticalSec[nQueueIndex]));
+	count= wps_count_que(arrayRecvQueue[nQueueIndex]);
+	while (arrayRecvQueue[nQueueIndex]) {
+		temp = arrayRecvQueue[nQueueIndex];
+		wps_remove_que(&(arrayRecvQueue[nQueueIndex]), temp);
+		p = (RECV_PACKET_SMALL *)get_qbody(temp);
+		free(p);
+	}
+	//LeaveCriticalSection(&(arrayCriticalSec[nQueueIndex]));
+	pthread_mutex_unlock(&(arrayCriticalSec[nQueueIndex]));
+
+	log_msg_f(LOG_LEVEL_DEBUG, "FreeRecvPacketQueue(%d) = %d nodes\n", nQueueIndex, count);
+}
+
 void CShiyong::CalculateTimeoutMedia()
 {
 	if (device_topo_level <= 2) {
@@ -2114,13 +2265,33 @@ void CShiyong::SwitchMediaSource(int oldIndex, int newIndex)
 		}
 		BYTE bVideoFrameRate = g_video_fps;
 		DWORD audioChannel = 0;
+		if (dwAudioSeqNum == 0xffffffffUL) {
+			audioChannel = dwAudioSeqNum;
+		}
+		else if (dwAudioSeqNum == 0xffffU) {
+			audioChannel = 0;
+		}
+		else {
+			audioChannel = dwAudioSeqNum + 1;
+		}
 		DWORD videoChannel = 0;
+		if (dwVideoSeqNum == 0xffffffffUL) {
+			videoChannel = dwVideoSeqNum;
+		}
+		else if (dwVideoSeqNum == 0xffffU) {
+			videoChannel = 0;
+		}
+		else {
+			videoChannel = dwVideoSeqNum + 1;
+		}
 		CtrlCmd_AV_START(viewerArray[newIndex].httpOP.m1_use_sock_type, viewerArray[newIndex].httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
 
 		if (lastEvaluateTime == 0)
 		{
 			lastEvaluateTime = time(NULL);
 			g_pShiyong->dwStreamFlow = 0;
+			g_pShiyong->dwAudioPackets = 0;
+			g_pShiyong->dwVideoPackets = 0;
 		}
 		else if (g_pShiyong->ShouldEvaluateFlow()) {
 			DWORD dwTime = lastEvaluateTime;
@@ -2156,7 +2327,7 @@ void CShiyong::EvaluateFlow(BYTE *target_node_id, DWORD begin_time, DWORD end_ti
 		}
 		if (viewerArray[i].bTopoPrimary == FALSE)
 		{
-			log_msg_f(LOG_LEVEL_DEBUG, "CtrlCmd_TOPO_EVALUATE ==> viewerArray[%d], begin_time=%lu, end_time=%lu, dwStreamFlow=%lu  %d KB/s \n", i, begin_time, end_time, dwStreamFlow, dwStreamFlow/(end_time-begin_time)/1024 );
+			log_msg_f(LOG_LEVEL_DEBUG, "CtrlCmd_TOPO_EVALUATE ==> viewerArray[%d], begin_time=%lu, end_time=%lu, dwStreamFlow=%lu  %d KB/s  %d A-Packets/s  %d V-Packets/s \n", i, begin_time, end_time, dwStreamFlow, dwStreamFlow/(end_time-begin_time)/1024, dwAudioPackets/(end_time-begin_time), dwVideoPackets/(end_time-begin_time) );
 			CtrlCmd_TOPO_EVALUATE(viewerArray[i].httpOP.m1_use_sock_type, viewerArray[i].httpOP.m1_use_udt_sock, device_node_id, target_node_id, begin_time, end_time, dwStreamFlow);
 			break;
 		}
@@ -2169,7 +2340,7 @@ void CShiyong::EvaluateFlow(BYTE *target_node_id, DWORD begin_time, DWORD end_ti
 			}
 			if (viewerArray[i].bTopoPrimary == TRUE)
 			{
-				log_msg_f(LOG_LEVEL_DEBUG, "CtrlCmd_TOPO_EVALUATE ==> viewerArray[%d], begin_time=%lu, end_time=%lu, dwStreamFlow=%lu  %d KB/s \n", i, begin_time, end_time, dwStreamFlow, dwStreamFlow/(end_time-begin_time)/1024 );
+				log_msg_f(LOG_LEVEL_DEBUG, "CtrlCmd_TOPO_EVALUATE ==> viewerArray[%d], begin_time=%lu, end_time=%lu, dwStreamFlow=%lu  %d KB/s  %d A-Packets/s  %d V-Packets/s \n", i, begin_time, end_time, dwStreamFlow, dwStreamFlow/(end_time-begin_time)/1024, dwAudioPackets/(end_time-begin_time), dwVideoPackets/(end_time-begin_time) );
 				CtrlCmd_TOPO_EVALUATE(viewerArray[i].httpOP.m1_use_sock_type, viewerArray[i].httpOP.m1_use_udt_sock, device_node_id, target_node_id, begin_time, end_time, dwStreamFlow);
 				break;
 			}
@@ -2180,6 +2351,8 @@ void CShiyong::EvaluateFlow(BYTE *target_node_id, DWORD begin_time, DWORD end_ti
 	}
 
 	dwStreamFlow = 0;
+	dwAudioPackets = 0;
+	dwVideoPackets = 0;
 }
 
 BOOL CShiyong::ShouldEvaluateFlow()

@@ -189,7 +189,7 @@ static BOOL PutIntoRecvQueue(DWORD rtptimestamp, BYTE *lpData, int nLength)
 #if LOG_MSG
 		log_msg("FF263 decoding queue full!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n", LOG_LEVEL_DEBUG);
 #endif
-		usleep(2*1000);//给播放线程留出CPU
+		usleep(10*1000);//给播放线程留出CPU
 		free(lpData);
 		return FALSE;
 	}

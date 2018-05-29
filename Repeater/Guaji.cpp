@@ -40,6 +40,154 @@ static BYTE getServerFuncFlags()
 	return ret;
 }
 
+static void DoSendAvPacket(SERVER_PROCESS_NODE *pServerPorcess, wps_queue **queue_item)
+{
+	if (NULL == queue_item || NULL == *queue_item) {
+		return;
+	}
+
+	wps_queue *next_item = (*queue_item)->q_forw;
+
+	RECV_PACKET_SMALL *p = (RECV_PACKET_SMALL *)get_qbody(*queue_item);
+	int ret = CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE_TCP, pServerPorcess->m_fhandle, p->szData, p->nDataSize);
+	if (ret < 0) {
+		log_msg("SendPacketsInQueue: CtrlCmd_Send_FAKERTP_RESP() failed!", LOG_LEVEL_ERROR);
+	}
+
+	*queue_item = next_item;
+}
+
+static void SendPacketsInQueue(SERVER_PROCESS_NODE *pServerPorcess, DWORD dwAudioSeq, DWORD dwVideoSeq)
+{
+	wps_queue *temp;
+	wps_queue *tail;
+	RECV_PACKET_SMALL *p;
+	wps_queue *found_video_item = NULL;
+	wps_queue *found_audio_item = NULL;
+	double dfTimestamp = 0.0f;
+
+	if (NULL == g_pShiyong->arrayRecvQueue[PAYLOAD_VIDEO] || NULL == g_pShiyong->arrayRecvQueue[PAYLOAD_AUDIO])
+	{
+		log_msg("SendPacketsInQueue: RecvQueue is empty!!!", LOG_LEVEL_INFO);
+		return;
+	}
+
+	pthread_mutex_lock(&(g_pShiyong->arrayCriticalSec[PAYLOAD_AUDIO]));
+	pthread_mutex_lock(&(g_pShiyong->arrayCriticalSec[PAYLOAD_VIDEO]));
+
+	if (dwAudioSeq == 0xffffffffUL && dwVideoSeq == 0xffffffffUL)
+	{
+		if (NULL != g_pShiyong->arrayRecvQueue[PAYLOAD_VIDEO] && NULL != g_pShiyong->arrayRecvQueue[PAYLOAD_AUDIO])
+		{
+			tail = g_pShiyong->arrayRecvQueue[PAYLOAD_VIDEO];
+
+			while (tail->q_forw != NULL) tail = tail->q_forw;
+
+			temp = tail;
+			while (temp) {
+				p = (RECV_PACKET_SMALL *)get_qbody(temp);
+				BYTE bType = CheckNALUType(p->szData[8]);
+				if (bType == NALU_TYPE_SEQ_SET)//SPS -> PPS -> IDR ->...
+				{
+					found_video_item = temp;
+					dfTimestamp = p->dfRecvTime;
+					break;
+				}
+				temp = temp->q_back;
+			}//while (temp)
+
+			if (NULL != found_video_item)
+			{
+				log_msg("SendPacketsInQueue: Found video SPS packet...", LOG_LEVEL_INFO);
+
+				tail = g_pShiyong->arrayRecvQueue[PAYLOAD_AUDIO];
+
+				while (tail->q_forw != NULL) tail = tail->q_forw;
+
+				temp = tail;
+				while (temp) {
+					p = (RECV_PACKET_SMALL *)get_qbody(temp);
+					if (p->dfRecvTime <= dfTimestamp)
+					{
+						found_audio_item = temp;
+						break;
+					}
+					temp = temp->q_back;
+				}//while (temp)
+
+			}//if (NULL != found_video_item)
+			else {
+				log_msg("SendPacketsInQueue: Can not find video SPS packet!!!", LOG_LEVEL_INFO);
+			}
+		}
+	}
+	else
+	{
+		temp = g_pShiyong->arrayRecvQueue[PAYLOAD_VIDEO];
+		while (temp) {
+			p = (RECV_PACKET_SMALL *)get_qbody(temp);
+			if (p->wSeqNum == dwVideoSeq)
+			{
+				found_video_item = temp;
+				break;
+			}
+			temp = temp->q_forw;
+		}//while (temp)
+		if (NULL != found_video_item) {
+			log_msg("SendPacketsInQueue: Found video packet with certain seq...", LOG_LEVEL_INFO);
+		}
+		else {
+			log_msg("SendPacketsInQueue: Can not find video packet with certain seq!!!", LOG_LEVEL_INFO);
+		}
+
+		temp = g_pShiyong->arrayRecvQueue[PAYLOAD_AUDIO];
+		while (temp) {
+			p = (RECV_PACKET_SMALL *)get_qbody(temp);
+			if (p->wSeqNum == dwAudioSeq)
+			{
+				found_audio_item = temp;
+				break;
+			}
+			temp = temp->q_forw;
+		}//while (temp)
+		if (NULL != found_audio_item) {
+			log_msg("SendPacketsInQueue: Found audio packet with certain seq...", LOG_LEVEL_INFO);
+		}
+		else {
+			log_msg("SendPacketsInQueue: Can not find audio packet with certain seq!!!", LOG_LEVEL_INFO);
+		}
+	}
+
+	pthread_mutex_unlock(&(g_pShiyong->arrayCriticalSec[PAYLOAD_VIDEO]));
+	pthread_mutex_unlock(&(g_pShiyong->arrayCriticalSec[PAYLOAD_AUDIO]));
+
+
+	if (NULL != found_audio_item && NULL != found_video_item)
+	{
+		while (TRUE)
+		{
+			int n = MAX_VIDEO_RECV_QUEUE_SIZE / MAX_AUDIO_RECV_QUEUE_SIZE;
+			if (n > 5) 	n = 5;
+			if (n < 1) 	n = 1;
+
+			pthread_mutex_lock(&(g_pShiyong->arrayCriticalSec[PAYLOAD_AUDIO]));
+			DoSendAvPacket(pServerPorcess, &found_audio_item);
+			pthread_mutex_unlock(&(g_pShiyong->arrayCriticalSec[PAYLOAD_AUDIO]));
+
+			pthread_mutex_lock(&(g_pShiyong->arrayCriticalSec[PAYLOAD_VIDEO]));
+			for (int i = 0; i < n; i++) {
+				DoSendAvPacket(pServerPorcess, &found_video_item);
+			}
+			pthread_mutex_unlock(&(g_pShiyong->arrayCriticalSec[PAYLOAD_VIDEO]));
+
+			if (NULL == found_audio_item && NULL == found_video_item) {
+				break;
+			}
+			usleep(1*1000);
+		}
+	}
+}
+
 static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 {
 	SOCKET_TYPE type = SOCKET_TYPE_TCP;
@@ -47,6 +195,8 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 	char buff[16*1024];
 	WORD wCommand;
 	DWORD dwDataLength;
+	DWORD dwAudioSeq;
+	DWORD dwVideoSeq;
 	BYTE is_connected;
 	BYTE node_type;
 	BYTE source_node_id[6];
@@ -115,11 +265,16 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				if (ret != 0) {
 					break;
 				}
+
+				dwAudioSeq = ntohl(pf_get_dword(buff+3));
+				dwVideoSeq = ntohl(pf_get_dword(buff+7));
 				
 				pServerPorcess->m_bAVStarted = TRUE;
 				pServerPorcess->m_bVideoEnable = ((BYTE)(buff[0]) & AV_FLAGS_VIDEO_ENABLE) != 0;
 				pServerPorcess->m_bAudioEnable = ((BYTE)(buff[0]) & AV_FLAGS_AUDIO_ENABLE) != 0;
 				pServerPorcess->m_bTLVEnable = FALSE;
+
+				SendPacketsInQueue(pServerPorcess, dwAudioSeq, dwVideoSeq);
 
 				break;
 
