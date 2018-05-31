@@ -4,7 +4,7 @@
     android:versionCode="462"
     android:versionName="4.6.2" >
 
-    <uses-sdk android:minSdkVersion="7" />
+    <uses-sdk android:minSdkVersion="9" />
     <supports-screens android:anyDensity="true" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>

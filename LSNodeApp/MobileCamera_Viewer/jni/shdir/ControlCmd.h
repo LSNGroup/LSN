@@ -105,6 +105,9 @@ N Bytes, Data.
 #define ROUTE_ITEM_TYPE_VIEWERNODE		0x02
 #define ROUTE_ITEM_TYPE_GUAJINODE		0x03
 
+/* Definition of topo notify type */
+#define TOPO_NOTIFY_TYPE_DELAYSWITCH	0x01
+
 
 /* Command Code Definiton */
 
@@ -126,7 +129,9 @@ N Bytes, Data.
 
 #define CMD_CODE_TOPO_SETTINGS	0x00D5  /* CMD_CODE_TOPO_SETTINGS | 12 + 1 + n | 00:00:00:00:00:00 | FF:FF:FF:FF:FF:FF | topo_level | settings_string */
 
-#define CMD_CODE_TOPO_PACKET	0x00D6  /* CMD_CODE_TOPO_PACKET | 1 + 20 + 6 + 6 + n | hop_count | packet_uuid | source_node_id  |  dest_node_id  | n bytes data */
+#define CMD_CODE_TOPO_NOTIFY	0x00D6  /* CMD_CODE_TOPO_NOTIFY | 12 + 1 + 4 | 00:00:00:00:00:00 | FF:FF:FF:FF:FF:FF | notify_type | notify_param */
+
+#define CMD_CODE_TOPO_PACKET	0x00D7  /* CMD_CODE_TOPO_PACKET | 1 + 20 + 6 + 6 + n | hop_count | packet_uuid | source_node_id  |  dest_node_id  | n bytes data */
 
 #define CMD_CODE_HELLO_REQ		0x0001  /* CMD_CODE_HELLO_REQ | 6+4+1+256 | client_node_id | client_version | topo_primary | password */
 #define CMD_CODE_HELLO_RESP		0x8001  /* CMD_CODE_HELLO_RESP | 6+4+1+1+2 | server_node_id | server_version | func_flags | topo_level | result_code */
@@ -201,6 +206,7 @@ int CtrlCmd_TOPO_DROP(SOCKET_TYPE type, SOCKET fhandle, BYTE is_connected, BYTE 
 int CtrlCmd_TOPO_EVALUATE(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, BYTE *object_node_id, DWORD begin_time, DWORD end_time, DWORD stream_flow);
 int CtrlCmd_TOPO_EVENT(SOCKET_TYPE type, SOCKET fhandle, BYTE *dest_node_id, const char *event_string);
 int CtrlCmd_TOPO_SETTINGS(SOCKET_TYPE type, SOCKET fhandle, BYTE topo_level, const char *settings_string);
+int CtrlCmd_TOPO_NOTIFY(SOCKET_TYPE type, SOCKET fhandle, BYTE notify_type, DWORD notify_param);
 
 int CtrlCmd_PROXY(SOCKET_TYPE type, SOCKET fhandle, WORD wTcpPort);
 int CtrlCmd_PROXY_DATA(SOCKET_TYPE type, SOCKET fhandle, BYTE *data, int len);

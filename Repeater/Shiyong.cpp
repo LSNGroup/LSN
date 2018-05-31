@@ -229,6 +229,17 @@ static void HandleMediaStreamingChech(void *eloop_ctx, void *timeout_ctx)
 				int oldIndex = g_pShiyong->currentSourceIndex;
 				g_pShiyong->SwitchMediaSource(g_pShiyong->currentSourceIndex, i);
 
+				for (int g = 0; g < MAX_SERVER_NUM; g++)
+				{
+					if (arrServerProcesses[g].m_bConnected == FALSE || arrServerProcesses[g].m_bAVStarted == FALSE) {
+						continue;
+					}
+					int ret = CtrlCmd_TOPO_NOTIFY(SOCKET_TYPE_TCP, arrServerProcesses[g].m_fhandle, TOPO_NOTIFY_TYPE_DELAYSWITCH, 150);
+					if (ret < 0) {
+						continue;
+					}
+				}
+
 				if (g1_system_debug_flags != 0)
 				{
 					char log_info[MAX_PATH];
@@ -737,6 +748,8 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 		WORD wCmd;
 		DWORD copy_len;
 		BYTE topo_level;
+		BYTE notify_type;
+		DWORD notify_param;
 		BYTE dest_node_id[6];
 		int index;
 		unsigned char *pRecvData;
@@ -959,6 +972,46 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 			}
 
 			free(pRecvData);
+
+			break;
+
+		case CMD_CODE_TOPO_NOTIFY:
+
+			if (RecvStream(ftype, fhandle, buf, 6) != 0) {
+				return;
+			}
+			if (RecvStream(ftype, fhandle, buf, 6) != 0) {
+				return;
+			}
+
+			if (RecvStream(ftype, fhandle, buf, 1) != 0) {
+				return;
+			}
+			notify_type = *(BYTE *)buf;
+
+			if (RecvStream(ftype, fhandle, buf, 4) != 0) {
+				return;
+			}
+			notify_param = ntohl(pf_get_dword(buf));
+
+
+			if (TOPO_NOTIFY_TYPE_DELAYSWITCH == notify_type) {
+				g_pShiyong->currentLastMediaTime += notify_param;
+				printf(                    "RecvSocketDataLoop: TOPO_NOTIFY_TYPE_DELAYSWITCH DelayTime=%lu ms\n", notify_param);
+				log_msg_f(LOG_LEVEL_DEBUG, "RecvSocketDataLoop: TOPO_NOTIFY_TYPE_DELAYSWITCH DelayTime=%lu ms\n", notify_param);
+			}
+
+
+			for (int i = 0; i < MAX_SERVER_NUM; i++)
+			{
+				if (arrServerProcesses[i].m_bConnected == FALSE || arrServerProcesses[i].m_bAVStarted == FALSE) {
+					continue;
+				}
+				int ret = CtrlCmd_TOPO_NOTIFY(SOCKET_TYPE_TCP, arrServerProcesses[i].m_fhandle, notify_type, notify_param);
+				if (ret < 0) {
+					continue;
+				}
+			}
 
 			break;
 

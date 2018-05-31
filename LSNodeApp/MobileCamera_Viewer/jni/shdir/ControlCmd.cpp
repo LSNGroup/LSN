@@ -474,6 +474,25 @@ int CtrlCmd_TOPO_SETTINGS(SOCKET_TYPE type, SOCKET fhandle, BYTE topo_level, con
 	return ret;
 }
 
+int CtrlCmd_TOPO_NOTIFY(SOCKET_TYPE type, SOCKET fhandle, BYTE notify_type, DWORD notify_param)
+{
+	int ret;
+	char bSendPacket[32];
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_TOPO_NOTIFY));
+	pf_set_dword(bSendPacket + 2, htonl(12 + 1 + 4));
+	memset(bSendPacket + 6, 0, 6);
+	memset(bSendPacket + 12, 0xff, 6);
+	bSendPacket[18] = (char)notify_type;
+	pf_set_dword(bSendPacket + 19, htonl(notify_param));
+	
+	pthread_mutex_lock(getMutexSend(type));
+	ret = SendStream(type, fhandle, bSendPacket, 6 + 12 + 1 + 4);
+	pthread_mutex_unlock(getMutexSend(type));
+	return ret;
+}
+
 int CtrlCmd_PROXY(SOCKET_TYPE type, SOCKET fhandle, WORD wTcpPort)
 {
 	int ret;

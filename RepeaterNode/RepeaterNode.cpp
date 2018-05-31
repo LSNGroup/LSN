@@ -352,13 +352,37 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 				;//切断向下传播！！！
 			} else
 			if (g_pServerNode->m_bConnected == TRUE && g_is_topo_primary) {
-				CtrlCmd_TOPO_SETTINGS(g_pServerNode->myHttpOperate.m1_use_sock_type, g_pServerNode->myHttpOperate.m1_use_udt_sock, g_device_topo_level, (const char *)pRecvData);;
+				CtrlCmd_TOPO_SETTINGS(g_pServerNode->myHttpOperate.m1_use_sock_type, g_pServerNode->myHttpOperate.m1_use_udt_sock, g_device_topo_level, (const char *)pRecvData);
 			}
 			free(pRecvData);
 
 			//每隔一定周期g1_register_period，会收到一个CMD_CODE_TOPO_SETTINGS消息
 			if (g_pServerNode->m_bConnected == TRUE) {
 				DoIpcReportInConnection();
+			}
+		}
+		else if (wCmd == CMD_CODE_TOPO_NOTIFY && copy_len != 0)
+		{
+			if (RecvStream(SOCKET_TYPE_TCP, g_fhandle, buf, 6) != 0) {
+				break;
+			}
+			if (RecvStream(SOCKET_TYPE_TCP, g_fhandle, buf, 6) != 0) {
+				break;
+			}
+
+			if (RecvStream(SOCKET_TYPE_TCP, g_fhandle, buf, 1) != 0) {
+				break;
+			}
+			BYTE notify_type = *(BYTE *)buf;
+
+			if (RecvStream(SOCKET_TYPE_TCP, g_fhandle, buf, 4) != 0) {
+				break;
+			}
+			DWORD notify_param = ntohl(pf_get_dword(buf));
+
+			//一直向下传递给Viewer App
+			if (g_pServerNode->m_bConnected == TRUE && g_is_topo_primary) {
+				CtrlCmd_TOPO_NOTIFY(g_pServerNode->myHttpOperate.m1_use_sock_type, g_pServerNode->myHttpOperate.m1_use_udt_sock, notify_type, notify_param);
 			}
 		}
 		else

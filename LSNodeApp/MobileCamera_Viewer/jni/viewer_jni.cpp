@@ -1259,6 +1259,8 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 		WORD wCmd;
 		DWORD copy_len;
 		BYTE topo_level;
+		BYTE notify_type;
+		DWORD notify_param;
 		BYTE dest_node_id[6];
 		int index;
 		unsigned char *pRecvData;
@@ -1325,6 +1327,33 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 #if LOG_MSG
 			log_msg("RecvSocketDataLoop: CMD_CODE_END?????????\n", LOG_LEVEL_DEBUG);
 #endif
+			break;
+
+		case CMD_CODE_TOPO_NOTIFY:
+
+			if (RecvStream(ftype, fhandle, buf, 6) != 0) {
+				return;
+			}
+			if (RecvStream(ftype, fhandle, buf, 6) != 0) {
+				return;
+			}
+
+			if (RecvStream(ftype, fhandle, buf, 1) != 0) {
+				return;
+			}
+			notify_type = *(BYTE *)buf;
+
+			if (RecvStream(ftype, fhandle, buf, 4) != 0) {
+				return;
+			}
+			notify_param = ntohl(pf_get_dword(buf));
+
+
+			if (TOPO_NOTIFY_TYPE_DELAYSWITCH == notify_type) {
+				currentLastMediaTime += notify_param;
+				__android_log_print(ANDROID_LOG_INFO, "viewer_jni", "RecvSocketDataLoop: TOPO_NOTIFY_TYPE_DELAYSWITCH DelayTime=%lu ms\n", notify_param);
+			}
+
 			break;
 
 		default:

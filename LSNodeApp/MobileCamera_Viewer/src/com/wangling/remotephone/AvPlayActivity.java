@@ -269,7 +269,7 @@ public class AvPlayActivity extends Activity {
         		int i;
         		for (i = 0; i < 100; i++)/////////AV
         		{
-        			if (videoTime < m_lStreamTime + 10 - 200) {
+        			if (videoTime < m_lStreamTime + 10) {
         				break;
         			}
         			if (m_bQuitPlay) {
