@@ -64,7 +64,7 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="udtx.lib G729a.lib"
 				LinkIncremental="2"
-				AdditionalLibraryDirectories="E:\WM_Projects\G729a\Release;&quot;..\revolver-master\udtx\Release&quot;"
+				AdditionalLibraryDirectories="D:\WM_Projects\G729a\Release;&quot;..\revolver-master\udtx\Release&quot;"
 				GenerateDebugInformation="true"
 				SubSystem="1"
 				TargetMachine="1"
@@ -141,7 +141,7 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="udtx.lib G729a.lib"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="E:\WM_Projects\G729a\Release;&quot;..\revolver-master\udtx\Release&quot;"
+				AdditionalLibraryDirectories="D:\WM_Projects\G729a\Release;&quot;..\revolver-master\udtx\Release&quot;"
 				GenerateDebugInformation="true"
 				SubSystem="1"
 				OptimizeReferences="2"
@@ -215,11 +215,7 @@
 				>
 			</File>
 			<File
-				RelativePath=".\Eloop.cpp"
-				>
-			</File>
-			<File
-				RelativePath=".\Guaji.cpp"
+				RelativePath="..\ShareDir\Eloop.cpp"
 				>
 			</File>
 			<File
@@ -241,6 +237,10 @@
 						UsePrecompiledHeader="2"
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\IpcGuaji.cpp"
+				>
 			</File>
 			<File
 				RelativePath="..\ShareDir\LogMsg.cpp"
@@ -303,16 +303,8 @@
 				>
 			</File>
 			<File
-				RelativePath=".\wps_queue.cpp"
+				RelativePath="..\ShareDir\wps_queue.cpp"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						UsePrecompiledHeader="0"
-					/>
-				</FileConfiguration>
 				<FileConfiguration
 					Name="Release|Win32"
 					>
@@ -329,7 +321,7 @@
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
 			<File
-				RelativePath=".\avrtp_def.h"
+				RelativePath="..\ShareDir\avrtp_def.h"
 				>
 			</File>
 			<File
@@ -349,15 +341,15 @@
 				>
 			</File>
 			<File
-				RelativePath=".\Eloop.h"
-				>
-			</File>
-			<File
-				RelativePath=".\Guaji.h"
+				RelativePath="..\ShareDir\Eloop.h"
 				>
 			</File>
 			<File
 				RelativePath="..\ShareDir\HttpOperate.h"
+				>
+			</File>
+			<File
+				RelativePath=".\IpcGuaji.h"
 				>
 			</File>
 			<File
@@ -409,7 +401,7 @@
 				>
 			</File>
 			<File
-				RelativePath=".\wps_queue.h"
+				RelativePath="..\ShareDir\wps_queue.h"
 				>
 			</File>
 		</Filter>

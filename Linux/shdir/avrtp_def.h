@@ -54,9 +54,9 @@ typedef enum _tag_rtp_payload_type {
 
 
 
-#define RECV_PACKET_SMALL_BUFF_SIZE   (1500)
-#define RECV_PACKET_MEDIUM_BUFF_SIZE  (1024*12)
-#define RECV_PACKET_BIG_BUFF_SIZE     (1024*36)
+#define RECV_PACKET_SMALL_BUFF_SIZE   (64)
+#define RECV_PACKET_MEDIUM_BUFF_SIZE  (520)
+#define RECV_PACKET_BIG_BUFF_SIZE     (1500)
 
 typedef struct _tag_recv_packet_small {
 	wps_queue link;

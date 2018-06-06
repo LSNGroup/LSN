@@ -3,7 +3,7 @@
 
 #include "stdafx.h"
 #include "Repeater.h"
-#include "Guaji.h"
+#include "IpcGuaji.h"
 
 #include "platform.h"
 #include "CommonLib.h"
