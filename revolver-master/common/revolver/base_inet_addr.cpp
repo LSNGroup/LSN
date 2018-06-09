@@ -27,7 +27,7 @@ Inet_Addr::Inet_Addr(uint32_t ip, uint16_t port)
 	addr_.sin_family = AF_INET;
 }
 
-Inet_Addr::Inet_Addr(const BASEOBJECT::Inet_Addr &addr)
+Inet_Addr::Inet_Addr(const Inet_Addr &addr)
 {
 	addr_ = addr.addr_;
 }

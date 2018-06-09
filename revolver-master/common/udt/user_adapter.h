@@ -5,8 +5,6 @@
 
 class UserConnection;
 
-using namespace BASE;
-
 
 class UserAdapter : public IRUDPAdapter
 {

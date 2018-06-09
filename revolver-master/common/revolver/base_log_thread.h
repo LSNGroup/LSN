@@ -14,7 +14,6 @@
 #include "revolver/base_thread_mutex.h"
 #include "revolver/object_pool.h"
 
-using namespace BASE_NAMEPSACE_DECL;
 
 typedef struct LogInfoData
 {

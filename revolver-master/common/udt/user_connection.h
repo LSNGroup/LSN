@@ -13,9 +13,6 @@
 #include "learn_addr.h"
 
 
-using namespace BASE;
-
-
 enum RUDPConnState
 {
 	RUDP_CONN_IDLE,			//平静状态,有可能是未连接

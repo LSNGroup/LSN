@@ -24,7 +24,6 @@
 #include "revolver/base_guard.h"
 
 using namespace std;
-using namespace BASE_NAMEPSACE_DECL;
 
 //日志文件
 class BaseLog

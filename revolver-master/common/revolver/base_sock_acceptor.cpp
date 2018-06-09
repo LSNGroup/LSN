@@ -16,7 +16,7 @@ BASE_HANDLER CSockAcceptor::get_socket_handler() const
 	return sock_stream_.get_handler();
 }
 
-int32_t CSockAcceptor::open(const BASEOBJECT::Inet_Addr &addr, bool nonblocking, int32_t listen_max)
+int32_t CSockAcceptor::open(const Inet_Addr &addr, bool nonblocking, int32_t listen_max)
 {
 	if(sock_stream_.open(addr, nonblocking) == -1)
 		return -1;

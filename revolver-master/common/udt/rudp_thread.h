@@ -6,7 +6,6 @@
 #include "base_thread.h"
 #include "base_singleton.h"
 
-using namespace BASE;
 
 class RudpThread : public CThread
 {

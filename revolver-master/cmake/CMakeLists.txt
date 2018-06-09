@@ -37,7 +37,7 @@ FILE(GLOB sources_c   "../common/udt/*.c")
 
 # targets
 ADD_LIBRARY (udtx SHARED ${sources_cpp} ${sources_c})
-TARGET_LINK_LIBRARIES(udtx core revolver rudp pthread)
+TARGET_LINK_LIBRARIES(udtx core rudp revolver pthread)
 
 
 if(UNIX OR APPLE)
