@@ -1,4 +1,6 @@
-#pragma once
+#ifndef _GUAJI_H
+#define _GUAJI_H
+
 
 #include "platform.h"
 #include "CommonLib.h"
@@ -75,3 +77,6 @@ void DShowAV_Start(SERVER_NODE* pServerNode, BYTE flags, BYTE video_size, BYTE v
 void DShowAV_Stop(SERVER_NODE* pServerNode);
 void DShowAV_Switch(SERVER_NODE* pServerNode, DWORD video_channel);
 void DShowAV_Contrl(SERVER_NODE* pServerNode, WORD contrl, DWORD contrl_param);
+
+
+#endif //_GUAJI_H

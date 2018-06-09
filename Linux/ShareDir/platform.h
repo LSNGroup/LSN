@@ -22,9 +22,9 @@ typedef	signed char	BOOL;
 
 
 
-/* See Application.mk */
-//#define _SXDEF_CPU_80X86		0
-//#define _SXDEF_LITTLE_ENDIAN	1
+/* For Linux */
+#define _SXDEF_CPU_80X86		1
+#define _SXDEF_LITTLE_ENDIAN	1
 
 
 

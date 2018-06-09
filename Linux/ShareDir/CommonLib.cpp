@@ -1,8 +1,13 @@
 #include "platform.h"
 #include "CommonLib.h"
 
+#include "AppSettings.h"
+
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+#include <time.h>
+#include <sys/time.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -55,6 +60,15 @@ void trim(char *str)
 {
      trim_left(str);
 	 trim_right(str);
+}
+
+DWORD get_system_milliseconds()
+{
+	struct timeval tv;
+	gettimeofday(&tv,NULL);
+	unsigned long ret = tv.tv_sec*1000 + tv.tv_usec/1000;
+	ret &= 0x7fffffff;
+	return ret;
 }
 
 int mac_addr(const char *lpMacStr, BYTE *lpMacAddr, int *lpAddrLen)
@@ -818,6 +832,13 @@ int CheckStun(char *lpStunServer, WORD wSrcPort, StunAddress4 *lpMappedResult, B
 	*lpNoNAT = FALSE;
 	*lpNatType = stype;
 
+	DWORD dwForceNoNAT = 0;
+	if (GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT) && dwForceNoNAT == 1) {
+		stype = StunTypeOpen;
+		*lpNoNAT = TRUE;
+		*lpNatType = stype;
+	}
+
 	 switch (stype)
 	 {
 		case StunTypeFailure:
@@ -917,17 +938,14 @@ int CheckStunSimple(char *lpStunServer, WORD wSrcPort, StunAddress4 *lpMappedRes
 // -1: Error
 //  0: Success
 //
-int CheckStunMyself(char *lpStunServer, WORD wSrcPort, StunAddress4 *lpMappedResult, BOOL *lpNoNAT, int *lpNatType)
+int CheckStunMyself(char *lpStunServer, WORD wSrcPort, StunAddress4 *lpMappedResult, BOOL *lpNoNAT, int *lpNatType, DWORD *lpTime)
 {
 	StunAddress4 stunServerAddr;
 	
 	stunServerAddr.addr=0;
 	if (stunParseServerName(lpStunServer, stunServerAddr) != true 
-			|| stunServerAddr.addr == 0)
+			|| stunServerAddr.addr == 0)//这里会指定默认端口号3478
 	{
-#ifdef ANDROID_NDK ////Debug
-		__android_log_print(ANDROID_LOG_ERROR, "CheckStunMyself", "stunParseServerName(\"%s\") failed!", lpStunServer);
-#endif
 		return -1;
 	}
 	
@@ -950,20 +968,21 @@ int CheckStunMyself(char *lpStunServer, WORD wSrcPort, StunAddress4 *lpMappedRes
     my_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     if (bind(sock, (struct sockaddr *)&my_addr, sizeof(my_addr)) < 0)
     {
-    	close(sock);
+    	closesocket(sock);
         return -1;
     }
 	
 	for (int i = 0; i < 5; i++)
 	{
 	    addr.sin_family = AF_INET;
-	    addr.sin_port = htons(FIRST_CONNECT_PORT);
+	    addr.sin_port = htons(FIRST_CONNECT_PORT);//这里MyStun服务器端口是固定的
 	    addr.sin_addr.s_addr = htonl(stunServerAddr.addr);
 	    
-		pf_set_dword(buff, my_addr.sin_addr.s_addr);//???
-		pf_set_word(buff + 4, my_addr.sin_port);
-		n = sendto(sock, buff, 6, 0, (struct sockaddr *)&addr, sizeof(addr));
-		if (n == 6)
+		*(DWORD *)buff = my_addr.sin_addr.s_addr;//???
+		*(WORD *)(buff + 4) = my_addr.sin_port;
+		*(DWORD *)(buff + 6) = get_system_milliseconds();
+		n = sendto(sock, buff, 10, 0, (struct sockaddr *)&addr, sizeof(addr));
+		if (n == 10)
 		{
 			FD_ZERO(&target_fds);
 			FD_SET(sock, &target_fds);
@@ -978,11 +997,18 @@ int CheckStunMyself(char *lpStunServer, WORD wSrcPort, StunAddress4 *lpMappedRes
 			
 			len = sizeof(addr);
 			n = recvfrom(sock, buff, sizeof(buff), 0, (struct sockaddr*)&addr, &len);
-			if (n == 6)
+			if (n == 10)
 			{
-				lpMappedResult->addr = ntohl(pf_get_dword(buff));
-				lpMappedResult->port = ntohs(pf_get_word(buff + 4));
-				close(sock);
+				lpMappedResult->addr = ntohl(*(DWORD *)buff);
+				lpMappedResult->port = ntohs(*(WORD *)(buff + 4));
+
+				DWORD ts = *(DWORD *)(buff + 6);
+				ts = (get_system_milliseconds() - ts);
+				if (ts > 0 && ts < 15000) {
+					*lpTime = (DWORD)((double)(*lpTime) * 0.6f + (double)ts * 0.4f);
+				}
+
+				closesocket(sock);
 				
 				Socket s = openPort( 0/*use ephemeral*/, lpMappedResult->addr, false);
 				if (s != INVALID_SOCKET)
@@ -997,12 +1023,18 @@ int CheckStunMyself(char *lpStunServer, WORD wSrcPort, StunAddress4 *lpMappedRes
 					*lpNatType = StunTypeIndependentFilter;
 				}
 				
+				DWORD dwForceNoNAT = 0;
+				if (GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, &dwForceNoNAT) && dwForceNoNAT == 1) {
+					*lpNoNAT = TRUE;
+					*lpNatType = StunTypeOpen;
+				}
+
 				return 0;
 			}
 		}
-		usleep(20000);
+		usleep(20*1000);
 	}
-	close(sock);
+	closesocket(sock);
 	return -1;
 }
 
@@ -1013,7 +1045,7 @@ DWORD GetLocalAddress(DWORD addresses[], int *lpCount)
 #define max(a,b)    ((a) > (b) ? (a) : (b))
 #define BUFFERSIZE  4096
 
-#ifndef ANDROID_NDK
+#ifdef WIN32
 	int                 len;
 #endif
 	char                buffer[BUFFERSIZE], *ptr, lastname[IFNAMSIZ], *cptr;
@@ -1050,7 +1082,7 @@ DWORD GetLocalAddress(DWORD addresses[], int *lpCount)
 	for (ptr = buffer; ptr < buffer + ifc.ifc_len; )    
 	{    
 		ifr = (struct ifreq *)ptr;    
-#ifndef ANDROID_NDK
+#ifdef WIN32
 		len = max(sizeof(struct sockaddr), ifr->ifr_addr.sa_len);    
 		ptr += sizeof(ifr->ifr_name) + len;  // for next one in buffer     
 #else
@@ -1099,6 +1131,12 @@ DWORD GetLocalAddress(DWORD addresses[], int *lpCount)
 #undef min
 #undef max
 #undef BUFFERSIZE
+}
+
+BOOL GetOsInfo(char *lpInfoBuff, int BuffSize)
+{
+	strncpy(lpInfoBuff, "Linux", BuffSize);
+	return TRUE;
 }
 
 static unsigned int utf8_decode( char *s, unsigned int *pi )

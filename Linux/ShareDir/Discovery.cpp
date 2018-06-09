@@ -2,6 +2,9 @@
 #include "CommonLib.h"
 #include "Discovery.h"
 
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <sys/ioctl.h>     
 #include <sys/types.h>     
 #include <sys/socket.h>     
@@ -18,7 +21,7 @@ void PrepareBroadcastDests(DWORD *broadcastDsts, int *lpDstsCnt)
 #define max(a,b)    ((a) > (b) ? (a) : (b))
 #define BUFFERSIZE  4096
 
-#ifndef ANDROID_NDK
+#ifdef WIN32
 	int                 len;
 #endif
 	char                buffer[BUFFERSIZE], *ptr, lastname[IFNAMSIZ], *cptr;
@@ -44,7 +47,7 @@ void PrepareBroadcastDests(DWORD *broadcastDsts, int *lpDstsCnt)
 	for (ptr = buffer; ptr < buffer + ifc.ifc_len; )    
 	{    
 		ifr = (struct ifreq *)ptr;    
-#ifndef ANDROID_NDK
+#ifdef WIN32
 		len = max(sizeof(struct sockaddr), ifr->ifr_addr.sa_len);    
 		ptr += sizeof(ifr->ifr_name) + len;  // for next one in buffer     
 #else

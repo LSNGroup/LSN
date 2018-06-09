@@ -5,7 +5,7 @@
 #include "platform.h"
 #include "CommonLib.h"
 #include "ControlCmd.h"
-#ifdef WIN32
+#ifndef ANDROID_NDK
 #include "LogMsg.h"
 #endif
 

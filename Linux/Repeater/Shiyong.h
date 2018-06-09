@@ -1,4 +1,6 @@
-#pragma once
+#ifndef _SHIYONG_H
+#define _SHIYONG_H
+
 
 #include "platform.h"
 #include "CommonLib.h"
@@ -190,3 +192,5 @@ public:
 
 extern CShiyong* g_pShiyong;
 
+
+#endif //_SHIYONG_H

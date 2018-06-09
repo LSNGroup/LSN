@@ -50,6 +50,73 @@
 #include "Eloop.h"
 
 
+#ifndef os_malloc
+#define os_malloc(s) malloc((s))
+#endif
+#ifndef os_realloc
+#define os_realloc(p, s) realloc((p), (s))
+#endif
+#ifndef os_free
+#define os_free(p) free((p))
+#endif
+
+
+#ifndef os_memcpy
+#define os_memcpy(d, s, n) memcpy((d), (s), (n))
+#endif
+#ifndef os_memmove
+#define os_memmove(d, s, n) memmove((d), (s), (n))
+#endif
+#ifndef os_memset
+#define os_memset(s, c, n) memset(s, c, n)
+#endif
+#ifndef os_memcmp
+#define os_memcmp(s1, s2, n) memcmp((s1), (s2), (n))
+#endif
+
+
+/* Helper macros for handling struct os_time */
+
+typedef long os_time_t;
+
+struct os_time {
+	os_time_t sec;
+	os_time_t usec;
+};
+
+#define os_time_before(a, b) \
+	((a)->sec < (b)->sec || \
+	 ((a)->sec == (b)->sec && (a)->usec < (b)->usec))
+
+#define os_time_sub(a, b, res) do { \
+	(res)->sec = (a)->sec - (b)->sec; \
+	(res)->usec = (a)->usec - (b)->usec; \
+	if ((res)->usec < 0) { \
+		(res)->sec--; \
+		(res)->usec += 1000000; \
+	} \
+} while (0)
+
+void os_sleep(os_time_t sec, os_time_t usec)
+{
+	if (sec)
+		sleep(sec);
+	if (usec)
+		usleep(usec);
+}
+
+int os_get_time(struct os_time *t)
+{
+	int res;
+	struct timeval tv;
+	res = gettimeofday(&tv, NULL);
+	t->sec = tv.tv_sec;
+	t->usec = tv.tv_usec;
+	return res;
+}
+
+
+
 struct eloop_sock {
 	int sock;
 	void *eloop_data;
@@ -271,7 +338,7 @@ int eloop_register_timeout(unsigned int secs, unsigned int usecs,
 {
 	struct eloop_timeout *timeout, *tmp, *prev;
 
-	timeout = os_malloc(sizeof(*timeout));
+	timeout = (struct eloop_timeout *)os_malloc(sizeof(*timeout));
 	if (timeout == NULL)
 		return -1;
 	if (os_get_time(&timeout->time) < 0) {
@@ -481,9 +548,9 @@ void eloop_run(void)
 	struct timeval _tv;
 	struct os_time tv, now;
 
-	rfds = os_malloc(sizeof(*rfds));
-	wfds = os_malloc(sizeof(*wfds));
-	efds = os_malloc(sizeof(*efds));
+	rfds = (fd_set *)os_malloc(sizeof(*rfds));
+	wfds = (fd_set *)os_malloc(sizeof(*wfds));
+	efds = (fd_set *)os_malloc(sizeof(*efds));
 	if (rfds == NULL || wfds == NULL || efds == NULL) {
 		printf("eloop_run - malloc failed\n");
 		goto out;

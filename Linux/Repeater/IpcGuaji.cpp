@@ -1,8 +1,9 @@
 // Guaji.cpp : 实现文件
 //
 
-#include "stdafx.h"
+//#include "stdafx.h"
 #include "Repeater.h"
+#include "PacketRepeater.h"
 #include "IpcGuaji.h"
 
 #include "platform.h"
@@ -10,7 +11,7 @@
 #include "HttpOperate.h"
 #include "phpMd5.h"
 #include "base64.h"
-#include "PacketRepeater.h"
+#include "AppSettings.h"
 #include "LogMsg.h"
 
 
@@ -210,6 +211,7 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 		//closesocket(pServerPorcess->m_fhandle);
 		pServerPorcess->m_fhandle = INVALID_SOCKET;
 		printf("OnIpcMsg: RecvStream(6) failed!\n");
+		perror("RecvStream() error:");
 		return;
 	}
 
@@ -577,13 +579,16 @@ void *IpcThreadFn(void *pvThreadParam)
 	SOCKET server;
 	sockaddr_in my_addr;
 	sockaddr_in their_addr;
-	int namelen = sizeof(their_addr);
+	socklen_t namelen = sizeof(their_addr);
 	int ret;
 	int count = 0;
 	struct timeval waitval;
 	fd_set allset;
 	int max_fd;
 
+	if (NULL == arrServerProcesses) {
+		usleep(2000*1000);
+	}
 
 	server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (server == INVALID_SOCKET) {
@@ -610,7 +615,7 @@ void *IpcThreadFn(void *pvThreadParam)
 	while (count < MAX_SERVER_NUM)
 	{
 		if (NULL == arrServerProcesses) {
-			usleep(3000*1000);
+			usleep(2000*1000);
 			continue;
 		}
 
@@ -707,11 +712,46 @@ void StartServerProcesses()
 		printf("ServerProcessNode %d online...\n", i+1);
 
 		char szExeCmd[MAX_PATH];
+		char *argv[15];
+		int ai = 0;
 		int p2p_port = FIRST_CONNECT_PORT + i*4;
 
-		_snprintf(szExeCmd, MAX_PATH, "RepeaterNode.exe  %s %d %d %s %s %d %d %d %d %d %s", SERVER_TYPE, UUID_EXT, MAX_SERVER_NUM, NODE_NAME, CONNECT_PASSWORD, p2p_port, IPC_SERVER_BIND_PORT, g_video_width, g_video_height, g_video_fps, g_tcp_address);
-		RunExeNoWait(szExeCmd, FALSE);
-
+		//snprintf(szExeCmd, MAX_PATH, "RepeaterNode.exe  %s %d %d %s %s %d %d %d %d %d %s", SERVER_TYPE, UUID_EXT, MAX_SERVER_NUM, NODE_NAME, CONNECT_PASSWORD, p2p_port, IPC_SERVER_BIND_PORT, g_video_width, g_video_height, g_video_fps, g_tcp_address);
+		//RunExeNoWait(szExeCmd, FALSE);
+		
+		snprintf(szExeCmd, MAX_PATH, "%s/RepeaterNode", gszProgramDir);
+		printf("szExeCmd=%s\n", szExeCmd);
+		
+		argv[ai++] = szExeCmd;
+		argv[ai++] = SERVER_TYPE;
+		char str_UUID_EXT[MAX_PATH];       snprintf(str_UUID_EXT, MAX_PATH, "%d", UUID_EXT); argv[ai++] = str_UUID_EXT;
+		char str_MAX_SERVER_NUM[MAX_PATH]; snprintf(str_MAX_SERVER_NUM, MAX_PATH, "%d", MAX_SERVER_NUM); argv[ai++] = str_MAX_SERVER_NUM;
+		argv[ai++] = NODE_NAME;
+		argv[ai++] = CONNECT_PASSWORD;
+		char str_p2p_port[MAX_PATH];             snprintf(str_p2p_port, MAX_PATH, "%d", p2p_port); argv[ai++] = str_p2p_port;
+		char str_IPC_SERVER_BIND_PORT[MAX_PATH]; snprintf(str_IPC_SERVER_BIND_PORT, MAX_PATH, "%d", IPC_SERVER_BIND_PORT); argv[ai++] = str_IPC_SERVER_BIND_PORT;
+		char str_g_video_width[MAX_PATH];        snprintf(str_g_video_width, MAX_PATH, "%d", g_video_width); argv[ai++] = str_g_video_width;
+		char str_g_video_height[MAX_PATH];       snprintf(str_g_video_height, MAX_PATH, "%d", g_video_height); argv[ai++] = str_g_video_height;
+		char str_g_video_fps[MAX_PATH];          snprintf(str_g_video_fps, MAX_PATH, "%d", g_video_fps); argv[ai++] = str_g_video_fps;
+		argv[ai++] = g_tcp_address;
+		argv[ai++] = (char *)0;
+		
+		pid_t pid = fork();
+		if (pid < 0) {
+			printf("fork() failed!\n");
+		}
+		else if (pid == 0) {
+			//int null = open("/dev/null", O_WRONLY | O_CLOEXEC);
+			//dup2(null, STDIN_FILENO);
+		    if (execv(szExeCmd, argv) < 0) {
+		    	perror("execv() error:");
+		    }
+		    _exit(0);
+		}
+		else {
+			
+		}
+		
 		usleep(200*1000);//保证RepeaterNode.exe 生成的受控端node_id不重复
 	}
 }

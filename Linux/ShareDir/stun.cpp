@@ -653,17 +653,7 @@ stunRand()
 		
       UInt64 tick;
 		
-#if defined(WINCE) 
-	  tick  = ::GetTickCount();
-#elif defined(__GNUC__) && ( defined(__i686__) || defined(__i386__) )
-      asm("rdtsc" : "=A" (tick));
-#elif defined (__SUNPRO_CC) || defined( __sparc__ )	
-      tick = gethrtime();
-#elif defined(__MACH__) 
-      int fd=open("/dev/random",O_RDONLY);
-      read(fd,&tick,sizeof(tick));
-      closesocket(fd);
-#elif defined(ANDROID_NDK) && defined(PLATFORM_ARMV4I) 
+#if 1//defined(ANDROID_NDK) && defined(PLATFORM_ARMV4I) 
       int fd=open("/dev/random",O_RDONLY);
       read(fd,&tick,sizeof(tick));
       closesocket(fd);

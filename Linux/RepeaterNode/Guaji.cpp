@@ -1,7 +1,7 @@
 // Guaji.cpp : 实现文件
 //
 
-#include "stdafx.h"
+//#include "stdafx.h"
 #include "RepeaterNode.h"
 #include "Guaji.h"
 
@@ -10,8 +10,15 @@
 #include "HttpOperate.h"
 #include "phpMd5.h"
 #include "base64.h"
+#include "AppSettings.h"
 #include "LogMsg.h"
 
+#include <net/if.h>       /* for ifconf */  
+#include <linux/sockios.h>    /* for net status mask */  
+#include <netinet/in.h>       /* for sockaddr_in */  
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/ioctl.h>
 
 
 MyUPnP  myUPnP;
@@ -156,79 +163,41 @@ void StopDoConnection(SERVER_NODE* pServerNode)
 // -1: NG
 int if_get_device_uuid(char *buff, int size)
 {
-	BOOL bRetry = FALSE;
-	DWORD dwResult = NO_ERROR;
-	DWORD dwRet;
-	ULONG ulOutBufLen = 0;
-	IP_ADAPTER_INFO *pAdapterInfo = NULL, *pLoopAdapter = NULL;
+	int sock_mac;
+	struct ifreq ifr_mac;
 
 ////////
-	TCHAR szValueData[_MAX_PATH];
+	char szValueData[_MAX_PATH];
 	DWORD dwDataLen = _MAX_PATH;
-	if (GetSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID,(LPBYTE)szValueData,&dwDataLen) && strlen(szValueData) > 0)
+	if (GetSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID,(BYTE *)szValueData,&dwDataLen) && strlen(szValueData) > 0)
 	{
 		strncpy(buff, szValueData, size);
 		return 0;
 	}
 ////////
 
-	dwRet = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen);
-	if (NO_ERROR != dwRet && ERROR_BUFFER_OVERFLOW != dwRet) {
-		dwResult = dwRet;
-		goto exit;
+	sock_mac = socket(AF_INET, SOCK_STREAM, 0);
+	
+	memset(&ifr_mac, 0, sizeof(ifr_mac));
+	strncpy(ifr_mac.ifr_name, "eth0", sizeof(ifr_mac.ifr_name)-1);
+	
+	if( (ioctl(sock_mac, SIOCGIFHWADDR, &ifr_mac)) < 0) {
+		close(sock_mac);
+		return -1;
 	}
 
-	pAdapterInfo = (IP_ADAPTER_INFO*)malloc(ulOutBufLen);
-
-_RETRY:
-	dwRet = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen);	/* call second */
-	if (NO_ERROR !=  dwRet) {
-		dwResult = dwRet;
-		goto exit;
-	}
-
-	pLoopAdapter = pAdapterInfo;
-	while (pLoopAdapter != NULL) {
-		/* 接口类型为： 有线接口（无线接口，拨号网络接口）*/
-		if (MIB_IF_TYPE_ETHERNET == pLoopAdapter->Type) {
-			if (bRetry) {
-				break;
-			}
-			else
-			{
-				if (NULL == strstr(pLoopAdapter->Description, "Wireless") && NULL == strstr(pLoopAdapter->Description, "USB")) {
-					break;
-				}
-			}
-		}
-		
-		pLoopAdapter = pLoopAdapter->Next;
-	}
-
-	if (pLoopAdapter != NULL) {
-		_snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@%d", 
+	if (NULL != ifr_mac.ifr_hwaddr.sa_data) {
+		snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@%d", 
 			SERVER_TYPE,
-			pLoopAdapter->Address[0], pLoopAdapter->Address[1], pLoopAdapter->Address[2], 
-			pLoopAdapter->Address[3], pLoopAdapter->Address[4], pLoopAdapter->Address[5],
+			(unsigned char)ifr_mac.ifr_hwaddr.sa_data[0], (unsigned char)ifr_mac.ifr_hwaddr.sa_data[1], (unsigned char)ifr_mac.ifr_hwaddr.sa_data[2], 
+			(unsigned char)ifr_mac.ifr_hwaddr.sa_data[3], (unsigned char)ifr_mac.ifr_hwaddr.sa_data[4], (unsigned char)ifr_mac.ifr_hwaddr.sa_data[5],
 			UUID_EXT, UUID_EXT);
 		//保存到注册表
 		SaveSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID, buff);
 	}
-	else {
-		if (bRetry) {
-			dwResult = ERROR_ACCESS_DENIED;
-		}
-		else {
-			bRetry = TRUE;
-			goto _RETRY;
-		}
-	}
 
-exit:
-	if (pAdapterInfo) {
-		free(pAdapterInfo);
-	}
-	return (dwResult == NO_ERROR ? 0 : -1);
+	close(sock_mac);
+	return 0;
 }
 
 //
@@ -457,9 +426,14 @@ void *WinMainThreadFn(void *pvThreadParam)
 		SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, (DWORD)0);
 	}
 
-
+#ifdef WIN32
 	hThread = ::CreateThread(NULL,0,CheckingThreadFn,(void *)pServerNode,0,&dwThreadID);
-	if (hThread == NULL) {
+	if (hThread == NULL)
+#else
+	int err = pthread_create(&hThread, NULL, CheckingThreadFn, (void *)pServerNode);
+	if (0 != err)
+#endif
+	{
 		log_msg("Create CheckingThread failed!", LOG_LEVEL_ERROR);/* Error */
 	}
 
@@ -468,8 +442,8 @@ void *WinMainThreadFn(void *pvThreadParam)
 	hThread2 = ::CreateThread(NULL,0,WorkingThreadFn2,(void *)pServerNode,0,&dwThreadID2);
 	if (hThread2 == NULL)
 #else
-	int err = pthread_create(&hThread2, NULL, WorkingThreadFn2, (void *)pServerNode);
-	if (0 != err)
+	int err2 = pthread_create(&hThread2, NULL, WorkingThreadFn2, (void *)pServerNode);
+	if (0 != err2)
 #endif
 	{
 		log_msg("Create WorkingThread2 failed!", LOG_LEVEL_ERROR);
@@ -640,9 +614,10 @@ void *WinMainThreadFn(void *pvThreadParam)
 			/* 本地路由器UPnP处理*/
 			if (FALSE == bNoNAT)
 			{
-				std::string extIp = "";
+				char extIp[16];
+				strcpy(extIp, "");
 				myUPnP.GetNATExternalIp(extIp);
-				if (false == extIp.empty() && 0 != pServerNode->myHttpOperate.m0_pub_ip && inet_addr(extIp.c_str()) == pServerNode->myHttpOperate.m0_pub_ip)
+				if (strlen(extIp) > 0 && 0 != pServerNode->myHttpOperate.m0_pub_ip && inet_addr(extIp) == pServerNode->myHttpOperate.m0_pub_ip)
 				{
 					g_pServerNode->mapping.description = "UP2P";
 					//g_pServerNode->mapping.protocol = ;
@@ -652,12 +627,12 @@ void *WinMainThreadFn(void *pvThreadParam)
 					{
 						pServerNode->m_bFirstCheckStun = FALSE;
 
-						pServerNode->myHttpOperate.m0_pub_ip = inet_addr(extIp.c_str());
+						pServerNode->myHttpOperate.m0_pub_ip = inet_addr(extIp);
 						pServerNode->myHttpOperate.m0_pub_port = g_pServerNode->mapping.externalPort;
 						pServerNode->myHttpOperate.m0_no_nat = TRUE;
 						pServerNode->myHttpOperate.m0_nat_type = StunTypeOpen;
 
-						log_msg_f(LOG_LEVEL_INFO, "UPnP AddPortMapping OK: %s[%d] --> %s[%d]", extIp.c_str(), g_pServerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), g_pServerNode->mapping.internalPort);
+						log_msg_f(LOG_LEVEL_INFO, "UPnP AddPortMapping OK: %s[%d] --> %s[%d]", extIp, g_pServerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), g_pServerNode->mapping.internalPort);
 					}
 					else
 					{
@@ -667,12 +642,12 @@ void *WinMainThreadFn(void *pvThreadParam)
 						{
 							pServerNode->m_bFirstCheckStun = FALSE;
 
-							pServerNode->myHttpOperate.m0_pub_ip = inet_addr(extIp.c_str());
+							pServerNode->myHttpOperate.m0_pub_ip = inet_addr(extIp);
 							pServerNode->myHttpOperate.m0_pub_port = g_pServerNode->mapping.externalPort;
 							pServerNode->myHttpOperate.m0_no_nat = TRUE;
 							pServerNode->myHttpOperate.m0_nat_type = StunTypeOpen;
 
-							log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Exists: %s[%d] --> %s[%d]", extIp.c_str(), g_pServerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), g_pServerNode->mapping.internalPort);
+							log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Exists: %s[%d] --> %s[%d]", extIp, g_pServerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), g_pServerNode->mapping.internalPort);
 						}
 						else {
 							pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
@@ -683,7 +658,7 @@ void *WinMainThreadFn(void *pvThreadParam)
 					}
 				}
 				else {
-					log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Skipped: %s --> %s", extIp.c_str(), myUPnP.GetLocalIPStr().c_str());
+					log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Skipped: %s --> %s", extIp, myUPnP.GetLocalIPStr().c_str());
 					pServerNode->myHttpOperate.m0_pub_ip = htonl(mapped.addr);
 					pServerNode->myHttpOperate.m0_pub_port = mapped.port;
 					pServerNode->myHttpOperate.m0_no_nat = bNoNAT;
@@ -878,7 +853,7 @@ void *CheckingThreadFn(void *pvThreadParam)
 		if (GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_STOPFLAG, &dwStopFlag)) {
 			if (dwStopFlag == 1)
 			{
-				Sleep(800);
+				usleep(800*1000);
 
 				if (pServerNode->m_bDoConnection1) {
 					log_msg("DoUnregister()...", LOG_LEVEL_INFO);
@@ -896,10 +871,10 @@ void *CheckingThreadFn(void *pvThreadParam)
 
 
 				log_msg("CheckingThread: Exit this application!", LOG_LEVEL_WARNING);
-				ExitProcess(0);
+				_exit(0);
 			}
 		}
-		Sleep(1000);
+		usleep(1000*1000);
 	}
 	return 0;
 }
@@ -939,7 +914,7 @@ void *WorkingThreadFn1(void *pvThreadParam)
 
 
 	for (i = pServerNode->myHttpOperate.m1_wait_time; i > 0; i--) {
-		_snprintf(msg, sizeof(msg), "正在与Peer端同步时间，%d秒。。。\n", i);
+		snprintf(msg, sizeof(msg), "正在与Peer端同步时间，%d秒。。。\n", i);
 		log_msg(msg, LOG_LEVEL_INFO);
 		usleep(1000*1000);
 	}
@@ -1001,7 +976,7 @@ void *WorkingThreadFn1(void *pvThreadParam)
 	nRetry = UDT_CONNECT_TIMES;
 	ret = UDT::ERROR;
 	while (nRetry-- > 0 && ret == UDT::ERROR) {
-		//TRACE("@@@ UDT::connect()...\n");
+		log_msg_f(LOG_LEVEL_DEBUG, "@@@ UDT::connect()...\n");
 		ret = UDT::connect(fhandle, (sockaddr*)&their_addr, sizeof(their_addr));
 	}
 	if (UDT::ERROR == ret)
@@ -1074,7 +1049,7 @@ void *WorkingThreadFnRev(void *pvThreadParam)
 	log_msg("WorkingThreadFnRev()...", LOG_LEVEL_INFO);
 
 	for (i = pServerNode->myHttpOperate.m1_wait_time; i > 0; i--) {
-		_snprintf(msg, sizeof(msg), "正在与Peer端同步时间，%d秒。。。", i);
+		snprintf(msg, sizeof(msg), "正在与Peer端同步时间，%d秒。。。", i);
 		log_msg(msg, LOG_LEVEL_INFO);
 		usleep(1000*1000);
 	}
@@ -1447,7 +1422,7 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 	char *temp_ptr;
 	char msg[MAX_LOADSTRING];
 	char szPassEnc[PHP_MD5_OUTPUT_CHARS + 1];
-	TCHAR szValueData[_MAX_PATH];
+	char szValueData[_MAX_PATH];
 	BOOL bSingleQuit;
 	WORD wLocalTcpPort;
 	UDTSOCKET fhandle_slave;

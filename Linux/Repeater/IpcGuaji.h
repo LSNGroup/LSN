@@ -1,4 +1,6 @@
-#pragma once
+#ifndef _IPC_GUAJI_H
+#define _IPC_GUAJI_H
+
 
 #include "platform.h"
 #include "CommonLib.h"
@@ -43,3 +45,6 @@ extern char g_tcp_address[MAX_PATH];
 void StartServerProcesses();
 
 int GetAvClientsCount();
+
+
+#endif //_IPC_GUAJI_H

@@ -1,7 +1,7 @@
 // Shiyong.cpp : 实现文件
 //
 
-#include "stdafx.h"
+//#include "stdafx.h"
 #include "Repeater.h"
 
 #include "platform.h"
@@ -12,9 +12,17 @@
 #include "base64.h"
 #include "Discovery.h"
 #include "Eloop.h"
+#include "AppSettings.h"
 #include "LogMsg.h"
 #include "PacketRepeater.h"
 #include "Shiyong.h"
+
+#include <net/if.h>       /* for ifconf */  
+#include <linux/sockios.h>    /* for net status mask */  
+#include <netinet/in.h>       /* for sockaddr_in */  
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/ioctl.h>
 
 
 #define LOG_MSG  1
@@ -50,11 +58,12 @@ void OnReportEvent(char *event_str);
 #define strProductName   ("Repeater")
 #define SetStatusInfo(hWnd, lpStatusInfo)   do {printf(lpStatusInfo);	printf("\n");} while(0)
 
+#define CloseHandle(h)
 
 
 #ifdef WIN32
 
-extern TCHAR gszProgramDir[MAX_PATH];
+extern char gszProgramDir[MAX_PATH];
 
 static DWORD dwThreadID_Upgrade;
 static HANDLE hThread_Upgrade = NULL;
@@ -84,7 +93,7 @@ static DWORD WINAPI UpgradeThreadFn(LPVOID pvThreadParam)
 	}
 
 	char szRunCmd[MAX_PATH];
-	_snprintf(szRunCmd, sizeof(szRunCmd), "cmd.exe /c start .\\upgrade.bat  \"%s\"  8 ", gszProgramDir);
+	snprintf(szRunCmd, sizeof(szRunCmd), "cmd.exe /c start .\\upgrade.bat  \"%s\"  8 ", gszProgramDir);
 	RunExeNoWait(szRunCmd, FALSE);
 
 	// 设置退出标志
@@ -103,7 +112,7 @@ static HANDLE hThread_Restart = NULL;
 
 static DWORD WINAPI RestartThreadFn(LPVOID pvThreadParam)
 {
-	srand(timeGetTime());
+	srand(get_system_milliseconds());
 	int secs = 30 + (rand() % 1200);
 
 	printf("\n @@@@@@@@@@@@ Restart software, waiting %d secs...\n\n", secs);
@@ -123,7 +132,7 @@ static DWORD WINAPI RestartThreadFn(LPVOID pvThreadParam)
 	}
 
 	char szRunCmd[MAX_PATH];
-	_snprintf(szRunCmd, sizeof(szRunCmd), "cmd.exe /c start .\\restart.bat  \"%s\"  8 ", gszProgramDir);
+	snprintf(szRunCmd, sizeof(szRunCmd), "cmd.exe /c start .\\restart.bat  \"%s\"  8 ", gszProgramDir);
 	RunExeNoWait(szRunCmd, FALSE);
 
 	// 设置退出标志
@@ -257,7 +266,7 @@ static void HandleMediaStreamingChech(void *eloop_ctx, void *timeout_ctx)
 
 static void HandleDoUnregister(void *eloop_ctx, void *timeout_ctx)
 {
-	BYTE is_connected = (BYTE)timeout_ctx;
+	BYTE is_connected = (NULL == timeout_ctx ? 0 : 1);
 	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)eloop_ctx;
 	BYTE node_type = ROUTE_ITEM_TYPE_VIEWERNODE;
 	BYTE *object_node_id = pViewerNode->httpOP.m0_node_id;
@@ -436,7 +445,6 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 		}
 	}
 	else {
-		TRACE("CheckStunSimple......\n");
 		ret = CheckStunSimple(g1_stun_server, pViewerNode->httpOP.m0_p2p_port, &mapped);
 		if (ret == -1) {
 			log_msg_f(LOG_LEVEL_ERROR, "CheckStunSimple: fialed!\n");
@@ -461,9 +469,10 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 	/* 本地路由器UPnP处理*/
 	if (FALSE == bNoNAT)
 	{
-		std::string extIp = "";
+		char extIp[16];
+		strcpy(extIp, "");
 		myUPnP.GetNATExternalIp(extIp);
-		if (false == extIp.empty() && 0 != pViewerNode->httpOP.m0_pub_ip && inet_addr(extIp.c_str()) == pViewerNode->httpOP.m0_pub_ip)
+		if (strlen(extIp) > 0 && 0 != pViewerNode->httpOP.m0_pub_ip && inet_addr(extIp) == pViewerNode->httpOP.m0_pub_ip)
 		{
 			pViewerNode->mapping.description = "UP2P";
 			//pViewerNode->mapping.protocol = ;
@@ -473,12 +482,12 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 			{
 				pViewerNode->bFirstCheckStun = FALSE;
 				
-				pViewerNode->httpOP.m0_pub_ip = inet_addr(extIp.c_str());
+				pViewerNode->httpOP.m0_pub_ip = inet_addr(extIp);
 				pViewerNode->httpOP.m0_pub_port = pViewerNode->mapping.externalPort;
 				pViewerNode->httpOP.m0_no_nat = TRUE;
 				pViewerNode->httpOP.m0_nat_type = StunTypeOpen;
 				
-				log_msg_f(LOG_LEVEL_INFO, "UPnP AddPortMapping OK: %s[%d] --> %s[%d]\n", extIp.c_str(), pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
+				log_msg_f(LOG_LEVEL_INFO, "UPnP AddPortMapping OK: %s[%d] --> %s[%d]\n", extIp, pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
 			}
 			else
 			{
@@ -488,12 +497,12 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 				{
 					pViewerNode->bFirstCheckStun = FALSE;
 					
-					pViewerNode->httpOP.m0_pub_ip = inet_addr(extIp.c_str());
+					pViewerNode->httpOP.m0_pub_ip = inet_addr(extIp);
 					pViewerNode->httpOP.m0_pub_port = pViewerNode->mapping.externalPort;
 					pViewerNode->httpOP.m0_no_nat = TRUE;
 					pViewerNode->httpOP.m0_nat_type = StunTypeOpen;
 					
-					log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Exists: %s[%d] --> %s[%d]\n", extIp.c_str(), pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
+					log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Exists: %s[%d] --> %s[%d]\n", extIp, pViewerNode->mapping.externalPort, myUPnP.GetLocalIPStr().c_str(), pViewerNode->mapping.internalPort);
 				}
 				else {
 					pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
@@ -504,7 +513,7 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 			}
 		}
 		else {
-			log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Skipped: %s --> %s \n", extIp.c_str(), myUPnP.GetLocalIPStr().c_str());
+			log_msg_f(LOG_LEVEL_INFO, "UPnP PortMapping Skipped: %s --> %s \n", extIp, myUPnP.GetLocalIPStr().c_str());
 			pViewerNode->httpOP.m0_pub_ip = htonl(mapped.addr);
 			pViewerNode->httpOP.m0_pub_port = mapped.port;
 			pViewerNode->httpOP.m0_no_nat = bNoNAT;
@@ -966,7 +975,7 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 			if (g_pShiyong->device_topo_level > 1)
 			{
 				//随机延迟，避免同一时刻大量TopoReport涌向树根
-				srand(timeGetTime());
+				srand(get_system_milliseconds());
 				eloop_cancel_timeout(HandleTopoReport, NULL, NULL);
 				eloop_register_timeout(0, (rand() % 800 + 200)*1000, HandleTopoReport, NULL, NULL);
 			}
@@ -1208,7 +1217,7 @@ void *ConnectThreadFn(void *lpParameter)
 {
 	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)lpParameter;
 	CShiyong *pDlg = g_pShiyong;
-	TCHAR szStatusStr[MAX_LOADSTRING];
+	char szStatusStr[MAX_LOADSTRING];
 	sockaddr_in my_addr;
 	sockaddr_in their_addr;
 	int namelen = sizeof(their_addr);
@@ -1227,7 +1236,7 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 
@@ -1239,7 +1248,7 @@ void *ConnectThreadFn(void *lpParameter)
 
 
 	for (i = pViewerNode->httpOP.m1_wait_time; i > 0; i--) {
-		_snprintf(szStatusStr, sizeof(szStatusStr), "正在同Peer端同步时间，%d秒。。。", i);
+		snprintf(szStatusStr, sizeof(szStatusStr), "正在同Peer端同步时间，%d秒。。。", i);
 		SetStatusInfo(pDlg->m_hWnd, szStatusStr);
 		usleep(1000*1000);
 	}
@@ -1255,7 +1264,7 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 	int flag = 1;
@@ -1273,7 +1282,7 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 
@@ -1288,11 +1297,11 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 	pViewerNode->httpOP.m1_use_peer_ip = use_ip;
 	pViewerNode->httpOP.m1_use_peer_port = use_port;
-	TRACE("@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
+	log_msg_f(LOG_LEVEL_DEBUG, "@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
 		(pViewerNode->httpOP.m1_use_peer_ip & 0x000000ff) >> 0,
 		(pViewerNode->httpOP.m1_use_peer_ip & 0x0000ff00) >> 8,
 		(pViewerNode->httpOP.m1_use_peer_ip & 0x00ff0000) >> 16,
@@ -1316,7 +1325,7 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 
@@ -1338,7 +1347,7 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 
 	}
 //////////////////
@@ -1354,7 +1363,7 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 	else {
 		pViewerNode->httpOP.m1_use_peer_ip = their_addr.sin_addr.s_addr;
@@ -1419,7 +1428,7 @@ void *ConnectThreadFn2(void *lpParameter)
 
 	pViewerNode->httpOP.m1_use_peer_ip = pViewerNode->httpOP.m1_peer_ip;
 	pViewerNode->httpOP.m1_use_peer_port = pViewerNode->httpOP.m1_peer_port;
-	//TRACE("@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
+	//log_msg_f(LOG_LEVEL_DEBUG, "@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
 	//	(pViewerNode->httpOP.m1_use_peer_ip & 0x000000ff) >> 0,
 	//	(pViewerNode->httpOP.m1_use_peer_ip & 0x0000ff00) >> 8,
 	//	(pViewerNode->httpOP.m1_use_peer_ip & 0x00ff0000) >> 16,
@@ -1435,7 +1444,7 @@ void *ConnectThreadFn2(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread2);
 		pViewerNode->hConnectThread2 = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 	int flag = 1;
@@ -1452,7 +1461,7 @@ void *ConnectThreadFn2(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread2);
 		pViewerNode->hConnectThread2 = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 
@@ -1469,7 +1478,7 @@ void *ConnectThreadFn2(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread2);
 		pViewerNode->hConnectThread2 = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 	their_addr.sin_family = AF_INET;
@@ -1479,7 +1488,7 @@ void *ConnectThreadFn2(void *lpParameter)
 	nRetry = UDT_CONNECT_TIMES;
 	ret = UDT::ERROR;
 	while (nRetry-- > 0 && ret == UDT::ERROR) {
-		//TRACE("@@@ UDT::connect()...\n");
+		log_msg_f(LOG_LEVEL_DEBUG, "@@@ UDT::connect()...\n");
 		ret = UDT::connect(fhandle, (sockaddr*)&their_addr, sizeof(their_addr));
 	}
 	if (UDT::ERROR == ret)
@@ -1491,7 +1500,7 @@ void *ConnectThreadFn2(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread2);
 		pViewerNode->hConnectThread2 = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 
@@ -1540,7 +1549,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 {
 	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)lpParameter;
 	CShiyong *pDlg = g_pShiyong;
-	TCHAR szStatusStr[MAX_LOADSTRING];
+	char szStatusStr[MAX_LOADSTRING];
 	int namelen;
 	sockaddr_in my_addr;
 	sockaddr_in their_addr;
@@ -1557,7 +1566,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 	}
 
 	for (i = pViewerNode->httpOP.m1_wait_time; i > 0; i--) {
-		_snprintf(szStatusStr, sizeof(szStatusStr), "正在同Peer端同步时间，%d秒。。。", i);
+		snprintf(szStatusStr, sizeof(szStatusStr), "正在同Peer端同步时间，%d秒。。。", i);
 		SetStatusInfo(pDlg->m_hWnd, szStatusStr);
 		usleep(1000*1000);
 	}
@@ -1571,7 +1580,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThreadRev);
 		pViewerNode->hConnectThreadRev = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 	int flag = 1;
@@ -1587,7 +1596,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThreadRev);
 		pViewerNode->hConnectThreadRev = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 
@@ -1603,7 +1612,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThreadRev);
 		pViewerNode->hConnectThreadRev = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 	if (UDT::ERROR == UDT::listen(serv, 1))
@@ -1614,7 +1623,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThreadRev);
 		pViewerNode->hConnectThreadRev = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 	
 #if 1
@@ -1630,7 +1639,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThreadRev);
 		pViewerNode->hConnectThreadRev = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 	//////////////////
 #endif
@@ -1643,7 +1652,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThreadRev);
 		pViewerNode->hConnectThreadRev = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 	UDT::close(serv);
@@ -1695,64 +1704,26 @@ void *ConnectThreadFnRev(void *lpParameter)
 // -1: NG
 static int get_device_nodeid(BYTE *buff, int size)
 {
-	BOOL bRetry = FALSE;
-	DWORD dwResult = NO_ERROR;
-	DWORD dwRet;
-	ULONG ulOutBufLen = 0;
-	IP_ADAPTER_INFO *pAdapterInfo = NULL, *pLoopAdapter = NULL;
+	int sock_mac;
+	struct ifreq ifr_mac;
 
 
-	dwRet = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen);
-	if (NO_ERROR != dwRet && ERROR_BUFFER_OVERFLOW != dwRet) {
-		dwResult = dwRet;
-		goto exit;
+	sock_mac = socket(AF_INET, SOCK_STREAM, 0);
+	
+	memset(&ifr_mac, 0, sizeof(ifr_mac));
+	strncpy(ifr_mac.ifr_name, "eth0", sizeof(ifr_mac.ifr_name)-1);
+	
+	if( (ioctl(sock_mac, SIOCGIFHWADDR, &ifr_mac)) < 0) {
+		close(sock_mac);
+		return -1;
 	}
 
-	pAdapterInfo = (IP_ADAPTER_INFO*)malloc(ulOutBufLen);
-
-_RETRY:
-	dwRet = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen);	/* call second */
-	if (NO_ERROR !=  dwRet) {
-		dwResult = dwRet;
-		goto exit;
+	if (NULL != ifr_mac.ifr_hwaddr.sa_data) {
+		memcpy(buff, ifr_mac.ifr_hwaddr.sa_data, size);
 	}
 
-	pLoopAdapter = pAdapterInfo;
-	while (pLoopAdapter != NULL) {
-		/* 接口类型为： 有线接口（无线接口，拨号网络接口）*/
-		if (MIB_IF_TYPE_ETHERNET == pLoopAdapter->Type) {
-			if (bRetry) {
-				break;
-			}
-			else
-			{
-				if (NULL == strstr(pLoopAdapter->Description, "Wireless") && NULL == strstr(pLoopAdapter->Description, "USB")) {
-					break;
-				}
-			}
-		}
-		
-		pLoopAdapter = pLoopAdapter->Next;
-	}
-
-	if (pLoopAdapter != NULL) {
-		memcpy(buff, pLoopAdapter->Address, size);
-	}
-	else {
-		if (bRetry) {
-			dwResult = ERROR_ACCESS_DENIED;
-		}
-		else {
-			bRetry = TRUE;
-			goto _RETRY;
-		}
-	}
-
-exit:
-	if (pAdapterInfo) {
-		free(pAdapterInfo);
-	}
-	return (dwResult == NO_ERROR ? 0 : -1);
+	close(sock_mac);
+	return 0;
 }
 
 //
@@ -1760,78 +1731,39 @@ exit:
 // -1: NG
 static int get_device_uuid(char *buff, int size)
 {
-	BOOL bRetry = FALSE;
-	DWORD dwResult = NO_ERROR;
-	DWORD dwRet;
-	ULONG ulOutBufLen = 0;
-	IP_ADAPTER_INFO *pAdapterInfo = NULL, *pLoopAdapter = NULL;
+	int sock_mac;
+	struct ifreq ifr_mac;
 
-
-	TCHAR szValueData[_MAX_PATH];
+	char szValueData[_MAX_PATH];
 	DWORD dwDataLen = _MAX_PATH;
-	if (GetSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID,(LPBYTE)szValueData,&dwDataLen) && strlen(szValueData) > 0)
+	if (GetSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID,(BYTE *)szValueData,&dwDataLen) && strlen(szValueData) > 0)
 	{
 		strncpy(buff, szValueData, size);
 		return 0;
 	}
 
-	dwRet = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen);
-	if (NO_ERROR != dwRet && ERROR_BUFFER_OVERFLOW != dwRet) {
-		dwResult = dwRet;
-		goto exit;
+	sock_mac = socket(AF_INET, SOCK_STREAM, 0);
+	
+	memset(&ifr_mac, 0, sizeof(ifr_mac));
+	strncpy(ifr_mac.ifr_name, "eth0", sizeof(ifr_mac.ifr_name)-1);
+	
+	if( (ioctl(sock_mac, SIOCGIFHWADDR, &ifr_mac)) < 0) {
+		close(sock_mac);
+		return -1;
 	}
 
-	pAdapterInfo = (IP_ADAPTER_INFO*)malloc(ulOutBufLen);
-
-_RETRY:
-	dwRet = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen);	/* call second */
-	if (NO_ERROR !=  dwRet) {
-		dwResult = dwRet;
-		goto exit;
-	}
-
-	pLoopAdapter = pAdapterInfo;
-	while (pLoopAdapter != NULL) {
-		/* 接口类型为： 有线接口（无线接口，拨号网络接口）*/
-		if (MIB_IF_TYPE_ETHERNET == pLoopAdapter->Type) {
-			if (bRetry) {
-				break;
-			}
-			else
-			{
-				if (NULL == strstr(pLoopAdapter->Description, "Wireless") && NULL == strstr(pLoopAdapter->Description, "USB")) {
-					break;
-				}
-			}
-		}
-		
-		pLoopAdapter = pLoopAdapter->Next;
-	}
-
-	if (pLoopAdapter != NULL) {
-		_snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@%d", 
+	if (NULL != ifr_mac.ifr_hwaddr.sa_data) {
+		snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@%d", 
 			SERVER_TYPE,
-			pLoopAdapter->Address[0], pLoopAdapter->Address[1], pLoopAdapter->Address[2], 
-			pLoopAdapter->Address[3], pLoopAdapter->Address[4], pLoopAdapter->Address[5],
+			(unsigned char)ifr_mac.ifr_hwaddr.sa_data[0], (unsigned char)ifr_mac.ifr_hwaddr.sa_data[1], (unsigned char)ifr_mac.ifr_hwaddr.sa_data[2], 
+			(unsigned char)ifr_mac.ifr_hwaddr.sa_data[3], (unsigned char)ifr_mac.ifr_hwaddr.sa_data[4], (unsigned char)ifr_mac.ifr_hwaddr.sa_data[5],
 			UUID_EXT, UUID_EXT);
 		//保存到注册表
 		SaveSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID, buff);
 	}
-	else {
-		if (bRetry) {
-			dwResult = ERROR_ACCESS_DENIED;
-		}
-		else {
-			bRetry = TRUE;
-			goto _RETRY;
-		}
-	}
 
-exit:
-	if (pAdapterInfo) {
-		free(pAdapterInfo);
-	}
-	return (dwResult == NO_ERROR ? 0 : -1);
+	close(sock_mac);
+	return 0;
 }
 
 static void InitVar()
@@ -3798,7 +3730,7 @@ void CShiyong::DoExit()
 
 	m_bQuit = TRUE;
 
-
+#ifdef WIN32
 	for (int i = 0; i < MAX_VIEWER_NUM; i++)
 	{
 		if (NULL != viewerArray[i].hConnectThread) {
@@ -3816,7 +3748,7 @@ void CShiyong::DoExit()
 			viewerArray[i].hConnectThreadRev = NULL;
 		}
 	}
-
+#endif
 
 	//pthread_mutex_lock(&m_localbind_csec);////////
 	//pthread_mutex_unlock(&m_localbind_csec);////////

@@ -163,7 +163,7 @@ int if_get_device_uuid(char *buff, int size)
 	IP_ADAPTER_INFO *pAdapterInfo = NULL, *pLoopAdapter = NULL;
 
 ////////
-	TCHAR szValueData[_MAX_PATH];
+	char szValueData[_MAX_PATH];
 	DWORD dwDataLen = _MAX_PATH;
 	if (GetSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID,(LPBYTE)szValueData,&dwDataLen) && strlen(szValueData) > 0)
 	{
@@ -206,7 +206,7 @@ _RETRY:
 	}
 
 	if (pLoopAdapter != NULL) {
-		_snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@%d", 
+		snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@%d", 
 			SERVER_TYPE,
 			pLoopAdapter->Address[0], pLoopAdapter->Address[1], pLoopAdapter->Address[2], 
 			pLoopAdapter->Address[3], pLoopAdapter->Address[4], pLoopAdapter->Address[5],
@@ -457,9 +457,14 @@ void *WinMainThreadFn(void *pvThreadParam)
 		SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, (DWORD)0);
 	}
 
-
+#ifdef WIN32
 	hThread = ::CreateThread(NULL,0,CheckingThreadFn,(void *)pServerNode,0,&dwThreadID);
-	if (hThread == NULL) {
+	if (hThread == NULL)
+#else
+	int err = pthread_create(&hThread, NULL, CheckingThreadFn, (void *)pServerNode);
+	if (0 != err)
+#endif
+	{
 		log_msg("Create CheckingThread failed!", LOG_LEVEL_ERROR);/* Error */
 	}
 
@@ -468,8 +473,8 @@ void *WinMainThreadFn(void *pvThreadParam)
 	hThread2 = ::CreateThread(NULL,0,WorkingThreadFn2,(void *)pServerNode,0,&dwThreadID2);
 	if (hThread2 == NULL)
 #else
-	int err = pthread_create(&hThread2, NULL, WorkingThreadFn2, (void *)pServerNode);
-	if (0 != err)
+	int err2 = pthread_create(&hThread2, NULL, WorkingThreadFn2, (void *)pServerNode);
+	if (0 != err2)
 #endif
 	{
 		log_msg("Create WorkingThread2 failed!", LOG_LEVEL_ERROR);
@@ -878,7 +883,7 @@ void *CheckingThreadFn(void *pvThreadParam)
 		if (GetSoftwareKeyDwordValue(STRING_REGKEY_NAME_STOPFLAG, &dwStopFlag)) {
 			if (dwStopFlag == 1)
 			{
-				Sleep(800);
+				usleep(800*1000);
 
 				if (pServerNode->m_bDoConnection1) {
 					log_msg("DoUnregister()...", LOG_LEVEL_INFO);
@@ -899,7 +904,7 @@ void *CheckingThreadFn(void *pvThreadParam)
 				ExitProcess(0);
 			}
 		}
-		Sleep(1000);
+		usleep(1000*1000);
 	}
 	return 0;
 }
@@ -939,7 +944,7 @@ void *WorkingThreadFn1(void *pvThreadParam)
 
 
 	for (i = pServerNode->myHttpOperate.m1_wait_time; i > 0; i--) {
-		_snprintf(msg, sizeof(msg), "正在与Peer端同步时间，%d秒。。。\n", i);
+		snprintf(msg, sizeof(msg), "正在与Peer端同步时间，%d秒。。。\n", i);
 		log_msg(msg, LOG_LEVEL_INFO);
 		usleep(1000*1000);
 	}
@@ -1001,7 +1006,7 @@ void *WorkingThreadFn1(void *pvThreadParam)
 	nRetry = UDT_CONNECT_TIMES;
 	ret = UDT::ERROR;
 	while (nRetry-- > 0 && ret == UDT::ERROR) {
-		//TRACE("@@@ UDT::connect()...\n");
+		log_msg_f(LOG_LEVEL_DEBUG, "@@@ UDT::connect()...\n");
 		ret = UDT::connect(fhandle, (sockaddr*)&their_addr, sizeof(their_addr));
 	}
 	if (UDT::ERROR == ret)
@@ -1074,7 +1079,7 @@ void *WorkingThreadFnRev(void *pvThreadParam)
 	log_msg("WorkingThreadFnRev()...", LOG_LEVEL_INFO);
 
 	for (i = pServerNode->myHttpOperate.m1_wait_time; i > 0; i--) {
-		_snprintf(msg, sizeof(msg), "正在与Peer端同步时间，%d秒。。。", i);
+		snprintf(msg, sizeof(msg), "正在与Peer端同步时间，%d秒。。。", i);
 		log_msg(msg, LOG_LEVEL_INFO);
 		usleep(1000*1000);
 	}
@@ -1447,7 +1452,7 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 	char *temp_ptr;
 	char msg[MAX_LOADSTRING];
 	char szPassEnc[PHP_MD5_OUTPUT_CHARS + 1];
-	TCHAR szValueData[_MAX_PATH];
+	char szValueData[_MAX_PATH];
 	BOOL bSingleQuit;
 	WORD wLocalTcpPort;
 	UDTSOCKET fhandle_slave;

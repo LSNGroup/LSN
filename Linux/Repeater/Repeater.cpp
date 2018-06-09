@@ -1,7 +1,7 @@
 // Repeater.cpp : 定义控制台应用程序的入口点。
 //
 
-#include "stdafx.h"
+//#include "stdafx.h"
 #include "Repeater.h"
 
 #include "Shiyong.h"
@@ -11,50 +11,36 @@
 #include "../ShareDir/CommonLib.h"
 #include "../ShareDir/ControlCmd.h"
 #include "../ShareDir/HttpOperate.h"
+#include "../ShareDir/AppSettings.h"
 #include "../ShareDir/LogMsg.h"
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#endif
+
+char gszProgramName[MAX_PATH] = "LSN_REPEATER";
+char gszProgramDir[MAX_PATH] = "";
 
 
-
-TCHAR gszProgramName[MAX_PATH] = "LSN_REPEATER";
-TCHAR gszProgramDir[MAX_PATH] = "";
-
-
-void GetSoftwareKeyName(LPTSTR szKey, DWORD dwLen)
+static void GetProgramDir(char current_absolute_path[], int max_size)
 {
-	if(NULL == szKey || 0 == dwLen)
-		return;
-
-	_snprintf(szKey,dwLen,"Software\\%s", "LSN_REPEATER");
-}
-
-static void GetProgramDir(LPTSTR szDirectory, int nMaxChars)
-{
-	::GetModuleFileName(NULL, szDirectory, nMaxChars);
-
-    int i;
-	int len = strlen(szDirectory);
-
-	for (i = len-1; i >= 0; i--) {
-		if (szDirectory[i] == _T('\\') || szDirectory[i] == _T('/')) {
-			szDirectory[i] = _T('\0');
-			break;
-		}
+	//获取当前程序绝对路径
+	int cnt = readlink("/proc/self/exe", current_absolute_path, max_size);
+	if (cnt < 0 || cnt >= max_size)
+	{
+	   	getcwd(current_absolute_path, max_size);
+	    return;
+	}
+	current_absolute_path[cnt] = '\0';//重要！！！
+	
+	//获取当前目录绝对路径，即去掉程序名
+	int i;
+	for (i = cnt; i >= 0; --i)
+	{
+	    if (current_absolute_path[i] == '/')
+	    {
+	        current_absolute_path[i+1] = '\0';
+	        break;
+	    }
 	}
 }
-
-
-
-// 唯一的应用程序对象
-
-CWinApp theApp;
-
-using namespace std;
-
-
 
 static void UiLoop(void)
 {
@@ -154,23 +140,14 @@ static void UiLoop(void)
 	}
 }
 
-int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
+int main(int argc, char **argv)
 {
-	int nRetCode = 0;
-
-	// 初始化 MFC 并在失败时显示错误
-	if (!AfxWinInit(::GetModuleHandle(NULL), NULL, ::GetCommandLine(), 0))
-	{
-		// TODO: 更改错误代码以符合您的需要
-		_tprintf(_T("错误: MFC 初始化失败\n"));
-		nRetCode = 1;
-	}
-	else
+	//if (!AfxWinInit(::GetModuleHandle(NULL), NULL, ::GetCommandLine(), 0))
 	{
 		// TODO: 在此处为应用程序的行为编写代码。
 
 		GetProgramDir(gszProgramDir, sizeof(gszProgramDir));
-		SetCurrentDirectory(gszProgramDir);
+		chdir(gszProgramDir);
 
 
 		log_msg_init();
@@ -180,30 +157,13 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 		log_msg(msg, LOG_LEVEL_INFO);
 
 
-		HANDLE hGlobalMutex;
-		WSADATA wsaData;
-
-		hGlobalMutex = CreateMutex(NULL, TRUE, "Global\\WL_REPEATER");
-		if (GetLastError() == ERROR_ALREADY_EXISTS)
-		{
-			printf("已经有一个程序实例在运行，不能重复启动!\n");
-			return 1;
-		}
-
-
-		if (WSAStartup(0x0202, &wsaData) != 0) {
-			printf("WinSock传输库初始化失败，无法启动程序!\n");
-			return 1;
-		}
-
-
 		// use this function to initialize the UDT library
 		UDT::startup();
 
 		CtrlCmd_Init();
 
-		RunExeNoWait("net stop mpssvc",                  FALSE);
-		RunExeNoWait("sc config mpssvc start= disabled", FALSE);
+		//RunExeNoWait("net stop mpssvc",                  FALSE);
+		//RunExeNoWait("sc config mpssvc start= disabled", FALSE);
 
 
 #if FIRST_LEVEL_REPEATER
@@ -287,11 +247,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 
 		// use this function to release the UDT library
 		UDT::cleanup();
-
-		WSACleanup();
-
-		CloseHandle(hGlobalMutex);
 	}
-
-	return nRetCode;
+	
+	return 0;
 }

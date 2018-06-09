@@ -17,7 +17,7 @@ typedef struct _tag_fakertpsend {
 	DWORD dstip;
 	WORD  dstport;
 	WORD arraySequenceNumber[NUM_PAYLOAD_TYPE];
-	CRITICAL_SECTION m_mutexRtpSend;//pthread_mutex_t m_mutexRtpSend;
+	pthread_mutex_t m_mutexRtpSend;
 } FAKERTPSEND;
 
 

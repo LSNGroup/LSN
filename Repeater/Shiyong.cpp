@@ -54,7 +54,7 @@ void OnReportEvent(char *event_str);
 
 #ifdef WIN32
 
-extern TCHAR gszProgramDir[MAX_PATH];
+extern char gszProgramDir[MAX_PATH];
 
 static DWORD dwThreadID_Upgrade;
 static HANDLE hThread_Upgrade = NULL;
@@ -84,7 +84,7 @@ static DWORD WINAPI UpgradeThreadFn(LPVOID pvThreadParam)
 	}
 
 	char szRunCmd[MAX_PATH];
-	_snprintf(szRunCmd, sizeof(szRunCmd), "cmd.exe /c start .\\upgrade.bat  \"%s\"  8 ", gszProgramDir);
+	snprintf(szRunCmd, sizeof(szRunCmd), "cmd.exe /c start .\\upgrade.bat  \"%s\"  8 ", gszProgramDir);
 	RunExeNoWait(szRunCmd, FALSE);
 
 	// 设置退出标志
@@ -103,7 +103,7 @@ static HANDLE hThread_Restart = NULL;
 
 static DWORD WINAPI RestartThreadFn(LPVOID pvThreadParam)
 {
-	srand(timeGetTime());
+	srand(get_system_milliseconds());
 	int secs = 30 + (rand() % 1200);
 
 	printf("\n @@@@@@@@@@@@ Restart software, waiting %d secs...\n\n", secs);
@@ -123,7 +123,7 @@ static DWORD WINAPI RestartThreadFn(LPVOID pvThreadParam)
 	}
 
 	char szRunCmd[MAX_PATH];
-	_snprintf(szRunCmd, sizeof(szRunCmd), "cmd.exe /c start .\\restart.bat  \"%s\"  8 ", gszProgramDir);
+	snprintf(szRunCmd, sizeof(szRunCmd), "cmd.exe /c start .\\restart.bat  \"%s\"  8 ", gszProgramDir);
 	RunExeNoWait(szRunCmd, FALSE);
 
 	// 设置退出标志
@@ -257,7 +257,7 @@ static void HandleMediaStreamingChech(void *eloop_ctx, void *timeout_ctx)
 
 static void HandleDoUnregister(void *eloop_ctx, void *timeout_ctx)
 {
-	BYTE is_connected = (BYTE)timeout_ctx;
+	BYTE is_connected = (NULL == timeout_ctx ? 0 : 1);
 	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)eloop_ctx;
 	BYTE node_type = ROUTE_ITEM_TYPE_VIEWERNODE;
 	BYTE *object_node_id = pViewerNode->httpOP.m0_node_id;
@@ -436,7 +436,6 @@ static void StunRegister(VIEWER_NODE *pViewerNode)
 		}
 	}
 	else {
-		TRACE("CheckStunSimple......\n");
 		ret = CheckStunSimple(g1_stun_server, pViewerNode->httpOP.m0_p2p_port, &mapped);
 		if (ret == -1) {
 			log_msg_f(LOG_LEVEL_ERROR, "CheckStunSimple: fialed!\n");
@@ -966,7 +965,7 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 			if (g_pShiyong->device_topo_level > 1)
 			{
 				//随机延迟，避免同一时刻大量TopoReport涌向树根
-				srand(timeGetTime());
+				srand(get_system_milliseconds());
 				eloop_cancel_timeout(HandleTopoReport, NULL, NULL);
 				eloop_register_timeout(0, (rand() % 800 + 200)*1000, HandleTopoReport, NULL, NULL);
 			}
@@ -1208,7 +1207,7 @@ void *ConnectThreadFn(void *lpParameter)
 {
 	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)lpParameter;
 	CShiyong *pDlg = g_pShiyong;
-	TCHAR szStatusStr[MAX_LOADSTRING];
+	char szStatusStr[MAX_LOADSTRING];
 	sockaddr_in my_addr;
 	sockaddr_in their_addr;
 	int namelen = sizeof(their_addr);
@@ -1227,7 +1226,7 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 
@@ -1239,7 +1238,7 @@ void *ConnectThreadFn(void *lpParameter)
 
 
 	for (i = pViewerNode->httpOP.m1_wait_time; i > 0; i--) {
-		_snprintf(szStatusStr, sizeof(szStatusStr), "正在同Peer端同步时间，%d秒。。。", i);
+		snprintf(szStatusStr, sizeof(szStatusStr), "正在同Peer端同步时间，%d秒。。。", i);
 		SetStatusInfo(pDlg->m_hWnd, szStatusStr);
 		usleep(1000*1000);
 	}
@@ -1255,7 +1254,7 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 	int flag = 1;
@@ -1273,7 +1272,7 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 
@@ -1288,11 +1287,11 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 	pViewerNode->httpOP.m1_use_peer_ip = use_ip;
 	pViewerNode->httpOP.m1_use_peer_port = use_port;
-	TRACE("@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
+	log_msg_f(LOG_LEVEL_DEBUG, "@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
 		(pViewerNode->httpOP.m1_use_peer_ip & 0x000000ff) >> 0,
 		(pViewerNode->httpOP.m1_use_peer_ip & 0x0000ff00) >> 8,
 		(pViewerNode->httpOP.m1_use_peer_ip & 0x00ff0000) >> 16,
@@ -1316,7 +1315,7 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 
@@ -1338,7 +1337,7 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 
 	}
 //////////////////
@@ -1354,7 +1353,7 @@ void *ConnectThreadFn(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread);
 		pViewerNode->hConnectThread = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 	else {
 		pViewerNode->httpOP.m1_use_peer_ip = their_addr.sin_addr.s_addr;
@@ -1419,7 +1418,7 @@ void *ConnectThreadFn2(void *lpParameter)
 
 	pViewerNode->httpOP.m1_use_peer_ip = pViewerNode->httpOP.m1_peer_ip;
 	pViewerNode->httpOP.m1_use_peer_port = pViewerNode->httpOP.m1_peer_port;
-	//TRACE("@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
+	//log_msg_f(LOG_LEVEL_DEBUG, "@@@ Use ip/port: %d.%d.%d.%d[%d]\n", 
 	//	(pViewerNode->httpOP.m1_use_peer_ip & 0x000000ff) >> 0,
 	//	(pViewerNode->httpOP.m1_use_peer_ip & 0x0000ff00) >> 8,
 	//	(pViewerNode->httpOP.m1_use_peer_ip & 0x00ff0000) >> 16,
@@ -1435,7 +1434,7 @@ void *ConnectThreadFn2(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread2);
 		pViewerNode->hConnectThread2 = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 	int flag = 1;
@@ -1452,7 +1451,7 @@ void *ConnectThreadFn2(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread2);
 		pViewerNode->hConnectThread2 = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 
@@ -1469,7 +1468,7 @@ void *ConnectThreadFn2(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread2);
 		pViewerNode->hConnectThread2 = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 	their_addr.sin_family = AF_INET;
@@ -1479,7 +1478,7 @@ void *ConnectThreadFn2(void *lpParameter)
 	nRetry = UDT_CONNECT_TIMES;
 	ret = UDT::ERROR;
 	while (nRetry-- > 0 && ret == UDT::ERROR) {
-		//TRACE("@@@ UDT::connect()...\n");
+		log_msg_f(LOG_LEVEL_DEBUG, "@@@ UDT::connect()...\n");
 		ret = UDT::connect(fhandle, (sockaddr*)&their_addr, sizeof(their_addr));
 	}
 	if (UDT::ERROR == ret)
@@ -1491,7 +1490,7 @@ void *ConnectThreadFn2(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThread2);
 		pViewerNode->hConnectThread2 = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 
@@ -1540,7 +1539,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 {
 	VIEWER_NODE *pViewerNode = (VIEWER_NODE *)lpParameter;
 	CShiyong *pDlg = g_pShiyong;
-	TCHAR szStatusStr[MAX_LOADSTRING];
+	char szStatusStr[MAX_LOADSTRING];
 	int namelen;
 	sockaddr_in my_addr;
 	sockaddr_in their_addr;
@@ -1557,7 +1556,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 	}
 
 	for (i = pViewerNode->httpOP.m1_wait_time; i > 0; i--) {
-		_snprintf(szStatusStr, sizeof(szStatusStr), "正在同Peer端同步时间，%d秒。。。", i);
+		snprintf(szStatusStr, sizeof(szStatusStr), "正在同Peer端同步时间，%d秒。。。", i);
 		SetStatusInfo(pDlg->m_hWnd, szStatusStr);
 		usleep(1000*1000);
 	}
@@ -1571,7 +1570,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThreadRev);
 		pViewerNode->hConnectThreadRev = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 	int flag = 1;
@@ -1587,7 +1586,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThreadRev);
 		pViewerNode->hConnectThreadRev = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 
@@ -1603,7 +1602,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThreadRev);
 		pViewerNode->hConnectThreadRev = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 	if (UDT::ERROR == UDT::listen(serv, 1))
@@ -1614,7 +1613,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThreadRev);
 		pViewerNode->hConnectThreadRev = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 	
 #if 1
@@ -1630,7 +1629,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThreadRev);
 		pViewerNode->hConnectThreadRev = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 	//////////////////
 #endif
@@ -1643,7 +1642,7 @@ void *ConnectThreadFnRev(void *lpParameter)
 		CloseHandle(pViewerNode->hConnectThreadRev);
 		pViewerNode->hConnectThreadRev = NULL;
 		pDlg->ReturnViewerNode(pViewerNode);
-		return -1;
+		return 0;
 	}
 
 	UDT::close(serv);
@@ -1767,7 +1766,7 @@ static int get_device_uuid(char *buff, int size)
 	IP_ADAPTER_INFO *pAdapterInfo = NULL, *pLoopAdapter = NULL;
 
 
-	TCHAR szValueData[_MAX_PATH];
+	char szValueData[_MAX_PATH];
 	DWORD dwDataLen = _MAX_PATH;
 	if (GetSoftwareKeyValue(STRING_REGKEY_NAME_SAVED_UUID,(LPBYTE)szValueData,&dwDataLen) && strlen(szValueData) > 0)
 	{
@@ -1809,7 +1808,7 @@ _RETRY:
 	}
 
 	if (pLoopAdapter != NULL) {
-		_snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@%d", 
+		snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@%d", 
 			SERVER_TYPE,
 			pLoopAdapter->Address[0], pLoopAdapter->Address[1], pLoopAdapter->Address[2], 
 			pLoopAdapter->Address[3], pLoopAdapter->Address[4], pLoopAdapter->Address[5],
@@ -3798,7 +3797,7 @@ void CShiyong::DoExit()
 
 	m_bQuit = TRUE;
 
-
+#ifdef WIN32
 	for (int i = 0; i < MAX_VIEWER_NUM; i++)
 	{
 		if (NULL != viewerArray[i].hConnectThread) {
@@ -3816,7 +3815,7 @@ void CShiyong::DoExit()
 			viewerArray[i].hConnectThreadRev = NULL;
 		}
 	}
-
+#endif
 
 	//pthread_mutex_lock(&m_localbind_csec);////////
 	//pthread_mutex_unlock(&m_localbind_csec);////////

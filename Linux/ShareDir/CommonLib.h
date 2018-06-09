@@ -6,19 +6,30 @@
 #include "stun.h"
 
 
+/* For AppSettings */
+#define STRING_REGKEY_NAME_VIEWERNODEID  "ViewerNodeId"
+
+#define STRING_REGKEY_NAME_VERSION				"Version"
+#define STRING_REGKEY_NAME_STOPFLAG				"StopFlag"
+
+#define STRING_REGKEY_NAME_SAVED_UUID		"SavedUUID"
+#define STRING_REGKEY_NAME_FORCE_NONAT		"ForceNoNAT"
+
+
+
+#define _MAX_PATH				512
 #define MAX_PATH				512
 #define MAX_LOADSTRING			256
 #define MAX_ADAPTER_NUM			2
 
-#if defined(FOR_WL_YKZ)
+#define _T(str)		(str)
+#define stricmp(s1, s2)			strcasecmp((s1), (s2))
+
+
 #define MYSELF_VERSION			0x04060200  /* x.x.x.0 */
 #define FIRST_CONNECT_PORT		3478
 #define SECOND_CONNECT_PORT		3476
-#elif (defined(FOR_51HZ_GUAJI) || defined(FOR_MAYI_GUAJI))
-#define MYSELF_VERSION			0x02050000  /* x.x.x.0 */
-#define FIRST_CONNECT_PORT		5178
-#define SECOND_CONNECT_PORT		5176
-#endif
+
 #define NODES_PER_PAGE			50
 #define MAX_NOTIFICATION_NUM	15
 #define UDT_CONNECT_TIMES		1
@@ -96,6 +107,9 @@ typedef struct _tag_wp_item_ {
 
 
 void trim(char *str);
+
+
+DWORD get_system_milliseconds();
 
 
 //
@@ -219,10 +233,13 @@ int CheckStunSimple(char *lpStunServer, WORD wSrcPort, StunAddress4 *lpMappedRes
 // -1: Error
 //  0: Success
 //
-int CheckStunMyself(char *lpStunServer, WORD wSrcPort, StunAddress4 *lpMappedResult, BOOL *lpNoNAT, int *lpNatType);
+int CheckStunMyself(char *lpStunServer, WORD wSrcPort, StunAddress4 *lpMappedResult, BOOL *lpNoNAT, int *lpNatType, DWORD *lpTime);
 
 
 DWORD GetLocalAddress(DWORD addresses[], int *lpCount);
+
+
+BOOL GetOsInfo(char *lpInfoBuff, int BuffSize);
 
 
 void ConfigUdtSocket(UDTSOCKET fhandle);

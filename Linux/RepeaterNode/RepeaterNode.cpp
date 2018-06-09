@@ -1,7 +1,7 @@
 // RepeaterNode.cpp : 定义应用程序的入口点。
 //
 
-#include "stdafx.h"
+//#include "stdafx.h"
 #include "RepeaterNode.h"
 
 #include "Guaji.h"
@@ -11,6 +11,7 @@
 #include "../ShareDir/ControlCmd.h"
 #include "../ShareDir/HttpOperate.h"
 #include "../ShareDir/UPnP.h"
+#include "../ShareDir/AppSettings.h"
 #include "../ShareDir/LogMsg.h"
 
 
@@ -23,30 +24,30 @@ typedef enum _tag_audio_codec_type {
 
 
 
-TCHAR gszProgramName[MAX_PATH] = "LSN_REPEATER";
-TCHAR gszProgramDir[MAX_PATH] = "";
+char gszProgramName[MAX_PATH] = "LSN_REPEATER";
+char gszProgramDir[MAX_PATH] = "";
 
 
-void GetSoftwareKeyName(LPTSTR szKey, DWORD dwLen)
+static void GetProgramDir(char current_absolute_path[], int max_size)
 {
-	if(NULL == szKey || 0 == dwLen)
-		return;
-
-	_snprintf(szKey,dwLen,"Software\\%s", "LSN_REPEATER");
-}
-
-static void GetProgramDir(LPTSTR szDirectory, int nMaxChars)
-{
-	::GetModuleFileName(NULL, szDirectory, nMaxChars);
-
-    int i;
-	int len = strlen(szDirectory);
-
-	for (i = len-1; i >= 0; i--) {
-		if (szDirectory[i] == _T('\\') || szDirectory[i] == _T('/')) {
-			szDirectory[i] = _T('\0');
-			break;
-		}
+	//获取当前程序绝对路径
+	int cnt = readlink("/proc/self/exe", current_absolute_path, max_size);
+	if (cnt < 0 || cnt >= max_size)
+	{
+	   	getcwd(current_absolute_path, max_size);
+	    return;
+	}
+	current_absolute_path[cnt] = '\0';//重要！！！
+	
+	//获取当前目录绝对路径，即去掉程序名
+	int i;
+	for (i = cnt; i >= 0; --i)
+	{
+	    if (current_absolute_path[i] == '/')
+	    {
+	        current_absolute_path[i+1] = '\0';
+	        break;
+	    }
 	}
 }
 
@@ -138,26 +139,30 @@ static int DoIpcReportInConnection()
 }
 
 
-int APIENTRY _tWinMain(HINSTANCE hInstance,
-                     HINSTANCE hPrevInstance,
-                     LPTSTR    lpCmdLine,
-                     int       nCmdShow)
+int main(int argc, char **argv)
 {
-	UNREFERENCED_PARAMETER(hPrevInstance);
-	//UNREFERENCED_PARAMETER(lpCmdLine);
-
-	if (strlen(lpCmdLine) < 10) {
-		return -1;
+	//sscanf(lpCmdLine, "%s%d%d%s%s%d%d%d%d%d%s", SERVER_TYPE, &UUID_EXT, &MAX_SERVER_NUM, NODE_NAME, CONNECT_PASSWORD, &P2P_PORT, &IPC_BIND_PORT, &g_video_width, &g_video_height, &g_video_fps, g_tcp_address);
+	if (argc < 12) {
+		exit(1);
 	}
-
-	sscanf(lpCmdLine, "%s%d%d%s%s%d%d%d%d%d%s", SERVER_TYPE, &UUID_EXT, &MAX_SERVER_NUM, NODE_NAME, CONNECT_PASSWORD, &P2P_PORT, &IPC_BIND_PORT, &g_video_width, &g_video_height, &g_video_fps, g_tcp_address);
+	strncpy(SERVER_TYPE, argv[1], sizeof(SERVER_TYPE));
+	UUID_EXT = atol(argv[2]);
+	MAX_SERVER_NUM = atol(argv[3]);
+	strncpy(NODE_NAME, argv[4], sizeof(NODE_NAME));
+	strncpy(CONNECT_PASSWORD, argv[5], sizeof(CONNECT_PASSWORD));
+	P2P_PORT = atol(argv[6]);
+	IPC_BIND_PORT = atol(argv[7]);
+	g_video_width = atol(argv[8]);
+	g_video_height = atol(argv[9]);
+	g_video_fps = atol(argv[10]);
+	strncpy(g_tcp_address, argv[11], sizeof(g_tcp_address));
 
 
 	GetProgramDir(gszProgramDir, sizeof(gszProgramDir));
-	SetCurrentDirectory(gszProgramDir);
+	chdir(gszProgramDir);
 
 	char log_file[MAX_PATH];
-	_snprintf(log_file, MAX_PATH, "./LogMsg/LogMsg_%d.txt", P2P_PORT);
+	snprintf(log_file, MAX_PATH, "./LogMsg/LogMsg_%d.txt", P2P_PORT);
 	log_msg_init(log_file);
 
 	char msg[MAX_PATH];
@@ -169,12 +174,13 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 		return -1;
 	}
 
-
+#ifdef WIN32
 	WSADATA wsaData;
 	if (WSAStartup(0x0202, &wsaData) != 0) {
 		log_msg("WinSock传输库初始化失败，无法启动程序!\n", LOG_LEVEL_ERROR);
 		return -1;
 	}
+#endif
 
 	// use this function to initialize the UDT library
 	UDT::startup();
@@ -215,11 +221,13 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	memset(&(their_addr.sin_zero), '\0', 8);
 	if (connect(fhandle, (sockaddr*)&their_addr, sizeof(their_addr)) < 0)
 	{
+		log_msg("IPC connect failed.", LOG_LEVEL_ERROR);
 		closesocket(fhandle);
 		fhandle = INVALID_SOCKET;
 		goto _OUT;
 	}
 	g_fhandle = fhandle;
+	log_msg("IPC connect OK!!!", LOG_LEVEL_INFO);
 
 
 /*
@@ -419,8 +427,9 @@ _OUT:
 	// use this function to release the UDT library
 	UDT::cleanup();
 
+#ifdef WIN32
 	WSACleanup();
-
+#endif
 	return 0;
 }
 
