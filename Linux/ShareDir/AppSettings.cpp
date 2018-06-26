@@ -17,10 +17,11 @@ BOOL GetSoftwareKeyValue(const char *szValueName, BYTE *szValueData, DWORD *lpdw
 	
 	snprintf(filename, sizeof(filename), "%s/%s", APP_SETTINGS_DIR, szValueName);
 	if((fp = fopen(filename, "r")) == NULL) {
+		printf("\n fopen(\"%s\", \"r\") failed!\n", filename);
 		return FALSE;
 	}
 	
-	size_t ret = fread(szValueData, *lpdwLen - 1, 1, fp);
+	size_t ret = fread(szValueData, 1, *lpdwLen - 1, fp);
 	fclose(fp);
 	if (ret > 0 && ret <= *lpdwLen - 1) {
 		szValueData[ret] = '\0';
@@ -28,6 +29,7 @@ BOOL GetSoftwareKeyValue(const char *szValueName, BYTE *szValueData, DWORD *lpdw
 		return TRUE;
 	}
 	else {
+		printf("\n fread(%s, %d)=%d failed!\n", szValueName, *lpdwLen - 1, ret);
 		*lpdwLen = 0;
 		return FALSE;
 	}
@@ -44,10 +46,11 @@ BOOL SaveSoftwareKeyValue(const char *szValueName, const char *szValueData)
 	
 	snprintf(filename, sizeof(filename), "%s/%s", APP_SETTINGS_DIR, szValueName);
 	if((fp = fopen(filename, "w")) == NULL) {//打开只写文件，若文件存在则长度清为0，即该文件内容消失，若不存在则创建该文件
+		printf("\n fopen(\"%s\", \"w\") failed!\n", filename);
 		return FALSE;
 	}
 	
-	fwrite(szValueData, strlen(szValueData), 1, fp);
+	fwrite(szValueData, 1, strlen(szValueData), fp);
 	fclose(fp);
 	return TRUE;
 }

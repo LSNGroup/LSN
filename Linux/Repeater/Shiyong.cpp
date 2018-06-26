@@ -1753,7 +1753,7 @@ static int get_device_uuid(char *buff, int size)
 	}
 
 	if (NULL != ifr_mac.ifr_hwaddr.sa_data) {
-		snprintf(buff, size, "WINDOWS@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@%d", 
+		snprintf(buff, size, "LINUX@%s@%02X:%02X:%02X:%02X:%02X:%02X-%d@%d", 
 			SERVER_TYPE,
 			(unsigned char)ifr_mac.ifr_hwaddr.sa_data[0], (unsigned char)ifr_mac.ifr_hwaddr.sa_data[1], (unsigned char)ifr_mac.ifr_hwaddr.sa_data[2], 
 			(unsigned char)ifr_mac.ifr_hwaddr.sa_data[3], (unsigned char)ifr_mac.ifr_hwaddr.sa_data[4], (unsigned char)ifr_mac.ifr_hwaddr.sa_data[5],
@@ -1834,6 +1834,7 @@ CShiyong::CShiyong()
 			viewerArray[i].mapping.protocol = UNAT_UDP;
 			viewerArray[i].mapping.externalPort = ((myUPnP.GetLocalIP() & 0xff000000) >> 24) | ((2049 + (65535 - 2049) * (WORD)rand() / (65536)) & 0xffffff00);
 		}//找到一个未被占用的外部端口映射，或者路由器UPnP功能不可用
+		log_msg_f(LOG_LEVEL_DEBUG, "viewerArray[%d].mapping.externalPort = %d\n", i, viewerArray[i].mapping.externalPort);
 	}
 	
 	currentSourceIndex = -1;

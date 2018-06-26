@@ -14,6 +14,10 @@
 #include "../ShareDir/AppSettings.h"
 #include "../ShareDir/LogMsg.h"
 
+#include <pthread.h>
+#include <unistd.h>
+#include <signal.h>
+
 
 char gszProgramName[MAX_PATH] = "LSN_REPEATER";
 char gszProgramDir[MAX_PATH] = "";
@@ -138,10 +142,20 @@ static void UiLoop(void)
 
 		printf("\n>");
 	}
+	
+	printf("\nUiLoop exit.\n");
 }
 
 int main(int argc, char **argv)
 {
+	sigset_t signal_mask;
+	sigemptyset(&signal_mask);
+	sigaddset(&signal_mask, SIGPIPE);
+	int rc = pthread_sigmask(SIG_BLOCK, &signal_mask, NULL);
+	if (rc != 0) {
+		printf("Block SIGPIPE failed.\n");
+	}
+	
 	//if (!AfxWinInit(::GetModuleHandle(NULL), NULL, ::GetCommandLine(), 0))
 	{
 		// TODO: 在此处为应用程序的行为编写代码。
@@ -249,5 +263,6 @@ int main(int argc, char **argv)
 		UDT::cleanup();
 	}
 	
+	printf("\nmain() exit.\n");
 	return 0;
 }

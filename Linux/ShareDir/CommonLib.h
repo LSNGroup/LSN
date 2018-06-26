@@ -26,7 +26,7 @@
 #define stricmp(s1, s2)			strcasecmp((s1), (s2))
 
 
-#define MYSELF_VERSION			0x04060200  /* x.x.x.0 */
+#define MYSELF_VERSION			0x02060200  /* x.x.x.0 */
 #define FIRST_CONNECT_PORT		3478
 #define SECOND_CONNECT_PORT		3476
 

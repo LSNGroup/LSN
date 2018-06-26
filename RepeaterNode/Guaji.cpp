@@ -61,8 +61,8 @@ void *WorkingThreadFn2(void *pvThreadParam);
 
 void StartAnyPC()
 {
-	g_pServerNode = (SERVER_NODE *)malloc(sizeof(SERVER_NODE));
-
+	log_msg("StartAnyPC()...", LOG_LEVEL_INFO);
+	g_pServerNode = new SERVER_NODE();//结构体内包含std::string对象
 	{
 		g_pServerNode->m_bExit = FALSE;
 
@@ -86,12 +86,12 @@ void StartAnyPC()
 		g_pServerNode->m_InConnection1 = FALSE;
 		g_pServerNode->m_InConnection2 = FALSE;
 
-
+		bool hasUPnP = myUPnP.Search();
 		BOOL bMappingExists = FALSE;
 		g_pServerNode->mapping.description = "";
 		g_pServerNode->mapping.protocol = UNAT_UDP;
 		g_pServerNode->mapping.externalPort = ((myUPnP.GetLocalIP() & 0xff000000) >> 24) | ((2049 + (65535 - 2049) * (WORD)rand() / (65536)) & 0xffffff00);
-		while (UNAT_OK == myUPnP.GetNATSpecificEntry(&(g_pServerNode->mapping), &bMappingExists) && bMappingExists)
+		while (hasUPnP && UNAT_OK == myUPnP.GetNATSpecificEntry(&(g_pServerNode->mapping), &bMappingExists) && bMappingExists)
 		{
 			log_msg_f(LOG_LEVEL_INFO, "Find NATPortMapping(%d, rand=%d), retry...\n", g_pServerNode->mapping.externalPort, rand());
 
@@ -100,7 +100,7 @@ void StartAnyPC()
 			g_pServerNode->mapping.protocol = UNAT_UDP;
 			g_pServerNode->mapping.externalPort = ((myUPnP.GetLocalIP() & 0xff000000) >> 24) | ((2049 + (65535 - 2049) * (WORD)rand() / (65536)) & 0xffffff00);
 		}//找到一个未被占用的外部端口映射，或者路由器UPnP功能不可用
-
+		log_msg("Found NATPortMapping OK!", LOG_LEVEL_INFO);
 
 		InitVar();
 
