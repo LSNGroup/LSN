@@ -1527,3 +1527,209 @@ BOOL if_should_do_upnp()
 	}
 	return (BOOL)ret;
 }
+
+void if_on_mavlink_start()
+{
+	__android_log_print(ANDROID_LOG_INFO, "mobcam_if", "if_on_mavlink_start()");
+	
+	int status;
+	bool isAttached = false;
+	JNIEnv *env = NULL;
+
+	status = g_vm->GetEnv((void**)&env, JNI_VERSION_1_6);
+	if(status != JNI_OK)
+	{
+		status = g_vm->AttachCurrentThread(&env, NULL);
+		if(status != JNI_OK)
+		{
+			return;
+		}
+		isAttached = true;
+	}
+	
+	
+	jclass cls = (env)->GetObjectClass(g_objCam);
+	jmethodID mid = (env)->GetStaticMethodID(cls, "j_on_mavlink_start", "()V");
+
+	(env)->CallStaticVoidMethod(cls, mid);
+	if (isAttached) {// From native thread
+		g_vm->DetachCurrentThread();
+	}
+}
+
+void if_on_mavlink_stop()
+{
+	__android_log_print(ANDROID_LOG_INFO, "mobcam_if", "if_on_mavlink_stop()");
+	
+	int status;
+	bool isAttached = false;
+	JNIEnv *env = NULL;
+
+	status = g_vm->GetEnv((void**)&env, JNI_VERSION_1_6);
+	if(status != JNI_OK)
+	{
+		status = g_vm->AttachCurrentThread(&env, NULL);
+		if(status != JNI_OK)
+		{
+			return;
+		}
+		isAttached = true;
+	}
+	
+	
+	jclass cls = (env)->GetObjectClass(g_objCam);
+	jmethodID mid = (env)->GetStaticMethodID(cls, "j_on_mavlink_stop", "()V");
+
+	(env)->CallStaticVoidMethod(cls, mid);
+	if (isAttached) {// From native thread
+		g_vm->DetachCurrentThread();
+	}
+}
+
+void if_on_mavlink_guid(float lati, float longi, float alti)
+{
+	__android_log_print(ANDROID_LOG_INFO, "mobcam_if", "if_on_mavlink_guid(%f,%f,%f)", lati, longi, alti);
+	
+	int status;
+	bool isAttached = false;
+	JNIEnv *env = NULL;
+
+	status = g_vm->GetEnv((void**)&env, JNI_VERSION_1_6);
+	if(status != JNI_OK)
+	{
+		status = g_vm->AttachCurrentThread(&env, NULL);
+		if(status != JNI_OK)
+		{
+			return;
+		}
+		isAttached = true;
+	}
+	
+	
+	jclass cls = (env)->GetObjectClass(g_objCam);
+	jmethodID mid = (env)->GetStaticMethodID(cls, "j_on_mavlink_guid", "(FFF)V");
+
+	(env)->CallStaticVoidMethod(cls, mid, lati, longi, alti);
+	if (isAttached) {// From native thread
+		g_vm->DetachCurrentThread();
+	}
+}
+
+//
+//  0: OK
+// -1: NG
+int if_get_wp_data(WP_ITEM **lpItems, int *lpNum)
+{
+	int status;
+	bool isAttached = false;
+	JNIEnv *env = NULL;
+	
+	if (NULL == lpItems || NULL == lpNum)
+	{
+		return -1;
+	}
+	*lpItems = NULL;
+	*lpNum = 0;
+	
+	status = g_vm->GetEnv((void**)&env, JNI_VERSION_1_6);
+	if(status != JNI_OK)
+	{
+		status = g_vm->AttachCurrentThread(&env, NULL);
+		if(status != JNI_OK)
+		{
+			return -1;
+		}
+		isAttached = true;
+	}
+	
+	
+	jclass cls = (env)->GetObjectClass(g_objCam);
+	jmethodID mid = (env)->GetStaticMethodID(cls, "j_get_wp_data", "()[B");
+	
+	jbyteArray arr = (jbyteArray)(env)->CallStaticObjectMethod(cls, mid);
+	if (NULL == arr) {
+		if (isAttached) {// From native thread
+			g_vm->DetachCurrentThread();
+		}
+		return -1;
+	}
+	
+	int len = (env)->GetArrayLength(arr);
+	if (len > 0)
+	{
+		int nNum = len/20;
+		jbyte* ba = (env)->GetByteArrayElements(arr, 0);
+		WP_ITEM *p = (WP_ITEM *)malloc(nNum * sizeof(WP_ITEM));
+		//memcpy(p, ba, len);
+		for (int index = 0; index < nNum; index ++)
+		{
+			p[index].wpFlags  = ntohl(pf_get_dword(ba + 20*index));
+			p[index].wpType   = ntohl(pf_get_dword(ba + 20*index + 4));
+			p[index].wpLati   = ntohl(pf_get_dword(ba + 20*index + 8));
+			p[index].wpLongi  = ntohl(pf_get_dword(ba + 20*index + 12));
+			p[index].wpAlti   = ntohl(pf_get_dword(ba + 20*index + 16));
+		}
+		(env)->ReleaseByteArrayElements(arr, ba, 0);
+		*lpItems = p;
+		*lpNum = nNum;
+	}
+	if (isAttached) {// From native thread
+		g_vm->DetachCurrentThread();
+	}
+	return 0;
+}
+
+//
+//  0: OK
+// -1: NG
+int if_get_tlv_data(BYTE **lpPtr, int *lpLen)//caller free(*lpPtr)
+{
+	int status;
+	bool isAttached = false;
+	JNIEnv *env = NULL;
+	
+	if (NULL == lpPtr || NULL == lpLen)
+	{
+		return -1;
+	}
+	*lpPtr = NULL;
+	*lpLen = 0;
+	
+	status = g_vm->GetEnv((void**)&env, JNI_VERSION_1_6);
+	if(status != JNI_OK)
+	{
+		status = g_vm->AttachCurrentThread(&env, NULL);
+		if(status != JNI_OK)
+		{
+			return -1;
+		}
+		isAttached = true;
+	}
+	
+	
+	jclass cls = (env)->GetObjectClass(g_objCam);
+	jmethodID mid = (env)->GetStaticMethodID(cls, "j_get_tlv_data", "()[B");
+	
+	jbyteArray arr = (jbyteArray)(env)->CallStaticObjectMethod(cls, mid);
+	if (NULL == arr) {
+		if (isAttached) {// From native thread
+			g_vm->DetachCurrentThread();
+		}
+		return -1;
+	}
+	
+	int len = (env)->GetArrayLength(arr);
+	if (len > 0)
+	{
+		jbyte* ba = (env)->GetByteArrayElements(arr, 0);
+		unsigned char *p = (unsigned char *)malloc(len);
+		memcpy(p, ba, len);
+		(env)->ReleaseByteArrayElements(arr, ba, 0);
+		*lpPtr = p;
+		*lpLen = len;
+	}
+	if (isAttached) {// From native thread
+		g_vm->DetachCurrentThread();
+	}
+	return 0;
+}

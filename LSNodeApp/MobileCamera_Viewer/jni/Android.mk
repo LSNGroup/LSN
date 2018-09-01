@@ -189,3 +189,15 @@ LOCAL_LDLIBS += -llog -ldl
 
 include $(BUILD_SHARED_LIBRARY)
 
+
+
+# lib serial_port
+################################################################################
+include $(CLEAR_VARS)
+
+LOCAL_MODULE    := serial_port
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/serialport
+LOCAL_SRC_FILES := serialport/SerialPort.c
+LOCAL_LDLIBS    := -llog
+
+include $(BUILD_SHARED_LIBRARY)

@@ -86,5 +86,10 @@ void if_on_client_disconnected();
 
 BOOL if_should_do_upnp();
 
+void if_on_mavlink_start();
+void if_on_mavlink_stop();
+void if_on_mavlink_guid(float lati, float longi, float alti);
+int if_get_wp_data(WP_ITEM **lpItems, int *lpNum);
+int if_get_tlv_data(BYTE **lpPtr, int *lpLen);
 
 #endif /* _MOBCAM_IF_H_ */

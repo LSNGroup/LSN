@@ -187,6 +187,8 @@ int CtrlCmd_Send_FAKERTP_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *packet, in
 int CtrlCmd_Send_FAKERTP_RESP_NOMUTEX(SOCKET_TYPE type, SOCKET fhandle, BYTE *packet, int len);
 int CtrlCmd_Send_HELLO_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *server_node_id, DWORD server_version, BYTE func_flags, BYTE topo_level, WORD result_code);
 int CtrlCmd_Send_RUN_RESP(SOCKET_TYPE type, SOCKET fhandle, const char *result_str);
+int CtrlCmd_Send_MAV_WP_RESP(SOCKET_TYPE type, SOCKET fhandle, WP_ITEM *wp_data, int wp_num);
+int CtrlCmd_Send_MAV_TLV_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *tlv_data, int len);
 
 int CtrlCmd_Send_NULL(SOCKET_TYPE type, SOCKET fhandle);
 
@@ -199,6 +201,8 @@ void CtrlCmd_Recv_AV_END(SOCKET_TYPE type, SOCKET fhandle);
 //#else
 int CtrlCmd_HELLO(SOCKET_TYPE type, SOCKET fhandle, BYTE *client_node_id, DWORD client_version, BYTE topo_primary, const char *password, BYTE *server_node_id, DWORD *server_version, BYTE *func_flags, BYTE *topo_level, WORD *result_code);////Send/Recv
 int CtrlCmd_RUN(SOCKET_TYPE type, SOCKET fhandle, const char *exe_cmd, char *result_buf, int buf_size);////Send/Recv
+int CtrlCmd_MAV_WP(SOCKET_TYPE type, SOCKET fhandle, WP_ITEM *wp_array, int *lpNumWP);////Send/Recv
+int CtrlCmd_MAV_TLV(SOCKET_TYPE type, SOCKET fhandle, BYTE *tlv_buf, int *lpLen);////Send/Recv
 
 int CtrlCmd_IPC_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string);
 int CtrlCmd_TOPO_REPORT(SOCKET_TYPE type, SOCKET fhandle, BYTE *source_node_id, const char *report_string);
@@ -221,6 +225,9 @@ int CtrlCmd_AV_CONTRL(SOCKET_TYPE type, SOCKET fhandle, WORD contrl, DWORD contr
 int CtrlCmd_VOICE(SOCKET_TYPE type, SOCKET fhandle, BYTE *data, int len);
 int CtrlCmd_TEXT(SOCKET_TYPE type, SOCKET fhandle, BYTE *data, int len);
 int CtrlCmd_BYE(SOCKET_TYPE type, SOCKET fhandle);
+int CtrlCmd_MAV_START(SOCKET_TYPE type, SOCKET fhandle);
+int CtrlCmd_MAV_STOP(SOCKET_TYPE type, SOCKET fhandle);
+int CtrlCmd_MAV_GUID(SOCKET_TYPE type, SOCKET fhandle, float lati, float longi, float alti);
 //#endif
 
 

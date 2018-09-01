@@ -59,6 +59,12 @@
 	<string name="msg_server_not_root_for_this_function">提示: 受控端手机需要Root后才能支持这项功能。</string>
 	<string name="msg_level_too_low_for_this_function">提示: 免费试用ID不能使用这项功能。</string>
 	
+	<string name="ui_select_bluetooth_device">安卓机子与下位控制板通过蓝牙串口通信，请从下面搜索到的蓝牙设备中选出下位控制板对应的那一个。如果搜索不到，请检查下位控制板是否接通电源。</string>
+	<string name="ui_bt_search_btn">重新搜索蓝牙设备</string>
+	<string name="msg_bt_device_not_set">设置了使用蓝牙串口，但是并未设置要连接的蓝牙设备</string>
+	<string name="msg_bt_search_start">开始搜索蓝牙设备。。。</string>
+	<string name="msg_bt_connect_ok">蓝牙设备连接成功！</string>
+	
 	<string name="ui_push_start_btn">开始直播</string>
 	<string name="ui_push_end_btn">停止直播</string>
 	<string name="msg_push_start_failed">推流失败，请稍后重试</string>

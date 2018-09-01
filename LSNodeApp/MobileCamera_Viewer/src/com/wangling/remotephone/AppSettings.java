@@ -33,6 +33,17 @@ public class AppSettings {
 	
 	public static final String STRING_REGKEY_NAME_LEFT_THROTTLE = "UseLeftThrottle";//int:0,1
 	
+	public static final String STRING_REGKEY_NAME_WITHUAV = "WithUAV";//int:0,1
+	public static final String STRING_REGKEY_NAME_TAILSITTER = "TailSitter";//int:0,1
+	public static final String STRING_REGKEY_NAME_TAILSITTER_SW_GPSALTI = "SW_GPSALTI";//int Ã×
+	public static final String STRING_REGKEY_NAME_TAILSITTER_SW_GNDSPEED = "SW_GNDSPEED";//int ÀåÃ×Ã¿Ãë
+	
+	public static final String STRING_REGKEY_NAME_VIDEOENC = "VideoEnc";//int:0,1,2
+	public static final String STRING_REGKEY_NAME_VIDEOUV = "VideoUV";//int:0,1
+	
+	public static final String STRING_REGKEY_NAME_BT_ADDRESS = "BtAddress";
+	public static final String STRING_REGKEY_NAME_SERIAL_PORT = "SerialPort";//String:/dev/ttyS4
+	
 	
 	public static String GetSoftwareKeyValue(Context context, String keyName, String defValue)
 	{

@@ -922,6 +922,61 @@ static int ControlChannelLoop(SOCKET_TYPE type, SOCKET fhandle)
 				//if_display_text(buff);
 				break;
 
+			case CMD_CODE_MAV_START_REQ:
+				if (strncmp(g0_device_uuid, "ANDROID@UAV@", 12) == 0) {
+					if_on_mavlink_start();
+				}
+				break;
+
+			case CMD_CODE_MAV_STOP_REQ:
+				if (strncmp(g0_device_uuid, "ANDROID@UAV@", 12) == 0) {
+					if_on_mavlink_stop();
+				}
+				break;
+
+			case CMD_CODE_MAV_GUID_REQ:
+				float lati,longi,alti;
+				ret = RecvStream(type, fhandle, buff, 12);
+				if (ret != 0) {
+					bQuitLoop = TRUE;
+					break;
+				}
+				lati  = (float)ntohl(pf_get_dword(buff+0)) / 1000.0f;
+				longi = (float)ntohl(pf_get_dword(buff+4)) / 1000.0f;
+				alti  = (float)ntohl(pf_get_dword(buff+8)) / 1000.0f;
+				if (strncmp(g0_device_uuid, "ANDROID@UAV@", 12) == 0) {
+					if_on_mavlink_guid(lati, longi, alti);
+				}
+				break;
+
+			case CMD_CODE_MAV_WP_REQ:
+				WP_ITEM *wpItems;
+				int wpNum;
+				wpItems = NULL;
+				wpNum = 0;
+				if (strncmp(g0_device_uuid, "ANDROID@UAV@", 12) == 0) {
+					if_get_wp_data(&wpItems, &wpNum);
+				}
+				CtrlCmd_Send_MAV_WP_RESP(type, fhandle, wpItems, wpNum);
+				if (wpItems != NULL) {
+					free(wpItems);
+				}
+				break;
+
+			case CMD_CODE_MAV_TLV_REQ:
+				unsigned char *tlvBuff;
+				int tlvLen;
+				tlvBuff = NULL;
+				tlvLen = 0;
+				if (strncmp(g0_device_uuid, "ANDROID@UAV@", 12) == 0) {
+					if_get_tlv_data(&tlvBuff, &tlvLen);
+				}
+				CtrlCmd_Send_MAV_TLV_RESP(type, fhandle, tlvBuff, tlvLen);
+				if (tlvBuff != NULL) {
+					free(tlvBuff);
+				}
+				break;
+
 			case CMD_CODE_NULL:
 				//收到保活包，什么也不做
 				__android_log_print(ANDROID_LOG_INFO, "ControlChannelLoop", "Recv CMD_CODE_NULL !!!!!!\n");
@@ -942,6 +997,9 @@ static int ControlChannelLoop(SOCKET_TYPE type, SOCKET fhandle)
 	}
 	if_contrl_flash_off();
 	DShowAV_Stop();
+	if (strncmp(g0_device_uuid, "ANDROID@UAV@", 12) == 0) {
+		if_on_mavlink_stop();
+	}
 	if (push_channel_id > 0)
 	{
 		int ret = myHttpOperate.DoPushEnd(g_client_charset, g_client_lang, push_channel_id);
@@ -1032,6 +1090,9 @@ void StopDoConnection()
 	
 	if_contrl_flash_off();
 	DShowAV_Stop();
+	if (strncmp(g0_device_uuid, "ANDROID@UAV@", 12) == 0) {
+		if_on_mavlink_stop();
+	}
 }
 
 void ForceDisconnect()

@@ -16,6 +16,15 @@ public class SharedFuncLib {
 	
 	public static final int USE_CAMERA_ID = 0;
 	
+	public static final int ARDUINO_SPEED_BASE = 245;
+	
+	public static final int APM_SERVO_MIN_PWM = 800;
+	public static final int APM_SERVO_MAX_PWM = 2200;
+	public static final int APM_L298N_SPEED_PWM = 2200;
+	public static final int APM_L298N_STOP_PWM = 800;
+	
+	public static final int SERIAL_PORT_BAUDRATE = 115200;
+	
 	/* Definition of SOCKET_TYPE */
 	public static final int SOCKET_TYPE_UNKNOWN = 0;
 	public static final int SOCKET_TYPE_UDT = 1;
@@ -133,7 +142,26 @@ public class SharedFuncLib {
 	public static final byte FUNC_FLAGS_HASROOT		=0x40;
 	public static final byte FUNC_FLAGS_ACTIVATED	=(byte) 0x80;
 
-
+	/* Definition of RF 315/433M */
+	public static final int RF_315M = 315;
+	public static final int RF_433M = 433;
+	
+	public static final int RF_CODEC_2262 = 2262;
+	public static final int RF_CODEC_1527 = 1527;
+	
+	public static final int RF_R2262_4M7 = 44;
+	public static final int RF_R2262_3M3 = 32;
+	public static final int RF_R2262_2M0 = 20;
+	public static final int RF_R2262_1M2 = 12;
+	
+	public static final int RF_R1527_330K = 32;
+	
+	public static final int RF0_TYPE_OFFSET = 10;
+	
+	public static final String str_rf_addr = "HFHFLHFX";//A7-A0, total:2187
+	
+	
+	
 	public static void MyMessageBox(Context context, String title, String msg)
 	{
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
