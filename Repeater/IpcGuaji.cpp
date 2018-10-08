@@ -296,6 +296,58 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 					break;
 				}
 				//DShowAV_Contrl(pServerNode, ntohs(pf_get_word(buff+0)), ntohl(pf_get_dword(buff+2)));
+#if FIRST_LEVEL_REPEATER
+				{//优先选择Primary通道，向上转发。。。
+					for (int i = 0; i < MAX_VIEWER_NUM; i++)
+					{
+						if (g_pShiyong->viewerArray[i].bUsing == FALSE || g_pShiyong->viewerArray[i].bConnected == FALSE) {
+							continue;
+						}
+						if (g_pShiyong->viewerArray[i].bTopoPrimary == TRUE)
+						{
+							printf("AV_CONTRL [%u %lu] ==> CamEx \n", ntohs(pf_get_word(buff+0)), ntohl(pf_get_dword(buff+2)));
+							CtrlCmd_AV_CONTRL(g_pShiyong->viewerArray[i].httpOP.m1_use_sock_type, g_pShiyong->viewerArray[i].httpOP.m1_use_udt_sock, ntohs(pf_get_word(buff+0)), ntohl(pf_get_dword(buff+2)));
+							break;
+						}
+					}
+				}
+#endif
+				break;
+
+			case CMD_CODE_MAV_START_REQ:
+#if FIRST_LEVEL_REPEATER
+				{//优先选择Primary通道，向上转发。。。
+					for (int i = 0; i < MAX_VIEWER_NUM; i++)
+					{
+						if (g_pShiyong->viewerArray[i].bUsing == FALSE || g_pShiyong->viewerArray[i].bConnected == FALSE) {
+							continue;
+						}
+						if (g_pShiyong->viewerArray[i].bTopoPrimary == TRUE)
+						{
+							CtrlCmd_MAV_START(g_pShiyong->viewerArray[i].httpOP.m1_use_sock_type, g_pShiyong->viewerArray[i].httpOP.m1_use_udt_sock);
+							break;
+						}
+					}
+				}
+#endif
+				break;
+
+			case CMD_CODE_MAV_STOP_REQ:
+#if FIRST_LEVEL_REPEATER
+				{//优先选择Primary通道，向上转发。。。
+					for (int i = 0; i < MAX_VIEWER_NUM; i++)
+					{
+						if (g_pShiyong->viewerArray[i].bUsing == FALSE || g_pShiyong->viewerArray[i].bConnected == FALSE) {
+							continue;
+						}
+						if (g_pShiyong->viewerArray[i].bTopoPrimary == TRUE)
+						{
+							CtrlCmd_MAV_STOP(g_pShiyong->viewerArray[i].httpOP.m1_use_sock_type, g_pShiyong->viewerArray[i].httpOP.m1_use_udt_sock);
+							break;
+						}
+					}
+				}
+#endif
 				break;
 
 			case CMD_CODE_IPC_REPORT:

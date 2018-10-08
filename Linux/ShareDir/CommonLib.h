@@ -15,6 +15,7 @@
 #define STRING_REGKEY_NAME_SAVED_UUID		"SavedUUID"
 #define STRING_REGKEY_NAME_FORCE_NONAT		"ForceNoNAT"
 
+#define STRING_REGKEY_NAME_PHONENUM			"PhoneNum"
 
 
 #define _MAX_PATH				512

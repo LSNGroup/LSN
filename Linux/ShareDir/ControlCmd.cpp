@@ -146,6 +146,53 @@ int CtrlCmd_Send_RUN_RESP(SOCKET_TYPE type, SOCKET fhandle, const char *result_s
 	return ret;
 }
 
+
+int CtrlCmd_Send_MAV_WP_RESP(SOCKET_TYPE type, SOCKET fhandle, WP_ITEM *wp_data, int wp_num)
+{
+	int ret;
+	char bSendPacket[CTRLCMD_MAX_PACKET_SIZE];
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_MAV_WP_RESP));
+	pf_set_dword(bSendPacket + 2, htonl(sizeof(WP_ITEM)*wp_num));
+	
+	pthread_mutex_lock(getMutexSend(type));
+	ret = SendStream(type, fhandle, bSendPacket, 6);
+	for (int i = 0; i < wp_num; i++)
+	{
+		pf_set_dword(bSendPacket + 0,  htonl(wp_data[i].wpFlags));
+		pf_set_dword(bSendPacket + 4,  htonl(wp_data[i].wpType));
+		pf_set_dword(bSendPacket + 8,  htonl(wp_data[i].wpLati));
+		pf_set_dword(bSendPacket + 12, htonl(wp_data[i].wpLongi));
+		pf_set_dword(bSendPacket + 16, htonl(wp_data[i].wpAlti));
+		ret += SendStream(type, fhandle, bSendPacket, 20);
+	}
+	if (ret != 0) {
+		ret = -1;
+	}
+	pthread_mutex_unlock(getMutexSend(type));
+	return ret;
+}
+
+int CtrlCmd_Send_MAV_TLV_RESP(SOCKET_TYPE type, SOCKET fhandle, BYTE *tlv_data, int len)
+{
+	int ret;
+	char bSendPacket[CTRLCMD_MAX_PACKET_SIZE];
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_MAV_TLV_RESP));
+	pf_set_dword(bSendPacket + 2, htonl(len));
+	
+	pthread_mutex_lock(getMutexSend(type));
+	ret = SendStream(type, fhandle, bSendPacket, 6);
+	ret += SendStream(type, fhandle, (char *)tlv_data, len);
+	if (ret != 0) {
+		ret = -1;
+	}
+	pthread_mutex_unlock(getMutexSend(type));
+	return ret;
+}
+
 int CtrlCmd_Send_NULL(SOCKET_TYPE type, SOCKET fhandle)
 {
 	int ret;
@@ -344,6 +391,140 @@ int CtrlCmd_RUN(SOCKET_TYPE type, SOCKET fhandle, const char *exe_cmd, char *res
 		return -1;
 	}
 
+	return 0;
+}
+
+int CtrlCmd_MAV_WP(SOCKET_TYPE type, SOCKET fhandle, WP_ITEM *wp_array, int *lpNumWP)
+{
+	char buff[32];
+	int ret;
+	WORD wCommand;
+	DWORD dwDataLength;
+	char bSendPacket[CTRLCMD_MAX_PACKET_SIZE];
+
+	if (wp_array == NULL || lpNumWP == NULL) {
+		return -1;
+	}
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_MAV_WP_REQ));
+	pf_set_dword(bSendPacket + 2, htonl(0));
+
+	pthread_mutex_lock(getMutexSend(type));
+	
+	if (SendStream(type, fhandle, bSendPacket, 6) < 0) {
+		pthread_mutex_unlock(getMutexSend(type));
+		return -1;
+	}
+	
+	pthread_mutex_unlock(getMutexSend(type));
+
+	ret = RecvStream(type, fhandle, buff, 6);
+	if (ret != 0) {
+		return -1;
+	}
+
+	wCommand = ntohs(pf_get_word(buff));
+	dwDataLength = ntohl(pf_get_dword(buff+2));
+
+	if (wCommand != CMD_CODE_MAV_WP_RESP) {
+		return -1;
+	}
+
+	if (dwDataLength > (*lpNumWP) * sizeof(WP_ITEM)) {
+		for (int i = 0; i < dwDataLength; i++) {
+			RecvStream(type, fhandle, buff, 1);
+		}
+		return -1;
+	}
+
+	for (int i = 0; i < dwDataLength/sizeof(WP_ITEM); i++)
+	{
+		ret = RecvStream(type, fhandle, buff, sizeof(DWORD));
+		if (ret != 0) {
+			return -1;
+		}
+		wp_array[i].wpFlags = ntohl(pf_get_dword(buff));////
+
+		ret = RecvStream(type, fhandle, buff, sizeof(DWORD));
+		if (ret != 0) {
+			return -1;
+		}
+		wp_array[i].wpType = ntohl(pf_get_dword(buff));////
+
+		ret = RecvStream(type, fhandle, buff, sizeof(DWORD));
+		if (ret != 0) {
+			return -1;
+		}
+		wp_array[i].wpLati = ntohl(pf_get_dword(buff));////
+
+		ret = RecvStream(type, fhandle, buff, sizeof(DWORD));
+		if (ret != 0) {
+			return -1;
+		}
+		wp_array[i].wpLongi = ntohl(pf_get_dword(buff));////
+
+		ret = RecvStream(type, fhandle, buff, sizeof(DWORD));
+		if (ret != 0) {
+			return -1;
+		}
+		wp_array[i].wpAlti = ntohl(pf_get_dword(buff));////
+	}
+
+	*lpNumWP = dwDataLength/sizeof(WP_ITEM);
+	return 0;
+}
+
+int CtrlCmd_MAV_TLV(SOCKET_TYPE type, SOCKET fhandle, BYTE *tlv_buf, int *lpLen)
+{
+	char buff[32];
+	int ret;
+	WORD wCommand;
+	DWORD dwDataLength;
+	char bSendPacket[CTRLCMD_MAX_PACKET_SIZE];
+
+	if (lpLen == NULL) {
+		return -1;
+	}
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_MAV_TLV_REQ));
+	pf_set_dword(bSendPacket + 2, htonl(0));
+
+	pthread_mutex_lock(getMutexSend(type));
+	
+	if (SendStream(type, fhandle, bSendPacket, 6) < 0) {
+		pthread_mutex_unlock(getMutexSend(type));
+		return -1;
+	}
+	
+	pthread_mutex_unlock(getMutexSend(type));
+
+	ret = RecvStream(type, fhandle, buff, 6);
+	if (ret != 0) {
+		return -1;
+	}
+
+	wCommand = ntohs(pf_get_word(buff));
+	dwDataLength = ntohl(pf_get_dword(buff+2));
+
+	if (wCommand != CMD_CODE_MAV_TLV_RESP) {
+		return -1;
+	}
+
+	if (dwDataLength > *lpLen) {
+		for (int i = 0; i < dwDataLength; i++) {
+			RecvStream(type, fhandle, buff, 1);
+		}
+		return -1;
+	}
+
+	ret = RecvStream(type, fhandle, (char *)tlv_buf, dwDataLength);
+	if (ret != 0) {
+		return -1;
+	}
+
+	*lpLen = dwDataLength;
 	return 0;
 }
 
@@ -687,6 +868,54 @@ int CtrlCmd_BYE(SOCKET_TYPE type, SOCKET fhandle)
 
 	pthread_mutex_lock(getMutexSend(type));
 	ret = SendStream(type, fhandle, bSendPacket, 6);
+	pthread_mutex_unlock(getMutexSend(type));
+	return ret;
+}
+
+int CtrlCmd_MAV_START(SOCKET_TYPE type, SOCKET fhandle)
+{
+	int ret;
+	char bSendPacket[CTRLCMD_MAX_PACKET_SIZE];
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_MAV_START_REQ));
+	pf_set_dword(bSendPacket + 2, htonl(0));
+
+	pthread_mutex_lock(getMutexSend(type));
+	ret = SendStream(type, fhandle, bSendPacket, 6);
+	pthread_mutex_unlock(getMutexSend(type));
+	return ret;
+}
+
+int CtrlCmd_MAV_STOP(SOCKET_TYPE type, SOCKET fhandle)
+{
+	int ret;
+	char bSendPacket[CTRLCMD_MAX_PACKET_SIZE];
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_MAV_STOP_REQ));
+	pf_set_dword(bSendPacket + 2, htonl(0));
+
+	pthread_mutex_lock(getMutexSend(type));
+	ret = SendStream(type, fhandle, bSendPacket, 6);
+	pthread_mutex_unlock(getMutexSend(type));
+	return ret;
+}
+
+int CtrlCmd_MAV_GUID(SOCKET_TYPE type, SOCKET fhandle, float lati, float longi, float alti)
+{
+	int ret;
+	char bSendPacket[CTRLCMD_MAX_PACKET_SIZE];
+
+	memset(bSendPacket, 0, sizeof(bSendPacket));
+	pf_set_word(bSendPacket + 0, htons(CMD_CODE_MAV_GUID_REQ));
+	pf_set_dword(bSendPacket + 2, htonl(12));
+	pf_set_dword(bSendPacket + 6, htonl((int)(lati*1000.0f)));
+	pf_set_dword(bSendPacket + 10, htonl((int)(longi*1000.0f)));
+	pf_set_dword(bSendPacket + 14, htonl((int)(alti*1000.0f)));
+
+	pthread_mutex_lock(getMutexSend(type));
+	ret = SendStream(type, fhandle, bSendPacket, 6+12);
 	pthread_mutex_unlock(getMutexSend(type));
 	return ret;
 }

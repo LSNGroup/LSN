@@ -300,6 +300,12 @@ static void OnIpcMsg(SERVER_PROCESS_NODE *pServerPorcess, SOCKET fhandle)
 				//DShowAV_Contrl(pServerNode, ntohs(pf_get_word(buff+0)), ntohl(pf_get_dword(buff+2)));
 				break;
 
+			case CMD_CODE_MAV_START_REQ:
+				break;
+
+			case CMD_CODE_MAV_STOP_REQ:
+				break;
+
 			case CMD_CODE_IPC_REPORT:
 
 				ret = RecvStream(type, fhandle, buff, 6);

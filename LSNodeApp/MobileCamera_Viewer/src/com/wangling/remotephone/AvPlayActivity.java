@@ -528,15 +528,15 @@ public class AvPlayActivity extends Activity {
         	}
         });
         
-        findViewById(R.id.zoom_in_btn).setOnClickListener(new View.OnClickListener() {
+        findViewById(R.id.turn_advance_btn).setOnClickListener(new View.OnClickListener() {
         	public void onClick(View v) {
-        		onBtnZoomIn();
+        		onBtnTurnAdvance();
         	}
         });
         
-        findViewById(R.id.zoom_out_btn).setOnClickListener(new View.OnClickListener() {
+        findViewById(R.id.turn_stop_btn).setOnClickListener(new View.OnClickListener() {
         	public void onClick(View v) {
-        		onBtnZoomOut();
+        		onBtnTurnStop();
         	}
         });
         
@@ -668,6 +668,8 @@ public class AvPlayActivity extends Activity {
     		mMainHandler.removeCallbacks(auto_send_avctrl_runnable);
     		mMainHandler.postDelayed(auto_send_avctrl_runnable, 100000);
     	}
+    	
+    	SharedFuncLib.CtrlCmdMAVSTART(conn_type, conn_fhandle);
     }
     
     @Override
@@ -786,6 +788,9 @@ public class AvPlayActivity extends Activity {
                     	SharedFuncLib.TLVRecvStop();
                     	SharedFuncLib.CtrlCmdAVSTOP(_instance.conn_type, _instance.conn_fhandle);
                     	
+                    	SharedFuncLib.CtrlCmdAVCONTRL(_instance.conn_type, _instance.conn_fhandle, SharedFuncLib.AV_CONTRL_TURN_DOWN, 0);
+                    	SharedFuncLib.CtrlCmdMAVSTOP(_instance.conn_type, _instance.conn_fhandle);
+                    	
                     	try {
                 			Thread.sleep(1500);
                 		} catch (InterruptedException e) {
@@ -843,38 +848,28 @@ public class AvPlayActivity extends Activity {
     	SharedFuncLib.CtrlCmdAVCONTRL(conn_type, conn_fhandle, SharedFuncLib.AV_CONTRL_ZOOM_OUT, 0);
     }
     
+    private void onBtnTurnAdvance()
+    {
+    	btnPressSound(R.raw.turn);
+    	SharedFuncLib.CtrlCmdAVCONTRL(conn_type, conn_fhandle, SharedFuncLib.AV_CONTRL_TURN_UP, 0);
+    }
+    
+    private void onBtnTurnStop()
+    {
+    	btnPressSound(R.raw.turn);
+    	SharedFuncLib.CtrlCmdAVCONTRL(conn_type, conn_fhandle, SharedFuncLib.AV_CONTRL_TURN_DOWN, 0);
+    }
+    
     private void onBtnTurnLeft()
     {
     	btnPressSound(R.raw.turn);
-    	if (device_uuid.contains("@ANYPC@"))
-    	{
-    		SharedFuncLib.CtrlCmdAVSWITCH(conn_type, conn_fhandle, 0);
-    		SharedFuncLib.MyMessageTip(_instance, _instance.getResources().getString(R.string.msg_video_switching));
-    		return;
-    	}
-    	if (1 == av_video_channel)
-    	{
-	   		av_video_channel = 0;
-	    	SharedFuncLib.CtrlCmdAVSWITCH(conn_type, conn_fhandle, av_video_channel);
-	    	SharedFuncLib.MyMessageTip(_instance, _instance.getResources().getString(R.string.msg_video_switching));
-    	}
+    	SharedFuncLib.CtrlCmdAVCONTRL(conn_type, conn_fhandle, SharedFuncLib.AV_CONTRL_TURN_LEFT, 0);
     }
     
     private void onBtnTurnRight()
     {
     	btnPressSound(R.raw.turn);
-    	if (device_uuid.contains("@ANYPC@"))
-    	{
-    		SharedFuncLib.CtrlCmdAVSWITCH(conn_type, conn_fhandle, 0);
-    		SharedFuncLib.MyMessageTip(_instance, _instance.getResources().getString(R.string.msg_video_switching));
-    		return;
-    	}
-    	if (0 == av_video_channel)
-    	{
-    		av_video_channel = 1;
-    		SharedFuncLib.CtrlCmdAVSWITCH(conn_type, conn_fhandle, av_video_channel);
-    		SharedFuncLib.MyMessageTip(_instance, _instance.getResources().getString(R.string.msg_video_switching));
-    	}
+    	SharedFuncLib.CtrlCmdAVCONTRL(conn_type, conn_fhandle, SharedFuncLib.AV_CONTRL_TURN_RIGHT, 0);
     }
     
     private void onBtnToggleLight()
@@ -884,22 +879,12 @@ public class AvPlayActivity extends Activity {
     	btnPressSound(R.raw.toggle_light);
     	
     	if (light_is_on) {
-    		if (device_uuid.contains("@ANYPC@")) {
-    			SharedFuncLib.FF264RecvSetVflip();
-    		}
-    		else {
-    			SharedFuncLib.CtrlCmdAVCONTRL(conn_type, conn_fhandle, SharedFuncLib.AV_CONTRL_FLASH_OFF, 0);
-    		}
+    		SharedFuncLib.CtrlCmdAVCONTRL(conn_type, conn_fhandle, SharedFuncLib.AV_CONTRL_FLASH_OFF, 0);
     		light_is_on = false;
     		btn.setImageResource(R.drawable.toggle_light);
     	}
     	else {
-    		if (device_uuid.contains("@ANYPC@")) {
-    			SharedFuncLib.FF264RecvSetVflip();
-    		}
-    		else {
-    			SharedFuncLib.CtrlCmdAVCONTRL(conn_type, conn_fhandle, SharedFuncLib.AV_CONTRL_FLASH_ON, 0);
-    		}
+    		SharedFuncLib.CtrlCmdAVCONTRL(conn_type, conn_fhandle, SharedFuncLib.AV_CONTRL_FLASH_ON, 0);
     		light_is_on = true;
     		btn.setImageResource(R.drawable.toggle_light_on);
     	}

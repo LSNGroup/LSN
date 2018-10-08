@@ -1197,6 +1197,11 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
         
     	Log.d(TAG, "onCreate~~~");
         
+    	AppSettings.SaveSoftwareKeyDwordValue(this, AppSettings.STRING_REGKEY_NAME_WITHUAV, 1);
+    	AppSettings.SaveSoftwareKeyDwordValue(this, AppSettings.STRING_REGKEY_NAME_TAILSITTER, 0);
+    	AppSettings.SaveSoftwareKeyValue(this, AppSettings.STRING_REGKEY_NAME_BT_ADDRESS, "");
+    	AppSettings.SaveSoftwareKeyValue(this, AppSettings.STRING_REGKEY_NAME_SERIAL_PORT, "");
+    	
     	
     	try {
 			onvifProto = new OnvifProto(this);
@@ -2571,9 +2576,35 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
     		return;
     	}
     	
-    	if (_instance.bUseRtpStream)
+    	//if (_instance.bUseRtpStream) _instance.onvifProto.ptzTurnUp();
+    	if (_instance.m_bIsUAV)
     	{
-    		_instance.onvifProto.ptzTurnUp();
+    		_instance.mMainHandler.post(new Runnable(){
+    			@Override
+    			public void run() {
+    				Toast.makeText(_instance, "Move Forward (" + (_instance.m_bMavLinkStarted ? "S" : "-") + ")(" + (_instance.m_bRcOverride ? "O" : "-") + ")", Toast.LENGTH_SHORT)
+    				.show();
+    			}
+    		});
+    		
+    		if (false == _instance.m_bRcOverride) {
+	    		_instance.m_bRcOverride = true;
+	    		_instance.m_RcOutput.enableRcOverride();
+    		}
+    		
+    		if (_instance.m_bMavLinkStarted == false) {
+        		return;
+        	}
+        	
+        	if (_instance.m_bRcOverride == true)
+        	{
+        		_instance.m_RcOutput.setRcChannel(RcOutput.AILERON, 0.0f);//roll
+        		_instance.m_RcOutput.setRcChannel(RcOutput.ELEVATOR, -1*0.0f);//pitch
+        		_instance.m_RcOutput.setRcChannel(RcOutput.TROTTLE, 0.1f);//throttle
+        		_instance.m_RcOutput.setRcChannel(RcOutput.RUDDER, 0.0f);//yaw
+        	}
+        	
+        	//_instance.TryToSendHearbeat();
     	}
     	else
     	{
@@ -2589,9 +2620,35 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
     		return;
     	}
     	
-    	if (_instance.bUseRtpStream)
+    	//if (_instance.bUseRtpStream) _instance.onvifProto.ptzTurnDown();
+    	if (_instance.m_bIsUAV)
     	{
-    		_instance.onvifProto.ptzTurnDown();
+    		_instance.mMainHandler.post(new Runnable(){
+    			@Override
+    			public void run() {
+    				Toast.makeText(_instance, "Move Stop (" + (_instance.m_bMavLinkStarted ? "S" : "-") + ")(" + (_instance.m_bRcOverride ? "O" : "-") + ")", Toast.LENGTH_SHORT)
+    				.show();
+    			}
+    		});
+    		
+    		if (false == _instance.m_bRcOverride) {
+	    		_instance.m_bRcOverride = true;
+	    		_instance.m_RcOutput.enableRcOverride();
+    		}
+    		
+    		if (_instance.m_bMavLinkStarted == false) {
+        		return;
+        	}
+        	
+        	if (_instance.m_bRcOverride == true)
+        	{
+        		_instance.m_RcOutput.setRcChannel(RcOutput.AILERON, 0.0f);//roll
+        		_instance.m_RcOutput.setRcChannel(RcOutput.ELEVATOR, -1*0.0f);//pitch
+        		_instance.m_RcOutput.setRcChannel(RcOutput.TROTTLE, -1.0f);//throttle
+        		_instance.m_RcOutput.setRcChannel(RcOutput.RUDDER, 0.0f);//yaw
+        	}
+        	
+        	//_instance.TryToSendHearbeat();
     	}
     	else
     	{
@@ -2607,9 +2664,35 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
     		return;
     	}
     	
-    	if (_instance.bUseRtpStream)
+    	//if (_instance.bUseRtpStream) _instance.onvifProto.ptzTurnLeft();
+    	if (_instance.m_bIsUAV)
     	{
-    		_instance.onvifProto.ptzTurnLeft();
+    		_instance.mMainHandler.post(new Runnable(){
+    			@Override
+    			public void run() {
+    				Toast.makeText(_instance, "Turn Left (" + (_instance.m_bMavLinkStarted ? "S" : "-") + ")(" + (_instance.m_bRcOverride ? "O" : "-") + ")", Toast.LENGTH_SHORT)
+    				.show();
+    			}
+    		});
+    		
+    		if (false == _instance.m_bRcOverride) {
+	    		_instance.m_bRcOverride = true;
+	    		_instance.m_RcOutput.enableRcOverride();
+    		}
+    		
+    		if (_instance.m_bMavLinkStarted == false) {
+        		return;
+        	}
+        	
+        	if (_instance.m_bRcOverride == true)
+        	{
+        		_instance.m_RcOutput.setRcChannel(RcOutput.AILERON, -0.8f);//roll
+        		_instance.m_RcOutput.setRcChannel(RcOutput.ELEVATOR, -1*0.0f);//pitch
+        		_instance.m_RcOutput.setRcChannel(RcOutput.TROTTLE, 0.1f);//throttle
+        		_instance.m_RcOutput.setRcChannel(RcOutput.RUDDER, 0.0f);//yaw
+        	}
+        	
+        	//_instance.TryToSendHearbeat();
     	}
     	else
     	{
@@ -2625,9 +2708,35 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
     		return;
     	}
     	
-    	if (_instance.bUseRtpStream)
+    	//if (_instance.bUseRtpStream) _instance.onvifProto.ptzTurnRight();
+    	if (_instance.m_bIsUAV)
     	{
-    		_instance.onvifProto.ptzTurnRight();
+    		_instance.mMainHandler.post(new Runnable(){
+    			@Override
+    			public void run() {
+    				Toast.makeText(_instance, "Turn Right (" + (_instance.m_bMavLinkStarted ? "S" : "-") + ")(" + (_instance.m_bRcOverride ? "O" : "-") + ")", Toast.LENGTH_SHORT)
+    				.show();
+    			}
+    		});
+    		
+    		if (false == _instance.m_bRcOverride) {
+	    		_instance.m_bRcOverride = true;
+	    		_instance.m_RcOutput.enableRcOverride();
+    		}
+    		
+    		if (_instance.m_bMavLinkStarted == false) {
+        		return;
+        	}
+        	
+        	if (_instance.m_bRcOverride == true)
+        	{
+        		_instance.m_RcOutput.setRcChannel(RcOutput.AILERON, 0.8f);//roll
+        		_instance.m_RcOutput.setRcChannel(RcOutput.ELEVATOR, -1*0.0f);//pitch
+        		_instance.m_RcOutput.setRcChannel(RcOutput.TROTTLE, 0.1f);//throttle
+        		_instance.m_RcOutput.setRcChannel(RcOutput.RUDDER, 0.0f);//yaw
+        	}
+        	
+        	//_instance.TryToSendHearbeat();
     	}
     	else
     	{

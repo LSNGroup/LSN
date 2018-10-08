@@ -558,7 +558,7 @@ public class MainListActivity extends ListActivity {
     	Message msg = _instance.mMainHandler.obtainMessage(UI_MSG_PROGRESS_SHOW, _instance.getResources().getString(R.string.msg_please_wait));
     	_instance.mMainHandler.sendMessage(msg);
     	
-    	DoConnect("123456",	m_nodesArray.get(m_nCurrentSelected).channel_id);
+    	DoConnect("123456",	m_nodesArray.get(m_nCurrentSelected).channel_id, true);////Debug
     }
     
     private void onMenuItemSetParams()
@@ -692,7 +692,7 @@ public class MainListActivity extends ListActivity {
     public native int StartNative(String str_client_charset, String str_client_lang);
     public native void StopNative();
     public native int DoSearchChannels(int page_offset, int page_rows);
-    public native void DoConnect(String password_str, int channel_id);
+    public native void DoConnect(String password_str, int channel_id, boolean keep_star);
     public native void DoDisconnect();
     
     ///////////////////////////////////////////////////////////////////////////////////////

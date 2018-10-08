@@ -226,6 +226,8 @@ public class SharedFuncLib {
 	//public static native int CtrlCmdVOICE(int type, int fhandle, byte[] data, int len);
 	public static native int CtrlCmdBYE(int type, int fhandle);
 	public static native int CtrlCmdSendNULL(int type, int fhandle);
+	public static native int CtrlCmdMAVSTART(int type, int fhandle);
+	public static native int CtrlCmdMAVSTOP(int type, int fhandle);
 	
 	public static native void SendVoice(int type, int fhandle, byte[] data, int len);
 	

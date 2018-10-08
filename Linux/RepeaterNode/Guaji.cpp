@@ -1605,6 +1605,18 @@ int ControlChannelLoop(SERVER_NODE* pServerNode, SOCKET_TYPE type, SOCKET fhandl
 				//if_display_text(buff);
 				break;
 
+			case CMD_CODE_MAV_START_REQ:
+				if (INVALID_SOCKET != g_fhandle) {
+					CtrlCmd_MAV_START(SOCKET_TYPE_TCP, g_fhandle);
+				}
+				break;
+
+			case CMD_CODE_MAV_STOP_REQ:
+				if (INVALID_SOCKET != g_fhandle) {
+					CtrlCmd_MAV_STOP(SOCKET_TYPE_TCP, g_fhandle);
+				}
+				break;
+
 			case CMD_CODE_NULL:
 				//收到保活包，什么也不做
 				break;

@@ -1,0 +1,15 @@
+
+cd ../revolver-master/cmake/
+cmake .
+make
+cp ./lib/libudtx.so   /lib/libudtx.so
+
+cd ../LSN-Linux/cmake/
+cmake .
+make
+
+cd ???/LSN-Linux/cmake/bin
+mkdir AvRecord
+mkdir LogMsg
+mkdir .settings
+./Repeater

@@ -1839,6 +1839,12 @@ static void InitVar()
 
 	//strncpy(g0_node_name,   "DeviceNodeName", sizeof(g0_node_name));
 	gethostname(g0_node_name, sizeof(g0_node_name));
+	char szPhoneNum[32];
+	DWORD dwPhoneLength = sizeof(szPhoneNum);
+	if (GetSoftwareKeyValue(STRING_REGKEY_NAME_PHONENUM, (LPBYTE)szPhoneNum, &dwPhoneLength) && strlen(szPhoneNum) > 0) {
+		strcat(g0_node_name, "-");
+		strcat(g0_node_name, szPhoneNum);
+	}
 
 	GetOsInfo(g0_os_info, sizeof(g0_os_info));
 

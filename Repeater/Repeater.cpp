@@ -217,6 +217,16 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 			SaveSoftwareKeyDwordValue(STRING_REGKEY_NAME_FORCE_NONAT, (DWORD)0);
 		}
 
+		char szPhoneNum[32];
+		DWORD dwPhoneLength = sizeof(szPhoneNum);
+		if (FALSE == GetSoftwareKeyValue(STRING_REGKEY_NAME_PHONENUM, (LPBYTE)szPhoneNum, &dwPhoneLength)) {
+			printf("\nPlease Input Owner Phone Number: ");
+			scanf("%s", szPhoneNum);
+			SaveSoftwareKeyValue(STRING_REGKEY_NAME_PHONENUM, szPhoneNum);
+		}
+		printf("\nOwner Phone Number: %s\n\n", szPhoneNum);
+
+
 		{//////////////////////////////////////////////////////////////
 			if (arrServerProcesses != NULL) {
 				printf("不能重复上线！\n");

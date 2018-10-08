@@ -31,6 +31,7 @@ VIEWER_NODE viewerArray[MAX_VIEWER_NUM];
 int currentSourceIndex = -1;
 BOOL is_app_recv_av = FALSE;
 DWORD joined_channel_id = -1;
+BOOL is_keep_star = FALSE;
 
 static DWORD currentLastMediaTime = 0;
 static DWORD timeoutMedia = 0;
@@ -408,6 +409,24 @@ MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(CtrlCmdSendNULL)
 }
 
 
+extern "C"
+jint
+MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(CtrlCmdMAVSTART)
+	(JNIEnv* env, jobject thiz, jint type, jint fhandle)
+{
+	return CtrlCmd_MAV_START((SOCKET_TYPE)type, (SOCKET)fhandle);
+}
+
+
+extern "C"
+jint
+MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(CtrlCmdMAVSTOP)
+	(JNIEnv* env, jobject thiz, jint type, jint fhandle)
+{
+    return CtrlCmd_MAV_STOP((SOCKET_TYPE)type, (SOCKET)fhandle);
+}
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////////
 //
 //  0: OK
@@ -544,7 +563,7 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoSearchChannels)
 extern "C"
 void
 MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoConnect)
-	(JNIEnv* env, jobject thiz, jstring strPassword, jint channel_id)
+	(JNIEnv* env, jobject thiz, jstring strPassword, jint channel_id, jboolean keep_star)
 {
 	int ret;
 	int len;
@@ -597,6 +616,7 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoConnect)
 	
 	
 	joined_channel_id = channel_id;
+	is_keep_star = keep_star;
 	
 	//建立快速连接。。。from_star
 	{
@@ -639,6 +659,7 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoDisconnect)
 	is_app_recv_av = FALSE;
 	currentLastMediaTime = 0;
 	joined_channel_id = -1;
+	is_keep_star = FALSE;
 }
 
 
@@ -1073,7 +1094,7 @@ void *CheckMediaThreadFn(void *pvThreadParam)
 			}
 		}
 		
-		if (currentSourceIndex != -1 && viewerArray[currentSourceIndex].from_star == TRUE)
+		if (currentSourceIndex != -1 && viewerArray[currentSourceIndex].from_star == TRUE && is_keep_star == FALSE)
 		{
 			int i;
 			for (i = 0; i < MAX_VIEWER_NUM; i++)

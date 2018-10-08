@@ -70,6 +70,16 @@ typedef struct _tag_av_param_ {
 } AV_PARAM;
 
 
+typedef struct _tag_wp_item_ {
+	DWORD wpFlags;
+	DWORD wpType;
+	DWORD wpLati; // lati*100000
+	DWORD wpLongi;// longi*100000
+	DWORD wpAlti; // alti*100000
+} WP_ITEM;
+
+#define WP_ITEM_FLAG_INVALID	0x00000001
+
 
 
 void trim(char *str);

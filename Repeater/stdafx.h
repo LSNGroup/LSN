@@ -58,7 +58,7 @@
 
 // TODO: 在此处引用程序需要的其他头文件
 
-#define FIRST_LEVEL_REPEATER	0
+#define FIRST_LEVEL_REPEATER	1
 
 
 /* For Viewer */
@@ -69,3 +69,5 @@
 
 #define STRING_REGKEY_NAME_SAVED_UUID		"SavedUUID"
 #define STRING_REGKEY_NAME_FORCE_NONAT		"ForceNoNAT"
+
+#define STRING_REGKEY_NAME_PHONENUM			"PhoneNum"
