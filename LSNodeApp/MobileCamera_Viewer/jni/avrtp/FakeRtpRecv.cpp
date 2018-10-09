@@ -27,9 +27,9 @@
 
 
 
-#define GET_TLV_PACKET_WAIT_TIME	50  /* ms */
-#define GET_AUDIO_PACKET_WAIT_TIME	850 /* ms */
-#define GET_VIDEO_PACKET_WAIT_TIME	850 /* ms */
+static double GET_TLV_PACKET_WAIT_TIME =	50;  /* ms */
+static double GET_AUDIO_PACKET_WAIT_TIME =	850; /* ms */
+static double GET_VIDEO_PACKET_WAIT_TIME =	850; /* ms */
 
 
 static BOOL bInit = FALSE;
@@ -246,6 +246,18 @@ void FakeRtpRecv_uninit()
 #if LOG_MSG
 	log_msg("FakeRtpRecv_uninit()\n", LOG_LEVEL_DEBUG);
 #endif
+}
+
+void FakeRtpRecv_setjittermode(BOOL isLong)
+{
+	if (isLong) {
+		GET_AUDIO_PACKET_WAIT_TIME =	850; /* ms */
+		GET_VIDEO_PACKET_WAIT_TIME =	850; /* ms */
+	}
+	else {
+		GET_AUDIO_PACKET_WAIT_TIME =	150; /* ms */
+		GET_VIDEO_PACKET_WAIT_TIME =	150; /* ms */
+	}
 }
 
 int FakeRtpRecv_getpacket(RECV_PACKET_SMALL **pack, BYTE bPayloadType)

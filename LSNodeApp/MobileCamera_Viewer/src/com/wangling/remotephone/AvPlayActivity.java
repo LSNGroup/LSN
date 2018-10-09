@@ -641,7 +641,9 @@ public class AvPlayActivity extends Activity {
     	//云控制PC受控端只支持G729a
 		av_flags |= SharedFuncLib.AV_FLAGS_AUDIO_G729A;
     	
-    	
+		
+		SharedFuncLib.SetRecvJitterMode(false);////Debug
+		
     	if (SharedFuncLib.CtrlCmdAVSTART(conn_type, conn_fhandle, av_flags, av_video_size, av_video_framerate, av_audio_channel, av_video_channel) < 0)
     	{//failed!
     		Message send_msg = mMainHandler.obtainMessage(UI_MSG_MESSAGEBOX, _instance.getResources().getString(R.string.msg_communication_error));

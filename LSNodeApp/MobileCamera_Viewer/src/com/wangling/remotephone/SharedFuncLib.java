@@ -231,6 +231,8 @@ public class SharedFuncLib {
 	
 	public static native void SendVoice(int type, int fhandle, byte[] data, int len);
 	
+	public static native void SetRecvJitterMode(boolean isLong);
+	
 	public static native void TLVRecvStart();
 	public static native void TLVRecvStop();
 	public static native void TLVRecvSetPeriod(int miniSec);

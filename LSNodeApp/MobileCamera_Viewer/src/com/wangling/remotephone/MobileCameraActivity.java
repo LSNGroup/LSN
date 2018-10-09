@@ -2688,7 +2688,7 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
         	{
         		_instance.m_RcOutput.setRcChannel(RcOutput.AILERON, -0.8f);//roll
         		_instance.m_RcOutput.setRcChannel(RcOutput.ELEVATOR, -1*0.0f);//pitch
-        		_instance.m_RcOutput.setRcChannel(RcOutput.TROTTLE, 0.1f);//throttle
+        		_instance.m_RcOutput.setRcChannel(RcOutput.TROTTLE, -0.1f);//throttle
         		_instance.m_RcOutput.setRcChannel(RcOutput.RUDDER, 0.0f);//yaw
         	}
         	
@@ -2732,7 +2732,7 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
         	{
         		_instance.m_RcOutput.setRcChannel(RcOutput.AILERON, 0.8f);//roll
         		_instance.m_RcOutput.setRcChannel(RcOutput.ELEVATOR, -1*0.0f);//pitch
-        		_instance.m_RcOutput.setRcChannel(RcOutput.TROTTLE, 0.1f);//throttle
+        		_instance.m_RcOutput.setRcChannel(RcOutput.TROTTLE, -0.1f);//throttle
         		_instance.m_RcOutput.setRcChannel(RcOutput.RUDDER, 0.0f);//yaw
         	}
         	

@@ -65,6 +65,7 @@ static void SendPacketsInQueue(SERVER_PROCESS_NODE *pServerPorcess, DWORD dwAudi
 	wps_queue *found_video_item = NULL;
 	wps_queue *found_audio_item = NULL;
 	double dfTimestamp = 0.0f;
+	int packets_count;
 
 	if (NULL == g_pShiyong->arrayRecvQueue[PAYLOAD_VIDEO] || NULL == g_pShiyong->arrayRecvQueue[PAYLOAD_AUDIO])
 	{
@@ -83,8 +84,10 @@ static void SendPacketsInQueue(SERVER_PROCESS_NODE *pServerPorcess, DWORD dwAudi
 
 			while (tail->q_forw != NULL) tail = tail->q_forw;
 
+			packets_count = 0;
 			temp = tail;
 			while (temp) {
+				packets_count += 1;
 				p = (RECV_PACKET_SMALL *)get_qbody(temp);
 				BYTE bType = CheckNALUType(p->szData[8]);
 				if (bType == NALU_TYPE_SEQ_SET)//SPS -> PPS -> IDR ->...
@@ -98,14 +101,16 @@ static void SendPacketsInQueue(SERVER_PROCESS_NODE *pServerPorcess, DWORD dwAudi
 
 			if (NULL != found_video_item)
 			{
-				log_msg("SendPacketsInQueue: Found video SPS packet...", LOG_LEVEL_INFO);
+				log_msg_f(LOG_LEVEL_INFO, "SendPacketsInQueue: Found video SPS packet, count=%ld", packets_count);
 
 				tail = g_pShiyong->arrayRecvQueue[PAYLOAD_AUDIO];
 
 				while (tail->q_forw != NULL) tail = tail->q_forw;
 
+				packets_count = 0;
 				temp = tail;
 				while (temp) {
+					packets_count += 1;
 					p = (RECV_PACKET_SMALL *)get_qbody(temp);
 					if (p->dfRecvTime <= dfTimestamp)
 					{
@@ -114,6 +119,10 @@ static void SendPacketsInQueue(SERVER_PROCESS_NODE *pServerPorcess, DWORD dwAudi
 					}
 					temp = temp->q_back;
 				}//while (temp)
+
+				if (NULL != found_audio_item) {
+					log_msg_f(LOG_LEVEL_INFO, "SendPacketsInQueue: Found audio SPS-equal packet, count=%ld", packets_count);
+				}
 
 			}//if (NULL != found_video_item)
 			else {

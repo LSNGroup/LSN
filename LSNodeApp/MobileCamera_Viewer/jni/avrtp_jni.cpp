@@ -17,6 +17,15 @@ extern SOCKET_TYPE get_use_sock_type();
 
 extern "C"
 void
+MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(SetRecvJitterMode)
+	(JNIEnv* env, jobject thiz, jboolean isLong)
+{
+	FakeRtpRecv_setjittermode((BOOL)isLong);
+}
+
+
+extern "C"
+void
 MAKE_JNI_FUNC_NAME_FOR_SharedFuncLib(TLVRecvStart)
 	(JNIEnv* env, jobject thiz)
 {

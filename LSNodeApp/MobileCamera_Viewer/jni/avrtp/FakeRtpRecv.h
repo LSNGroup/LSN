@@ -11,6 +11,8 @@ int FakeRtpRecv_init(const T_RTPPARAM *param);
 
 void FakeRtpRecv_uninit();
 
+void FakeRtpRecv_setjittermode(BOOL isLong);
+
 // Return values: 1, 0, -1
 // Caller must free() pack
 // Non-blocking
