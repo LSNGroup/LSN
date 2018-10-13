@@ -81,6 +81,7 @@ void *RecvG729Data(void *lpParameter)
 				unsigned char *tmp = (unsigned char *)malloc(nPayloadLen * AUDIO_MAX_COMPRESSION);
 				int nOutBytes = AudioDecoder(bReserved, buff, nPayloadLen, tmp);
 				PutIntoRecvQueue(dwTimeStamp, tmp, nOutBytes);// to free(tmp)
+				usleep(5*1000);
 			}
 
 			// we don't longer need this packet, so we'll free it

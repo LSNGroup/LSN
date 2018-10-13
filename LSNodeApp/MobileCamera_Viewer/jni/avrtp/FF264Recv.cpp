@@ -315,7 +315,7 @@ static BOOL PutIntoRecvQueue(DWORD rtptimestamp, BYTE *lpData, int nLength)
 #if LOG_MSG
 		log_msg("FF264 decoding queue full!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n", LOG_LEVEL_DEBUG);
 #endif
-		usleep(10*1000);//给播放线程留出CPU
+		usleep(150*1000);//给播放线程留出CPU
 		free(lpData);
 		return FALSE;
 	}
@@ -489,6 +489,7 @@ static void FF264DecReceive(DWORD rtptimestamp, BYTE *lpData, int nLength)
 	if(consumed_bytes > 0 && got_picture)
 	{
 		FF264DecSendSample(rtptimestamp, m_avCodecContext, m_avFrame);
+		usleep(25*1000);
 	}
 	
 	free(pSrc);
