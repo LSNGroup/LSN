@@ -334,7 +334,7 @@ void *NativeMainFunc(void *lpParameter)
 				}
 
 				push_channel_id = 0;
-				ret = myHttpOperate.DoPush(g_client_charset, g_client_lang, "LSN Test Channel", &push_channel_id);
+				ret = myHttpOperate.DoPush(g_client_charset, g_client_lang, g0_device_uuid/*"LSN Test Channel"*/, &push_channel_id);
 				__android_log_print(ANDROID_LOG_INFO, "NativeMainFunc", "DoPush() = %d\n", ret);
 				if_on_push_result(ret, push_channel_id);
 				if (ret == 1 && push_channel_id > 0) {
