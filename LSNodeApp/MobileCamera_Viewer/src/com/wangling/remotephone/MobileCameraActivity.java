@@ -162,6 +162,9 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
 						e.printStackTrace();
 					}
 				}
+				if (Build.VERSION.RELEASE.equals("4.4.2") && Build.MODEL.equals("dolphin")) {
+		    		onBtnPushStart();
+		    	}
 				break;
 				
 			case UI_MSG_DISPLAY_CAMERA_ID://arg1,arg2
@@ -1197,11 +1200,14 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
         
     	Log.d(TAG, "onCreate~~~");
         
+        AppSettings.SaveSoftwareKeyDwordValue(this, AppSettings.STRING_REGKEY_NAME_AUTO_START, 1);
     	AppSettings.SaveSoftwareKeyDwordValue(this, AppSettings.STRING_REGKEY_NAME_WITHUAV, 1);
     	AppSettings.SaveSoftwareKeyDwordValue(this, AppSettings.STRING_REGKEY_NAME_TAILSITTER, 0);
     	AppSettings.SaveSoftwareKeyValue(this, AppSettings.STRING_REGKEY_NAME_BT_ADDRESS, "");
     	AppSettings.SaveSoftwareKeyValue(this, AppSettings.STRING_REGKEY_NAME_SERIAL_PORT, "");
-    	
+    	if (Build.VERSION.RELEASE.equals("4.4.2") && Build.MODEL.equals("dolphin")) {
+    		AppSettings.SaveSoftwareKeyValue(this, AppSettings.STRING_REGKEY_NAME_SERIAL_PORT, "/dev/ttyS3");
+    	}
     	
     	try {
 			onvifProto = new OnvifProto(this);

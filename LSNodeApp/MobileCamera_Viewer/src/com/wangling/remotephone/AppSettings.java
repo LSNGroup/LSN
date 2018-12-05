@@ -54,6 +54,8 @@ public class AppSettings {
 	public static final String STRING_REGKEY_NAME_BT_ADDRESS = "BtAddress";
 	public static final String STRING_REGKEY_NAME_SERIAL_PORT = "SerialPort";//String:/dev/ttyS4
 	
+	public static final String STRING_REGKEY_NAME_AUTO_START = "AutoStart";//int:0,1
+	
 	
 	private static void customBufferStreamCopy(File source, File target)
 	{  
