@@ -51,6 +51,15 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(SetThisObject)
 }
 
 extern "C"
+void
+MAKE_JNI_FUNC_NAME_FOR_ShipList(SetThisObject)
+	(JNIEnv* env, jobject thiz)
+{
+	MAKE_JNI_FUNC_NAME_FOR_MainListActivity(SetThisObject)
+	(env, thiz);
+}
+
+extern "C"
 void JNI_OnUnload(JavaVM* vm, void* reserved)
 {
 	__android_log_print(ANDROID_LOG_INFO, "viewer_if", "JNI_OnUnload()");

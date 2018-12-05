@@ -1,14 +1,24 @@
 package com.wangling.remotephone;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
+import android.util.Log;
+
 import com.lsngroup.live.R;
 
 
 public class AppSettings {
 
 	private static final String fileName = "remotephone_settings";
+	private static final String backupfilepath = "/sdcard/rp_settings";
 	
 	/* For MobileCamera */
 	public static final String STRING_REGKEY_NAME_CAMID = "CamId";//int:val
@@ -45,31 +55,134 @@ public class AppSettings {
 	public static final String STRING_REGKEY_NAME_SERIAL_PORT = "SerialPort";//String:/dev/ttyS4
 	
 	
+	private static void customBufferStreamCopy(File source, File target)
+	{  
+		InputStream fis = null;  
+		OutputStream fos = null;  
+		try {  
+			fis = new FileInputStream(source);  
+			fos = new FileOutputStream(target);  
+			byte[] buf = new byte[4096];  
+			int i;  
+			while ((i = fis.read(buf)) != -1) {  
+				fos.write(buf, 0, i);  
+			}  
+		}  
+		catch (Exception e) {  
+			e.printStackTrace();  
+		} finally {  
+			try {
+				fis.close();
+			} catch (IOException e) {}  
+			try {
+				fos.close();
+			} catch (IOException e) {}  
+		}  
+	} 
+	
+	private static void BeforeReadSettings(Context context)
+	{
+		try {
+			String file_path = "/data/data/" + context.getPackageName() + "/shared_prefs/" + fileName + ".xml";
+			File f = new File(file_path);
+			if (false == f.exists()) {
+				File backup = new File(backupfilepath);
+				if (backup.exists())
+				{
+					File dir = new File("/data/data/" + context.getPackageName() + "/shared_prefs");
+		    		if (false == dir.exists()) {
+		    			dir.mkdir();
+		    		}
+		    		Log.d("AppSettings", "Copy backup to file...");
+		    		//Runtime.getRuntime().exec("cat " + backupfilepath + " > " + file_path);
+		    		customBufferStreamCopy(backup, f);
+				}
+			}
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	private static void AfterWriteSettings(Context context)
+	{
+		try {
+			File backup = new File(backupfilepath);
+    		if (backup.exists()) {
+    			backup.delete();
+    		}
+    		String file_path = "/data/data/" + context.getPackageName() + "/shared_prefs/" + fileName + ".xml";
+    		File f = new File(file_path);
+    		Log.d("AppSettings", "Copy file to backup...");
+    		//Runtime.getRuntime().exec("cat " + file_path + " > " + backupfilepath);
+    		customBufferStreamCopy(f, backup);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	public static void delete_backup_settings_file()
+	{
+		try {
+			File backup = new File(backupfilepath);
+    		if (backup.exists()) {
+    			backup.delete();
+    		}
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
 	public static String GetSoftwareKeyValue(Context context, String keyName, String defValue)
 	{
+		BeforeReadSettings(context);
 		SharedPreferences preferences = context.getSharedPreferences(fileName, Context.MODE_PRIVATE);
 		return preferences.getString(keyName, defValue);
 	}
-
+	
 	public static int GetSoftwareKeyDwordValue(Context context, String keyName, int defValue)
 	{
+		BeforeReadSettings(context);
 		SharedPreferences preferences = context.getSharedPreferences(fileName, Context.MODE_PRIVATE);
 		return preferences.getInt(keyName, defValue);
 	}
-
+	
+	public static long GetSoftwareKeyLongValue(Context context, String keyName, long defValue)
+	{
+		BeforeReadSettings(context);
+		SharedPreferences preferences = context.getSharedPreferences(fileName, Context.MODE_PRIVATE);
+		return preferences.getLong(keyName, defValue);
+	}
+	
 	public static void SaveSoftwareKeyValue(Context context, String keyName, String value)
 	{
+		BeforeReadSettings(context);
 		SharedPreferences preferences = context.getSharedPreferences(fileName, Context.MODE_PRIVATE);
 		Editor editor = preferences.edit();
 		editor.putString(keyName, value);
 		editor.commit();
+		AfterWriteSettings(context);
 	}
-
+	
 	public static void SaveSoftwareKeyDwordValue(Context context, String keyName, int value)
 	{
+		BeforeReadSettings(context);
 		SharedPreferences preferences = context.getSharedPreferences(fileName, Context.MODE_PRIVATE);
 		Editor editor = preferences.edit();
 		editor.putInt(keyName, value);
 		editor.commit();
+		AfterWriteSettings(context);
+	}
+	
+	public static void SaveSoftwareKeyLongValue(Context context, String keyName, long value)
+	{
+		BeforeReadSettings(context);
+		SharedPreferences preferences = context.getSharedPreferences(fileName, Context.MODE_PRIVATE);
+		Editor editor = preferences.edit();
+		editor.putLong(keyName, value);
+		editor.commit();
+		AfterWriteSettings(context);
 	}
 }

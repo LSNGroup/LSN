@@ -176,6 +176,16 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StartNative)
 
 
 extern "C"
+jint
+MAKE_JNI_FUNC_NAME_FOR_ShipList(StartNative)
+	(JNIEnv* env, jobject thiz, jstring str_client_charset, jstring str_client_lang)
+{
+	return MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StartNative)
+	(env, thiz, str_client_charset, str_client_lang);
+}
+
+
+extern "C"
 void
 MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StopNative)
 	(JNIEnv* env, jobject thiz)
@@ -201,6 +211,16 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StopNative)
 		myUPnP.RemoveNATPortMapping(viewerArray[i].mapping);
 	}
 	
+}
+
+
+extern "C"
+void
+MAKE_JNI_FUNC_NAME_FOR_ShipList(StopNative)
+	(JNIEnv* env, jobject thiz)
+{
+	MAKE_JNI_FUNC_NAME_FOR_MainListActivity(StopNative)
+	(env, thiz);
 }
 
 
@@ -560,6 +580,17 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoSearchChannels)
     return cntServer;
 }
 
+
+extern "C"
+jint
+MAKE_JNI_FUNC_NAME_FOR_ShipList(DoSearchChannels)
+	(JNIEnv* env, jobject thiz, jint page_offset, jint page_rows)
+{
+	return MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoSearchChannels)
+	(env, thiz, page_offset, page_rows);
+}
+
+
 extern "C"
 void
 MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoConnect)
@@ -631,6 +662,17 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoConnect)
 	}
 }
 
+
+extern "C"
+void
+MAKE_JNI_FUNC_NAME_FOR_ShipList(DoConnect)
+	(JNIEnv* env, jobject thiz, jstring strPassword, jint channel_id, jboolean keep_star)
+{
+	MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoConnect)
+	(env, thiz, strPassword, channel_id, keep_star);
+}
+
+
 extern "C"
 void
 MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoDisconnect)
@@ -662,6 +704,15 @@ MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoDisconnect)
 	is_keep_star = FALSE;
 }
 
+
+extern "C"
+void
+MAKE_JNI_FUNC_NAME_FOR_ShipList(DoDisconnect)
+	(JNIEnv* env, jobject thiz)
+{
+	MAKE_JNI_FUNC_NAME_FOR_MainListActivity(DoDisconnect)
+	(env, thiz);
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
