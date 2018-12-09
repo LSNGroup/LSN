@@ -344,7 +344,6 @@ void *NativeMainFunc(void *lpParameter)
 			}
 			else {
 				ret = 0;
-				if_on_push_result(0, 0);
 			}
 		}//if (ret >= 0)
 
@@ -407,13 +406,22 @@ void *NativeMainFunc(void *lpParameter)
 				strcpy(myHttpOperate.m1_event_type, "");
 				;
 			}
+			
+			if (push_channel_id > 0)
+			{
+				int pushend_ret = myHttpOperate.DoPushEnd(g_client_charset, g_client_lang, push_channel_id);
+				__android_log_print(ANDROID_LOG_INFO, "NativeMainFunc", "DoPushEnd(%ld) = %d\n", push_channel_id, pushend_ret);
+				if (pushend_ret != -1) push_channel_id = 0;
+			}
+			
 		}//if (ret == 3) {
 
 	}//if (g_bDoConnection1)
 	else {
 		ret = 0;
-		if_on_push_result(0, 0);
 	}
+
+	if_on_push_result(0xff, 0);
 
 	__android_log_print(ANDROID_LOG_INFO, "NativeMainFunc", "Exit NativeMainFunc!\n");
 	return 0;
@@ -999,12 +1007,6 @@ static int ControlChannelLoop(SOCKET_TYPE type, SOCKET fhandle)
 	DShowAV_Stop();
 	if (strncmp(g0_device_uuid, "ANDROID@UAV@", 12) == 0) {
 		if_on_mavlink_stop();
-	}
-	if (push_channel_id > 0)
-	{
-		int ret = myHttpOperate.DoPushEnd(g_client_charset, g_client_lang, push_channel_id);
-		__android_log_print(ANDROID_LOG_INFO, "ControlChannelLoop", "DoPushEnd(%ld) = %d\n", push_channel_id, ret);
-		if (ret != -1) push_channel_id = 0;
 	}
 	if_on_client_disconnected();
 	return 0;

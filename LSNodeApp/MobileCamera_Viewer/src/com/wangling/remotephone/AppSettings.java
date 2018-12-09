@@ -1,8 +1,10 @@
 package com.wangling.remotephone;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -10,6 +12,7 @@ import java.io.OutputStream;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
+import android.util.Base64;
 import android.util.Log;
 
 import com.lsngroup.live.R;
@@ -19,6 +22,7 @@ public class AppSettings {
 
 	private static final String fileName = "remotephone_settings";
 	private static final String backupfilepath = "/sdcard/rp_settings";
+	private static final String savedmacfilepath = "/sdcard/rp_savedmac";
 	
 	/* For MobileCamera */
 	public static final String STRING_REGKEY_NAME_CAMID = "CamId";//int:val
@@ -135,6 +139,38 @@ public class AppSettings {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+	}
+	
+	public static String GetSavedMacFromBackup(Context context)
+	{
+		File f = new File(savedmacfilepath);
+		if (false == f.exists()) {
+			return "";
+		}
+		String s = null;
+		String s2 = null;
+		try {
+			BufferedReader br = new BufferedReader(new FileReader(f));
+			s = br.readLine();
+			s2 = br.readLine();
+			br.close();
+			
+			s = s.trim();
+			String base64 = Base64.encodeToString(s.getBytes(), Base64.DEFAULT);
+			if (base64.substring(0, 23).equals(s2.substring(0, 23)) == false)
+			{
+				s = null;
+			}
+			
+			Log.d("AppSettings", "s=" + s);
+			Log.d("AppSettings", "    s2=" + s2);
+			Log.d("AppSettings", "base64=" + base64);
+		}catch(Exception e){ s = null;}
+		
+		if (null == s) {
+			s = "";
+		}
+		return s;
 	}
 	
 	public static String GetSoftwareKeyValue(Context context, String keyName, String defValue)

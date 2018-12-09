@@ -152,6 +152,7 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
 			switch(what)
 			{
 			case UI_MSG_AUTO_START:
+				/*
 				if (hasRootPermission())
 				{
 					Log.d(TAG, "Running as root...");
@@ -162,9 +163,10 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
 						e.printStackTrace();
 					}
 				}
-				if (Build.VERSION.RELEASE.equals("4.4.2") && Build.MODEL.equals("dolphin")) {
+				*/
+				//if (Build.VERSION.RELEASE.equals("4.4.2") && Build.MODEL.equals("dolphin")) {
 		    		onBtnPushStart();
-		    	}
+		    	//}
 				break;
 				
 			case UI_MSG_DISPLAY_CAMERA_ID://arg1,arg2
@@ -1642,7 +1644,7 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
 		
 		//record_h264_3gp();
 		
-		mMainHandler.sendEmptyMessageDelayed(UI_MSG_AUTO_START, 100);
+		mMainHandler.sendEmptyMessageDelayed(UI_MSG_AUTO_START, 2000);
 		
         /* Start native main... */
         SetThisObject();
@@ -3171,6 +3173,12 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
     		return null;
     	}
     	
+    	String saved_mac = AppSettings.GetSavedMacFromBackup(_instance);
+        if (false == saved_mac.isEmpty())
+        {
+        	AppSettings.SaveSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_SAVED_MAC, saved_mac);
+        }
+        
     	String macAddr = AppSettings.GetSoftwareKeyValue(_instance, AppSettings.STRING_REGKEY_NAME_SAVED_MAC, "");
     	if (null == macAddr || macAddr.equals(""))
     	{////////////////////////////////
@@ -3273,6 +3281,17 @@ public class MobileCameraActivity extends Activity  implements MavLinkConnection
     				_instance.findViewById(R.id.push_end_btn).setEnabled(false);
     			}
     		});
+    	}
+    	else if (ret == 0xff)
+    	{
+    		_instance.mMainHandler.post(new Runnable(){
+    			@Override
+    			public void run() {
+    				_instance.findViewById(R.id.push_start_btn).setEnabled(true);
+    				_instance.findViewById(R.id.push_end_btn).setEnabled(false);
+    			}
+    		});
+    		_instance.mMainHandler.sendEmptyMessageDelayed(UI_MSG_AUTO_START, 9000);
     	}
     	else if (joined_channel_id == 0)
     	{
