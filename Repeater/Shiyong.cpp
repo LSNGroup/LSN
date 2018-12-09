@@ -640,6 +640,11 @@ void OnReportEvent(char *event_str)
 	szDestNodeId[17] = '\0';
 	mac_addr(szDestNodeId, dest_node_id, NULL);
 
+	//全零，指当前currentSourceIndex -> ViewerNode
+	if (strcmp(szDestNodeId, "00-00-00-00-00-00") == 0) {
+		memcpy(dest_node_id, g_pShiyong->viewerArray[g_pShiyong->currentSourceIndex].httpOP.m0_node_id, 6);
+	}
+
 	if (-1 != g_pShiyong->FindConnectingItemViewerNode(dest_node_id) || -1 != g_pShiyong->FindConnectingItemGuajiNode(dest_node_id)) {
 		log_msg_f(LOG_LEVEL_INFO, "OnReportEvent: in connecting_event_table, skip! dest_node_id=%02X-%02X-%02X-%02X-%02X-%02X\n", dest_node_id[0], dest_node_id[1], dest_node_id[2], dest_node_id[3], dest_node_id[4], dest_node_id[5]);
 		return;
@@ -667,6 +672,72 @@ void OnReportEvent(char *event_str)
 			strcpy(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "");
 			g_pShiyong->DisconnectNode(&(g_pShiyong->viewerArray[index]));
 		}
+#if FIRST_LEVEL_REPEATER
+		else if (stricmp(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "AvStart") == 0
+			 && TRUE == g_pShiyong->viewerArray[index].bConnected)
+		{
+			strcpy(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "");
+			if (FALSE == g_pShiyong->viewerArray[index].bAvStarted)
+			{
+				log_msg_f(LOG_LEVEL_INFO, "OnReportEvent: CtrlCmd_AV_START...\n");
+
+				//必须视频可靠传输，音频非冗余传输！！！
+				BYTE bFlags = AV_FLAGS_VIDEO_ENABLE | AV_FLAGS_AUDIO_ENABLE | AV_FLAGS_VIDEO_RELIABLE | AV_FLAGS_VIDEO_H264 | AV_FLAGS_AUDIO_G729A;
+				BYTE bVideoSize = AV_VIDEO_SIZE_VGA;
+				if (g_video_width == 640 && g_video_height == 480) {
+					bVideoSize = AV_VIDEO_SIZE_VGA;
+				}
+				else if (g_video_width == 480 && g_video_height == 320) {
+					bVideoSize = AV_VIDEO_SIZE_480x320;
+				}
+				else if (g_video_width == 320 && g_video_height == 240) {
+					bVideoSize = AV_VIDEO_SIZE_QVGA;
+				}
+				BYTE bVideoFrameRate = g_video_fps;
+				DWORD audioChannel = 0;
+				if (g_pShiyong->dwAudioSeqNum == 0xffffffffUL) {
+					audioChannel = g_pShiyong->dwAudioSeqNum;
+				}
+				else if (g_pShiyong->dwAudioSeqNum == 0xffffU) {
+					audioChannel = 0;
+				}
+				else {
+					audioChannel = g_pShiyong->dwAudioSeqNum + 1;
+				}
+				DWORD videoChannel = 0;
+				if (g_pShiyong->dwVideoSeqNum == 0xffffffffUL) {
+					videoChannel = g_pShiyong->dwVideoSeqNum;
+				}
+				else if (g_pShiyong->dwVideoSeqNum == 0xffffU) {
+					videoChannel = 0;
+				}
+				else {
+					videoChannel = g_pShiyong->dwVideoSeqNum + 1;
+				}
+				CtrlCmd_AV_START(g_pShiyong->viewerArray[index].httpOP.m1_use_sock_type, g_pShiyong->viewerArray[index].httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
+				g_pShiyong->viewerArray[index].bAvStarted = TRUE;
+
+				if (lastEvaluateTime == 0)
+				{
+					lastEvaluateTime = time(NULL);
+					g_pShiyong->dwStreamFlow = 0;
+					g_pShiyong->dwAudioPackets = 0;
+					g_pShiyong->dwVideoPackets = 0;
+				}
+			}
+		}
+		else if (stricmp(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "AvStop") == 0
+			 && TRUE == g_pShiyong->viewerArray[index].bConnected)
+		{
+			strcpy(g_pShiyong->viewerArray[index].httpOP.m1_event_type, "");
+			if (TRUE == g_pShiyong->viewerArray[index].bAvStarted)
+			{
+				log_msg_f(LOG_LEVEL_INFO, "OnReportEvent: CtrlCmd_AV_STOP...\n");
+				CtrlCmd_AV_STOP(g_pShiyong->viewerArray[index].httpOP.m1_use_sock_type, g_pShiyong->viewerArray[index].httpOP.m1_use_udt_sock);
+				g_pShiyong->viewerArray[index].bAvStarted = FALSE;
+			}
+		}
+#endif
 	}
 	else {
 		index = g_pShiyong->FindTopoRouteItem(dest_node_id);
@@ -1054,7 +1125,11 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 	pViewerNode->bConnected = TRUE;
 
 	//连接是为了视频监控。。。
+#if FIRST_LEVEL_REPEATER
+	if (false)
+#else
 	if (pViewerNode->bTopoPrimary)
+#endif
 	{
 		//必须视频可靠传输，音频非冗余传输！！！
 		BYTE bFlags = AV_FLAGS_VIDEO_ENABLE | AV_FLAGS_AUDIO_ENABLE | AV_FLAGS_VIDEO_RELIABLE | AV_FLAGS_VIDEO_H264 | AV_FLAGS_AUDIO_G729A;
@@ -1090,6 +1165,7 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 			videoChannel = g_pShiyong->dwVideoSeqNum + 1;
 		}
 		CtrlCmd_AV_START(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
+		pViewerNode->bAvStarted = TRUE;
 
 		if (lastEvaluateTime == 0)
 		{
@@ -1881,6 +1957,7 @@ CShiyong::CShiyong()
 		viewerArray[i].bTopoPrimary = FALSE;
 		viewerArray[i].bConnecting = FALSE;
 		viewerArray[i].bConnected = FALSE;
+		viewerArray[i].bAvStarted = FALSE;
 		viewerArray[i].httpOP.m0_is_admin = TRUE;
 		viewerArray[i].httpOP.m0_is_busy = FALSE;
 		viewerArray[i].httpOP.m0_p2p_port = FIRST_CONNECT_PORT - (i+1)*4;
@@ -2040,6 +2117,7 @@ void CShiyong::ConnectNode(int i, char *password)
 	viewerArray[i].bQuitRecvSocketLoop = TRUE;
 	viewerArray[i].bConnecting = TRUE;
 	viewerArray[i].bConnected = FALSE;
+	viewerArray[i].bAvStarted = FALSE;
 	viewerArray[i].bTopoPrimary = FALSE;
 
 	viewerArray[i].m_sps_len = 0;
@@ -2095,6 +2173,7 @@ void CShiyong::ConnectRevNode(int i, char *password)
 	viewerArray[i].bQuitRecvSocketLoop = TRUE;
 	viewerArray[i].bConnecting = TRUE;
 	viewerArray[i].bConnected = FALSE;
+	viewerArray[i].bAvStarted = FALSE;
 	viewerArray[i].bTopoPrimary = FALSE;
 
 	viewerArray[i].m_sps_len = 0;
@@ -2145,6 +2224,7 @@ void CShiyong::DisconnectNode(VIEWER_NODE *pViewerNode)
 		}
 		else {
 			CtrlCmd_AV_STOP(pViewerNode->httpOP.m1_use_sock_type, pViewerNode->httpOP.m1_use_udt_sock);
+			pViewerNode->bAvStarted = FALSE;
 			g_pShiyong->currentSourceIndex = -1;
 		}
 	}
@@ -2169,6 +2249,7 @@ void CShiyong::ReturnViewerNode(VIEWER_NODE *pViewerNode)
 	if (NULL != pViewerNode)
 	{
 		pViewerNode->bTopoPrimary = FALSE;
+		pViewerNode->bAvStarted = FALSE;
 		pViewerNode->bConnected = FALSE;
 		pViewerNode->bConnecting = FALSE;
 		pViewerNode->bUsing = FALSE;
@@ -2344,6 +2425,7 @@ void CShiyong::SwitchMediaSource(int oldIndex, int newIndex)
 			videoChannel = dwVideoSeqNum + 1;
 		}
 		CtrlCmd_AV_START(viewerArray[newIndex].httpOP.m1_use_sock_type, viewerArray[newIndex].httpOP.m1_use_udt_sock, bFlags, bVideoSize, bVideoFrameRate, audioChannel, videoChannel);
+		viewerArray[newIndex].bAvStarted = TRUE;
 
 		if (lastEvaluateTime == 0)
 		{
@@ -2363,6 +2445,7 @@ void CShiyong::SwitchMediaSource(int oldIndex, int newIndex)
 	//if (viewerArray[oldIndex].bTopoPrimary == FALSE)
 	{
 		CtrlCmd_AV_STOP(viewerArray[oldIndex].httpOP.m1_use_sock_type, viewerArray[oldIndex].httpOP.m1_use_udt_sock);
+		viewerArray[oldIndex].bAvStarted = FALSE;
 	}
 
 	viewerArray[oldIndex].bTopoPrimary = FALSE;

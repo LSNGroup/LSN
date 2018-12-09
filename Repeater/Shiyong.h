@@ -74,6 +74,7 @@ typedef struct _tag_viewer_node {
 	UPNPNAT_MAPPING mapping;
 	BOOL bConnecting;
 	BOOL bConnected;
+	BOOL bAvStarted;
 	BOOL bTopoPrimary;
 	//FAKERTPRECV *m_pFRR;
 	//TLV_RECV *m_pTlvRecv;
