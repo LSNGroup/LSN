@@ -1024,9 +1024,9 @@ int StartNativeMain(const char *client_charset, const char *client_lang)
 	g_InConnection2 = FALSE;
 	
 	// use this function to initialize the UDT library
-	//UdtStartup();
+	UdtStartup();
 	
-	//CtrlCmd_Init();
+	CtrlCmd_Init();
 	
 	InitVar();
 	
@@ -1053,7 +1053,7 @@ void StopNativeMain()
 	
 	myUPnP.RemoveNATPortMapping(mapping);
 	
-	//CtrlCmd_Uninit();
+	CtrlCmd_Uninit();
 	
 	//__android_log_print(ANDROID_LOG_INFO, "NativeMainFunc", "UdtCleanup()...\n");
 	//UdtCleanup();
