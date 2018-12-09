@@ -305,6 +305,8 @@ BOOL HttpOperate::ParseIpValue(char *value)
 //          /* event=3F-1A-CD-90-4B-67|6|ConnectRev|4F-1A-CD-90-66-88|61.126.78.32|23745|0|5|192.168.1.101-192.168.110.103|3478 */
 //          /* event=3F-1A-CD-90-4B-67|6|Disconnect|4F-1A-CD-90-66-88 */
 //          /* event=3F-1A-CD-90-4B-67|0|Switch    |00-00-00-00-00-00 */
+//          /* event=00-00-00-00-00-00|0|AvStart   |00-00-00-00-00-00 */
+//          /* event=00-00-00-00-00-00|0|AvStop    |00-00-00-00-00-00 */
 //                   the_node_id   wait_time  type     peer_node_id       pub_ip  pub_port  no_nat  nat_type  ip  port 
 BOOL HttpOperate::ParseEventValue(char *value)
 {
@@ -325,7 +327,7 @@ BOOL HttpOperate::ParseEventValue(char *value)
 	the_node_id_str = value;
 	BYTE the_node_id[6];
 	mac_addr(the_node_id_str, the_node_id, NULL);
-	if (memcmp(the_node_id, m0_node_id, 6) != 0) {
+	if (strcmp(the_node_id_str, "00-00-00-00-00-00") != 0 && memcmp(the_node_id, m0_node_id, 6) != 0) {
 		return FALSE;
 	}
 
@@ -540,6 +542,32 @@ BOOL HttpOperate::ParseEventValue(char *value)
 		node_id_str = value;
 		//mac_addr(node_id_str, m1_switch_to_node_id, NULL);
 	}
+#if FIRST_LEVEL_REPEATER
+	else if (strcmp(type_str, "AvStart") == 0)
+	{
+
+		/* NODE ID */
+		value = p + 1;
+		p = strchr(value, '|');
+		if (p != NULL) {
+			*p = '\0';  /* Last field */
+		}
+		node_id_str = value;
+		//mac_addr(node_id_str, _node_id, NULL);
+	}
+	else if (strcmp(type_str, "AvStop") == 0)
+	{
+
+		/* NODE ID */
+		value = p + 1;
+		p = strchr(value, '|');
+		if (p != NULL) {
+			*p = '\0';  /* Last field */
+		}
+		node_id_str = value;
+		//mac_addr(node_id_str, _node_id, NULL);
+	}
+#endif
 	else {
 		return FALSE;
 	}

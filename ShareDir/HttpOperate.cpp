@@ -8,7 +8,7 @@
 #include "base64.h"
 #include "TWSocket.h"
 #include "HttpOperate.h"
-#ifdef WIN32
+#ifndef ANDROID_NDK
 #include "LogMsg.h"
 #endif
 

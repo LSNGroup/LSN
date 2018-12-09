@@ -1113,6 +1113,7 @@ void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy = FALS
 void DoInConnection(CShiyong *pDlg, VIEWER_NODE *pViewerNode, BOOL bProxy)
 {
 	/* 为了节省连接时间，在 eloop 中执行 DoUnregister  */
+	eloop_cancel_timeout(HandleDoUnregister, pViewerNode, (void *)0/*is_connected*/);
 	eloop_register_timeout(1, 0, HandleDoUnregister, pViewerNode, (void *)1/*is_connected*/);
 
 	/* 为了节省连接时间，在 HandleDoUnregister 中执行DoLogRecord  */
@@ -2145,6 +2146,8 @@ void CShiyong::ConnectNode(int i, char *password)
 		pthread_create(&(viewerArray[i].hConnectThread2), NULL, ConnectThreadFn2, (void *)(&(viewerArray[i])));
 #endif
 	}
+	
+	eloop_register_timeout(g1_register_period + 15, 0, HandleDoUnregister, &(viewerArray[i]), (void *)0/*is_connected*/);
 }
 
 void CShiyong::ConnectRevNode(int i, char *password)
@@ -2193,6 +2196,8 @@ void CShiyong::ConnectRevNode(int i, char *password)
 		pthread_create(&(viewerArray[i].hConnectThreadRev), NULL, ConnectThreadFnRev, (void *)(&(viewerArray[i])));
 #endif
 	}
+	
+	eloop_register_timeout(g1_register_period + 15, 0, HandleDoUnregister, &(viewerArray[i]), (void *)0/*is_connected*/);
 }
 
 void CShiyong::DisconnectNode(VIEWER_NODE *pViewerNode)
