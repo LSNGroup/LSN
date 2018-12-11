@@ -835,6 +835,13 @@ static void RecvSocketDataLoop(VIEWER_NODE *pViewerNode, SOCKET_TYPE ftype, SOCK
 				}
 			}
 
+			g_pShiyong->dwAudioSeqNum = 0xffffffffUL;
+			g_pShiyong->dwVideoSeqNum = 0xffffffffUL;
+
+			for (int i = 0; i < NUM_PAYLOAD_TYPE; i++) {
+				g_pShiyong->FreeRecvPacketQueue(i);
+			}
+
 			break;
 
 		case CMD_CODE_TOPO_EVENT:
